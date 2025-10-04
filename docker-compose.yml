@@ -22,8 +22,8 @@ services:
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
       
-      # Optional: Default OpenAI API Key
-      - DEFAULT_OPENAI_API_KEY=${DEFAULT_OPENAI_API_KEY:-}
+      # Optional: Default OpenRouter API Key
+      - DEFAULT_OPENROUTER_API_KEY=${DEFAULT_OPENROUTER_API_KEY:-}
       
       # Database Path
       - DB_PATH=/app/data/database.db

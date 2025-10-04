@@ -180,7 +180,7 @@ function Admin() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Default OpenAI API Key
+                  Default OpenRouter API Key
                 </label>
                 <p className="text-sm text-gray-600 mb-3">
                   Users with "use default key" permission will use this API key. Leave blank to disable.

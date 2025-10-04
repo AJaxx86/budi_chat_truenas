@@ -28,7 +28,7 @@ ADMIN_PASSWORD=YourSecurePassword123
 
 **Optional (can be set later via UI):**
 ```env
-DEFAULT_OPENAI_API_KEY=sk-your-openai-api-key-here
+DEFAULT_OPENROUTER_API_KEY=sk-your-openrouter-api-key-here
 ```
 
 ### 3. Start Application
@@ -49,7 +49,7 @@ Default credentials:
    - Click Settings → Update password
 
 2. **Add API Key:**
-   - Option A: Settings → Set your personal OpenAI key
+   - Option A: Settings → Set your personal OpenRouter key
    - Option B: Admin Panel → Set default key for all users
 
 3. **Start Chatting:**
@@ -132,13 +132,13 @@ rm -rf data/
 
 ### Use Your Own API Key
 1. Go to Settings
-2. Add your OpenAI API key
+2. Add your OpenRouter API key
 3. Start chatting
 
 ### Allow Users to Share Default Key
 1. Login as admin
 2. Go to Admin Panel
-3. Set "Default OpenAI API Key"
+3. Set "Default OpenRouter API Key"
 4. Edit user → Check "Can Use Default API Key"
 
 ### Create New Users
@@ -185,10 +185,10 @@ docker-compose down
 docker-compose up -d
 ```
 
-### Cannot Connect to OpenAI
+### Cannot Connect to OpenRouter
 1. Verify API key is correct
-2. Check you have credits at OpenAI
-3. Test key at https://platform.openai.com
+2. Check you have credits at OpenRouter
+3. Test key at https://openrouter.ai/keys
 
 ### Memory Usage Too High
 - Use GPT-3.5 instead of GPT-4

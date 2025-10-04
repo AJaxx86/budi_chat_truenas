@@ -27,7 +27,7 @@ router.post('/:chatId', async (req, res) => {
     const apiKey = await getApiKey(req.user.id);
     if (!apiKey) {
       return res.status(400).json({ 
-        error: 'No API key configured. Please set your OpenAI API key in settings or ask an admin to enable the default key for you.' 
+        error: 'No API key configured. Please set your OpenRouter API key in settings or ask an admin to enable the default key for you.' 
       });
     }
 
@@ -93,7 +93,10 @@ router.post('/:chatId', async (req, res) => {
       openaiMessages.push(openaiMsg);
     }
 
-    const openai = new OpenAI({ apiKey });
+    const openai = new OpenAI({ 
+      apiKey,
+      baseURL: 'https://openrouter.ai/api/v1'
+    });
 
     // Prepare request options
     const requestOptions = {

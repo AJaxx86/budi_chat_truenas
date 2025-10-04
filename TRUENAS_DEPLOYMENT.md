@@ -5,7 +5,7 @@ This guide will walk you through deploying AI Chat Hub on TrueNAS Scale using th
 ## 📋 Prerequisites
 
 1. TrueNAS Scale installed and running
-2. OpenAI API key ([Get one here](https://platform.openai.com/api-keys))
+2. OpenRouter API key ([Get one here](https://openrouter.ai/keys))
 3. Basic familiarity with TrueNAS Scale Apps
 
 ## 🔧 Step-by-Step Deployment
@@ -86,13 +86,13 @@ Click "Add" for each of these environment variables:
 | `ADMIN_EMAIL` | `admin@yourdomain.com` |
 | `ADMIN_PASSWORD` | `YourSecurePassword123!` |
 | `DB_PATH` | `/app/data/database.db` |
-| `DEFAULT_OPENAI_API_KEY` | `sk-your-openai-api-key-here` (optional) |
+| `DEFAULT_OPENROUTER_API_KEY` | `sk-your-openrouter-api-key-here` (optional) |
 
 ⚠️ **IMPORTANT SECURITY NOTES:**
 - **JWT_SECRET**: Generate a secure random string (at least 32 characters)
   - Example: Use `openssl rand -base64 32` to generate one
 - **ADMIN_PASSWORD**: Use a strong password, change it after first login
-- **DEFAULT_OPENAI_API_KEY**: Optional - leave empty if users will use their own keys
+- **DEFAULT_OPENROUTER_API_KEY**: Optional - leave empty if users will use their own keys
 
 #### **Networking**
 
@@ -155,8 +155,8 @@ Configure based on your needs:
    - Update your password immediately
 
 2. **Configure API Keys:**
-   - If you set `DEFAULT_OPENAI_API_KEY`, go to Admin Panel and verify it
-   - Otherwise, go to Settings and add your personal OpenAI API key
+   - If you set `DEFAULT_OPENROUTER_API_KEY`, go to Admin Panel and verify it
+   - Otherwise, go to Settings and add your personal OpenRouter API key
 
 3. **Create Users (if needed):**
    - Go to Admin Panel

@@ -175,7 +175,7 @@ function Settings() {
             <div className="pb-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
                 <Key className="w-5 h-5 text-accent-500" />
-                OpenAI API Key
+                OpenRouter API Key
               </h2>
 
               {user?.use_default_key ? (
@@ -233,12 +233,12 @@ function Settings() {
                 <p className="text-xs text-gray-500">
                   Your API key is stored securely and encrypted. Get one at{' '}
                   <a
-                    href="https://platform.openai.com/api-keys"
+                    href="https://openrouter.ai/keys"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-primary-600 hover:underline"
                   >
-                    OpenAI Platform
+                    OpenRouter
                   </a>
                 </p>
               </div>
