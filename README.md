@@ -2,7 +2,7 @@
 
 A feature-rich, multi-user AI chat application with advanced capabilities including memories, chat forking, agent mode with tools, and comprehensive user management.
 
-![AI Chat Hub](https://img.shields.io/badge/AI-Chat%20Hub-blue?style=for-the-badge&logo=openai)
+![AI Chat Hub](https://img.shields.io/badge/AI-Chat%20Hub-blue?style=for-the-badge)
 ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker)
 ![TrueNAS](https://img.shields.io/badge/TrueNAS-Scale-0095D5?style=for-the-badge&logo=truenas)
 
@@ -22,14 +22,14 @@ A feature-rich, multi-user AI chat application with advanced capabilities includ
 - **👥 User Management** - Admin panel for managing users and permissions
 
 ### 🔑 API Key Management
-- Users can set their own OpenAI API keys
+- Users can set their own OpenRouter API keys
 - Admins can configure a default API key for authorized users
 - Flexible permission system for key access
 
 ## 📋 Prerequisites
 
 - Docker and Docker Compose
-- OpenAI API key (get one at [platform.openai.com](https://platform.openai.com/api-keys))
+- OpenRouter API key (get one at [openrouter.ai](https://openrouter.ai/keys))
 
 ## 🐳 Deployment on TrueNAS Scale
 
@@ -55,7 +55,7 @@ A feature-rich, multi-user AI chat application with advanced capabilities includ
    JWT_SECRET=your-secure-random-string-here-change-this
    ADMIN_EMAIL=admin@yourdomain.com
    ADMIN_PASSWORD=your-secure-admin-password
-   DEFAULT_OPENAI_API_KEY=sk-your-key-here (optional)
+   DEFAULT_OPENROUTER_API_KEY=sk-your-key-here (optional)
    ```
 
    **Storage:**
@@ -86,7 +86,7 @@ A feature-rich, multi-user AI chat application with advanced capabilities includ
    JWT_SECRET=your-very-secure-random-string-change-this
    ADMIN_EMAIL=admin@yourdomain.com
    ADMIN_PASSWORD=your-secure-password
-   DEFAULT_OPENAI_API_KEY=sk-your-openai-key (optional)
+   DEFAULT_OPENROUTER_API_KEY=sk-your-openrouter-key (optional)
    ```
 
 3. **Build and start the application:**
@@ -157,7 +157,7 @@ docker-compose build
    - ⚠️ **IMPORTANT:** Change these immediately after first login!
 
 2. **Configure API Keys:**
-   - Option A: Go to **Settings** → Set your personal OpenAI API key
+   - Option A: Go to **Settings** → Set your personal OpenRouter API key
    - Option B: As admin, go to **Admin Panel** → Set default API key for all users
 
 ### Creating Users (Admin)
@@ -200,7 +200,7 @@ docker-compose build
 - **Framework**: Express.js (Node.js)
 - **Database**: SQLite with better-sqlite3
 - **Authentication**: JWT tokens
-- **AI Integration**: OpenAI API with streaming support
+- **AI Integration**: OpenRouter API with streaming support
 
 ### Frontend
 - **Framework**: React 18
@@ -238,7 +238,7 @@ docker-compose build
 | `JWT_SECRET` | JWT signing secret | *Must change* |
 | `ADMIN_EMAIL` | Default admin email | `admin@example.com` |
 | `ADMIN_PASSWORD` | Default admin password | `admin123` |
-| `DEFAULT_OPENAI_API_KEY` | Shared API key | Empty |
+| `DEFAULT_OPENROUTER_API_KEY` | Shared API key | Empty |
 | `DB_PATH` | Database file path | `./data/database.db` |
 
 ### Chat Settings (Per Chat)
@@ -307,7 +307,7 @@ sudo chown -R 1000:1000 ./data
 
 ### API Key Not Working
 1. Verify key format starts with `sk-`
-2. Check key has sufficient credits at OpenAI
+2. Check key has sufficient credits at OpenRouter
 3. Ensure key has proper permissions
 4. Try regenerating the key
 
@@ -348,7 +348,7 @@ For issues and questions:
 ## 🎉 Credits
 
 Built with:
-- [OpenAI API](https://openai.com)
+- [OpenRouter API](https://openrouter.ai)
 - [Express.js](https://expressjs.com)
 - [React](https://react.dev)
 - [Tailwind CSS](https://tailwindcss.com)

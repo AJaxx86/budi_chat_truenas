@@ -14,7 +14,7 @@ export async function getApiKey(userId) {
       SELECT value FROM settings WHERE key = 'default_openai_api_key'
     `).get();
     
-    return defaultKey?.value || process.env.DEFAULT_OPENAI_API_KEY;
+    return defaultKey?.value || process.env.DEFAULT_OPENROUTER_API_KEY;
   }
 
   return null;

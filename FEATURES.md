@@ -170,7 +170,7 @@ AI responds with complete answer combining all information
 ### User-Level API Keys
 
 **Personal API Keys**
-- Each user can set their own OpenAI API key
+- Each user can set their own OpenRouter API key
 - Keys stored encrypted in database
 - Full control over API usage and costs
 - Easy to update or remove
@@ -232,7 +232,7 @@ AI responds with complete answer combining all information
 ### System Settings
 
 **Default API Key Configuration**
-- Set shared OpenAI API key
+- Set shared OpenRouter API key
 - Update key anytime
 - Secure storage
 - Used by authorized users

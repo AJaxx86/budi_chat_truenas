@@ -56,7 +56,7 @@ A production-ready, self-hosted AI chat system with:
                   │
                   ▼
 ┌─────────────────────────────────────────────────┐
-│          OpenAI API Integration                 │
+│          OpenRouter API Integration             │
 │  GPT-4 │ GPT-4 Turbo │ GPT-3.5 │ Streaming    │
 └─────────────────────────────────────────────────┘
 ```
@@ -228,7 +228,7 @@ ai-chat-hub/
 │   │   ├── messages.js           # Message endpoints
 │   │   └── memories.js           # Memory endpoints
 │   └── server/services/
-│       └── ai.js                 # OpenAI integration
+│       └── ai.js                 # OpenRouter integration
 │
 ├── 🎨 Client (Frontend)
 │   ├── client/package.json       # Frontend dependencies
@@ -305,7 +305,7 @@ npm run dev
 - [ ] Copy `.env.example` to `.env`
 - [ ] Change `JWT_SECRET` to a secure random string
 - [ ] Set `ADMIN_EMAIL` and `ADMIN_PASSWORD`
-- [ ] (Optional) Set `DEFAULT_OPENAI_API_KEY`
+- [ ] (Optional) Set `DEFAULT_OPENROUTER_API_KEY`
 
 ### Security
 - [ ] Use strong JWT secret (32+ characters)
@@ -344,12 +344,12 @@ Navigate to: `http://your-server-ip:3001`
 ### 4. Configure API Keys
 **Option A: Personal Key**
 - Go to **Settings**
-- Add your OpenAI API key
+- Add your OpenRouter API key
 - Start chatting
 
 **Option B: Default Key**
 - Go to **Admin Panel**
-- Set Default OpenAI API Key
+- Set Default OpenRouter API Key
 - Grant users permission to use it
 
 ### 5. Create Your First Chat
@@ -422,8 +422,8 @@ docker-compose logs -f
 
 ### API Key Issues
 - Ensure key starts with `sk-`
-- Verify key has credits at OpenAI
-- Check key permissions at OpenAI dashboard
+- Verify key has credits at OpenRouter
+- Check key permissions at OpenRouter dashboard
 
 ### For More Help
 See detailed troubleshooting in `README.md` and `TRUENAS_DEPLOYMENT.md`
@@ -438,7 +438,7 @@ See detailed troubleshooting in `README.md` and `TRUENAS_DEPLOYMENT.md`
 - **Styling**: Tailwind CSS 3
 - **Database**: SQLite (better-sqlite3)
 - **Auth**: JWT, bcrypt
-- **AI**: OpenAI API 4+
+- **AI**: OpenRouter API (OpenAI-compatible)
 - **Icons**: Lucide React
 - **Markdown**: Marked + DOMPurify
 
@@ -566,7 +566,7 @@ See `TRUENAS_DEPLOYMENT.md` for detailed instructions.
 - All code is well-commented and maintainable
 - Security best practices implemented throughout
 - Extensible architecture for future enhancements
-- No external dependencies beyond OpenAI API
+- No external dependencies beyond OpenRouter API
 - Scales from 1 to 100+ users
 - Complete data ownership
 

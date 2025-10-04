@@ -11,7 +11,7 @@ A fully-featured, multi-user AI chat application designed for deployment on True
 - ✅ **Frontend**: React + Vite + Tailwind CSS
 - ✅ **Database**: SQLite (better-sqlite3)
 - ✅ **Authentication**: JWT-based auth system
-- ✅ **AI Integration**: OpenAI API with streaming support
+- ✅ **AI Integration**: OpenRouter API with streaming support
 
 ### 🎨 User Interface
 - ✅ Modern, colorful design with gradient accents
@@ -80,7 +80,7 @@ ai-chat-hub/
 │   │   ├── memories.js         # Memory management endpoints
 │   │   └── messages.js         # Message handling & streaming
 │   └── services/
-│       └── ai.js               # OpenAI integration & tool execution
+│       └── ai.js               # OpenRouter integration & tool execution
 │
 ├── client/                      # Frontend React application
 │   ├── src/
@@ -123,7 +123,7 @@ ai-chat-hub/
 
 **users**
 - User accounts, authentication, and API key configuration
-- Fields: id, email, password, name, is_admin, openai_api_key, use_default_key
+- Fields: id, email, password, name, is_admin, openai_api_key (stores OpenRouter key), use_default_key
 
 **settings**
 - System-wide configuration (default API key, etc.)
@@ -268,7 +268,7 @@ ai-chat-hub/
 - `JWT_SECRET` - JWT signing secret (required)
 - `ADMIN_EMAIL` - Default admin email
 - `ADMIN_PASSWORD` - Default admin password
-- `DEFAULT_OPENAI_API_KEY` - Shared API key (optional)
+- `DEFAULT_OPENROUTER_API_KEY` - Shared API key (optional)
 - `DB_PATH` - Database file path
 
 ### Per-Chat Settings
@@ -340,7 +340,7 @@ ai-chat-hub/
 ### Technologies Used
 - **Backend**: Express.js, better-sqlite3, JWT, bcrypt
 - **Frontend**: React, Vite, Tailwind CSS, React Router
-- **AI**: OpenAI API, Server-Sent Events
+- **AI**: OpenRouter API (OpenAI-compatible), Server-Sent Events
 - **Deployment**: Docker, Docker Compose
 
 ### Getting Started with Development
