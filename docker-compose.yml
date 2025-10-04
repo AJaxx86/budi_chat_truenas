@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  ai-chat-hub:
+    build: .
+    container_name: ai-chat-hub
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      # Persist database
+      - ./data:/app/data
+    environment:
+      # Server Configuration
+      - PORT=3001
+      - NODE_ENV=production
+      
+      # JWT Secret - CHANGE THIS!
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-please-change-this-in-production}
+      
+      # Default Admin Credentials (for initial setup)
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      
+      # Optional: Default OpenAI API Key
+      - DEFAULT_OPENAI_API_KEY=${DEFAULT_OPENAI_API_KEY:-}
+      
+      # Database Path
+      - DB_PATH=/app/data/database.db
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/auth/me', (r) => {process.exit(r.statusCode === 401 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
