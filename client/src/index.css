@@ -4,11 +4,11 @@
 
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-dark-950 text-dark-100;
   }
 
   * {
-    @apply scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent;
+    @apply scrollbar-thin scrollbar-thumb-dark-600 scrollbar-track-transparent;
   }
 }
 
@@ -18,55 +18,142 @@
     height: 6px;
   }
 
-  .scrollbar-thumb-gray-300::-webkit-scrollbar-thumb {
-    @apply bg-gray-300 rounded-full;
+  .scrollbar-thumb-dark-600::-webkit-scrollbar-thumb {
+    @apply bg-dark-600 rounded-full;
   }
 
-  .scrollbar-thumb-gray-300::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-400;
+  .scrollbar-thumb-dark-600::-webkit-scrollbar-thumb:hover {
+    @apply bg-dark-500;
   }
 
   .scrollbar-track-transparent::-webkit-scrollbar-track {
     @apply bg-transparent;
   }
 
+  /* Primary gradient */
   .gradient-primary {
     @apply bg-gradient-to-r from-primary-500 to-accent-500;
   }
 
+  /* Gradient text */
   .gradient-text {
-    @apply bg-gradient-to-r from-primary-600 to-accent-600 bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-primary-400 to-accent-400 bg-clip-text text-transparent;
+  }
+
+  /* Glass effect utilities */
+  .glass {
+    @apply bg-dark-900/60 backdrop-blur-xl border border-dark-700/50;
+  }
+
+  .glass-light {
+    @apply bg-dark-800/40 backdrop-blur-lg border border-dark-600/30;
+  }
+
+  .glass-card {
+    @apply bg-dark-900/70 backdrop-blur-xl border border-dark-700/50 shadow-xl;
+  }
+
+  .glass-sidebar {
+    @apply bg-dark-900/80 backdrop-blur-2xl border-r border-dark-700/50;
+  }
+
+  .glass-input {
+    @apply bg-dark-800/50 backdrop-blur-sm border border-dark-600/50 focus:border-primary-500/50 focus:ring-2 focus:ring-primary-500/20;
+  }
+
+  .glass-button {
+    @apply bg-dark-700/50 backdrop-blur-sm border border-dark-600/50 hover:bg-dark-600/50 hover:border-dark-500/50;
+  }
+
+  /* Animated gradient background */
+  .bg-mesh {
+    background: 
+      radial-gradient(at 20% 20%, rgba(6, 182, 212, 0.15) 0px, transparent 50%),
+      radial-gradient(at 80% 80%, rgba(168, 85, 247, 0.15) 0px, transparent 50%),
+      radial-gradient(at 40% 60%, rgba(6, 182, 212, 0.1) 0px, transparent 50%);
+  }
+
+  /* Glow effects */
+  .glow {
+    box-shadow: 0 0 20px rgba(6, 182, 212, 0.3);
+  }
+
+  .glow-accent {
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.3);
   }
 }
 
-/* Markdown styles */
+/* Markdown styles for dark theme */
 .markdown-content {
-  @apply prose prose-sm max-w-none;
+  @apply max-w-none text-sm leading-relaxed text-dark-200;
 }
 
 .markdown-content pre {
-  @apply bg-gray-800 text-gray-100 rounded-lg p-4 overflow-x-auto;
+  @apply bg-dark-950 text-dark-100 rounded-lg p-4 overflow-x-auto border border-dark-700/50;
 }
 
 .markdown-content code {
-  @apply bg-gray-100 text-gray-800 px-1 py-0.5 rounded text-sm;
+  @apply bg-dark-800 text-primary-300 px-1.5 py-0.5 rounded text-sm;
 }
 
 .markdown-content pre code {
-  @apply bg-transparent text-gray-100 p-0;
+  @apply bg-transparent text-dark-100 p-0;
 }
 
 .markdown-content h1,
 .markdown-content h2,
 .markdown-content h3 {
-  @apply font-bold mt-6 mb-3;
+  @apply font-bold mt-6 mb-3 text-dark-50;
 }
 
 .markdown-content ul,
 .markdown-content ol {
-  @apply my-3;
+  @apply my-3 pl-4;
+}
+
+.markdown-content li {
+  @apply my-1;
 }
 
 .markdown-content a {
-  @apply text-primary-600 hover:text-primary-700 underline;
+  @apply text-primary-400 hover:text-primary-300 underline;
+}
+
+.markdown-content blockquote {
+  @apply border-l-2 border-primary-500 pl-4 my-4 text-dark-300 italic;
+}
+
+.markdown-content table {
+  @apply w-full my-4 border-collapse;
+}
+
+.markdown-content th,
+.markdown-content td {
+  @apply border border-dark-700 px-3 py-2;
+}
+
+.markdown-content th {
+  @apply bg-dark-800 font-semibold;
+}
+
+/* Custom range slider for dark theme */
+input[type="range"] {
+  @apply w-full h-2 bg-dark-700 rounded-lg appearance-none cursor-pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  @apply appearance-none w-4 h-4 bg-gradient-to-r from-primary-500 to-accent-500 rounded-full cursor-pointer shadow-lg;
+}
+
+input[type="range"]::-moz-range-thumb {
+  @apply w-4 h-4 bg-gradient-to-r from-primary-500 to-accent-500 rounded-full cursor-pointer border-0 shadow-lg;
+}
+
+/* Checkbox styling */
+input[type="checkbox"] {
+  @apply w-4 h-4 bg-dark-700 border-dark-500 rounded focus:ring-primary-500 focus:ring-2;
+}
+
+input[type="checkbox"]:checked {
+  @apply bg-primary-500 border-primary-500;
 }

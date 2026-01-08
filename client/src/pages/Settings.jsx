@@ -95,76 +95,76 @@ function Settings() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-accent-50">
+    <div className="min-h-screen bg-dark-950 bg-mesh">
       <div className="max-w-4xl mx-auto p-6">
         <button
           onClick={() => navigate('/')}
-          className="mb-6 flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+          className="mb-6 flex items-center gap-2 text-dark-400 hover:text-dark-200 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Chat
         </button>
 
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+        <div className="glass-card rounded-2xl p-8">
           <h1 className="text-3xl font-bold gradient-text mb-2">Settings</h1>
-          <p className="text-gray-600 mb-8">Manage your profile and API configuration</p>
+          <p className="text-dark-400 mb-8">Manage your profile and API configuration</p>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+            <div className="bg-red-500/20 border border-red-500/30 text-red-300 px-4 py-3 rounded-lg mb-6">
               {error}
             </div>
           )}
 
           {success && (
-            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-6">
+            <div className="bg-green-500/20 border border-green-500/30 text-green-300 px-4 py-3 rounded-lg mb-6">
               {success}
             </div>
           )}
 
           <form onSubmit={handleSave} className="space-y-6">
             {/* Profile Section */}
-            <div className="border-b border-gray-200 pb-6">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <User className="w-5 h-5 text-primary-500" />
+            <div className="border-b border-dark-700/50 pb-6">
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-dark-100">
+                <User className="w-5 h-5 text-primary-400" />
                 Profile Information
               </h2>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-dark-200 mb-2">
                     Name
                   </label>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                    className="w-full px-4 py-3 rounded-lg glass-input outline-none text-dark-100 bg-dark-800/50"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-dark-200 mb-2">
                     Email
                   </label>
                   <input
                     type="email"
                     value={user?.email}
                     disabled
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
+                    className="w-full px-4 py-3 rounded-lg bg-dark-800/30 border border-dark-700/50 text-dark-500"
                   />
-                  <p className="mt-1 text-xs text-gray-500">Email cannot be changed</p>
+                  <p className="mt-1 text-xs text-dark-500">Email cannot be changed</p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-dark-200 mb-2">
                     New Password
                   </label>
                   <input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+                    className="w-full px-4 py-3 rounded-lg glass-input outline-none text-dark-100 bg-dark-800/50"
                     placeholder="Leave blank to keep current password"
                   />
                 </div>
@@ -173,36 +173,36 @@ function Settings() {
 
             {/* API Key Section */}
             <div className="pb-6">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <Key className="w-5 h-5 text-accent-500" />
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-dark-100">
+                <Key className="w-5 h-5 text-accent-400" />
                 OpenRouter API Key
               </h2>
 
               {user?.use_default_key ? (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <p className="text-blue-800 text-sm">
-                    ✨ You are currently using the default API key set by the administrator.
+                <div className="bg-primary-500/20 border border-primary-500/30 rounded-lg p-4 mb-4">
+                  <p className="text-primary-300 text-sm">
+                    You are currently using the default API key set by the administrator.
                     You can still set your own API key to override this.
                   </p>
                 </div>
               ) : (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
-                  <p className="text-amber-800 text-sm">
-                    ⚠️ You need to set your own API key or ask an administrator to enable the default key for you.
+                <div className="bg-amber-500/20 border border-amber-500/30 rounded-lg p-4 mb-4">
+                  <p className="text-amber-300 text-sm">
+                    You need to set your own API key or ask an administrator to enable the default key for you.
                   </p>
                 </div>
               )}
 
               {hasApiKey && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-4 mb-4">
                   <div className="flex items-center justify-between">
-                    <p className="text-green-800 text-sm">
-                      ✅ You have configured your personal API key
+                    <p className="text-green-300 text-sm">
+                      You have configured your personal API key
                     </p>
                     <button
                       type="button"
                       onClick={removeApiKey}
-                      className="text-sm text-red-600 hover:text-red-700 font-medium"
+                      className="text-sm text-red-400 hover:text-red-300 font-medium"
                     >
                       Remove Key
                     </button>
@@ -211,7 +211,7 @@ function Settings() {
               )}
 
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-dark-200">
                   {hasApiKey ? 'Update API Key' : 'Set API Key'}
                 </label>
                 <div className="relative">
@@ -219,24 +219,24 @@ function Settings() {
                     type={showApiKey ? 'text' : 'password'}
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
-                    className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none font-mono text-sm"
+                    className="w-full px-4 py-3 pr-12 rounded-lg glass-input outline-none font-mono text-sm text-dark-100 bg-dark-800/50"
                     placeholder="sk-..."
                   />
                   <button
                     type="button"
                     onClick={() => setShowApiKey(!showApiKey)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-200"
                   >
                     {showApiKey ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-dark-500">
                   Your API key is stored securely and encrypted. Get one at{' '}
                   <a
                     href="https://openrouter.ai/keys"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-primary-600 hover:underline"
+                    className="text-primary-400 hover:underline"
                   >
                     OpenRouter
                   </a>
@@ -247,7 +247,7 @@ function Settings() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full gradient-primary text-white py-3 rounded-lg font-medium hover:shadow-lg hover:shadow-primary-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full gradient-primary text-white py-3 rounded-lg font-medium hover:shadow-glow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>

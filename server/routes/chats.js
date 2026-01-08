@@ -144,7 +144,7 @@ router.delete('/:id', (req, res) => {
 router.post('/:id/fork', (req, res) => {
   try {
     const { id } = req.params;
-    const { message_id, title } = req.body;
+    const { message_id, title, model } = req.body;
 
     // Get original chat
     const originalChat = db.prepare(`
@@ -155,7 +155,7 @@ router.post('/:id/fork', (req, res) => {
       return res.status(404).json({ error: 'Chat not found' });
     }
 
-    // Create new chat
+    // Create new chat (use provided model or fall back to original)
     const newChatId = uuidv4();
     db.prepare(`
       INSERT INTO chats (id, user_id, title, parent_chat_id, fork_point_message_id, 
@@ -167,7 +167,7 @@ router.post('/:id/fork', (req, res) => {
       title || `${originalChat.title} (Fork)`,
       id,
       message_id,
-      originalChat.model,
+      model || originalChat.model,
       originalChat.system_prompt,
       originalChat.temperature,
       originalChat.agent_mode
