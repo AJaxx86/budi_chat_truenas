@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { 
   MessageSquare, Plus, Settings as SettingsIcon, LogOut, Brain, 
   Send, Trash2, GitBranch, Bot, User as UserIcon,
-  Sparkles, Zap, Menu, X
+  Sparkles, Zap, Menu, X, ChevronDown, ChevronRight, Square,
+  Check, Trash
 } from 'lucide-react';
 import { AuthContext } from '../contexts/AuthContext';
 import { marked } from 'marked';
@@ -27,12 +28,16 @@ function Chat() {
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState('');
+  const [streamingReasoning, setStreamingReasoning] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showForkModal, setShowForkModal] = useState(false);
+  const [deletingChatId, setDeletingChatId] = useState(null);
   const [forkMessageId, setForkMessageId] = useState(null);
   const [forkModel, setForkModel] = useState(DEFAULT_MODEL);
   const messagesEndRef = useRef(null);
+  const abortControllerRef = useRef(null);
+  const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
 
   const [chatSettings, setChatSettings] = useState({
     model: localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL,
@@ -46,10 +51,20 @@ function Chat() {
   }, []);
 
   useEffect(() => {
-    if (currentChat) {
+    // Clear state immediately when switching chats or if no chat is selected
+    setMessages([]);
+    setStreamingMessage('');
+    setStreamingReasoning('');
+    setStreaming(false);
+    
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    if (currentChat?.id) {
       loadMessages(currentChat.id);
     }
-  }, [currentChat]);
+  }, [currentChat?.id]);
 
   useEffect(() => {
     scrollToBottom();
@@ -101,16 +116,14 @@ function Chat() {
         body: JSON.stringify({
           title: 'New Chat',
           model: modelToUse,
-          temperature: chatSettings.temperature,
-          system_prompt: chatSettings.system_prompt,
-          agent_mode: chatSettings.agent_mode
+          temperature: 0.7,
+          system_prompt: '',
+          agent_mode: false
         })
       });
       const data = await res.json();
       setChats([data, ...chats]);
       setCurrentChat(data);
-      setMessages([]);
-      setChatSettings(prev => ({ ...prev, model: modelToUse }));
     } catch (error) {
       console.error('Failed to create chat:', error);
     }
@@ -158,8 +171,6 @@ function Chat() {
   };
 
   const deleteChat = async (chatId) => {
-    if (!confirm('Are you sure you want to delete this chat?')) return;
-
     try {
       await fetch(`/api/chats/${chatId}`, {
         method: 'DELETE',
@@ -170,6 +181,7 @@ function Chat() {
         setCurrentChat(null);
         setMessages([]);
       }
+      setDeletingChatId(null);
     } catch (error) {
       console.error('Failed to delete chat:', error);
     }
@@ -209,6 +221,13 @@ function Chat() {
     }
   };
 
+  const stopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setStreaming(false);
+    }
+  };
+
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!inputMessage.trim() || !currentChat || streaming) return;
@@ -217,6 +236,9 @@ function Chat() {
     setInputMessage('');
     setStreaming(true);
     setStreamingMessage('');
+    setStreamingReasoning('');
+
+    abortControllerRef.current = new AbortController();
 
     // Add user message to UI immediately
     const tempUserMessage = {
@@ -234,8 +256,14 @@ function Chat() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ content: userMessage })
+        body: JSON.stringify({ content: userMessage }),
+        signal: abortControllerRef.current.signal
       });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to send message');
+      }
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -254,12 +282,24 @@ function Chat() {
             try {
               const data = JSON.parse(line.slice(6));
               
-              if (data.type === 'content') {
+              if (data.type === 'reasoning') {
+                setStreamingReasoning(prev => prev + data.content);
+                // Auto-expand thinking section when reasoning starts
+                if (!isThinkingExpanded) {
+                  setIsThinkingExpanded(true);
+                }
+              } else if (data.type === 'content') {
                 setStreamingMessage(prev => prev + data.content);
               } else if (data.type === 'done') {
-                setStreamingMessage('');
+                // Don't clear streaming states immediately - let loadMessages handle it
+                // This prevents the thinking section from disappearing before the message is added
                 loadMessages(currentChat.id);
                 loadChats();
+                // Clear streaming states after a short delay to ensure smooth transition
+                setTimeout(() => {
+                  setStreamingMessage('');
+                  setStreamingReasoning('');
+                }, 100);
               } else if (data.type === 'error') {
                 alert('Error: ' + data.error);
               }
@@ -270,16 +310,45 @@ function Chat() {
         }
       }
     } catch (error) {
-      console.error('Failed to send message:', error);
-      alert('Failed to send message. Please check your API key configuration.');
+      if (error.name === 'AbortError') {
+        console.log('Generation aborted');
+      } else {
+        console.error('Failed to send message:', error);
+        alert(error.message || 'Failed to send message. Please check your API key configuration.');
+      }
     } finally {
       setStreaming(false);
+      abortControllerRef.current = null;
     }
   };
 
-  const renderMessage = (message) => {
-    const html = DOMPurify.sanitize(marked(message.content || ''));
+  const renderMessage = (content) => {
+    const html = DOMPurify.sanitize(marked(content || ''));
     return <div className="markdown-content" dangerouslySetInnerHTML={{ __html: html }} />;
+  };
+
+  const ThinkingSection = ({ reasoning, isExpanded, onToggle, isStreaming }) => {
+    if (!reasoning && !isStreaming) return null;
+    
+    return (
+      <div className="mb-4 overflow-hidden rounded-xl border border-dark-700/50 bg-dark-800/30">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-dark-400 hover:bg-dark-700/30 transition-colors"
+        >
+          {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          <Brain className="w-4 h-4 text-accent-400" />
+          <span>{isStreaming ? 'Thinking...' : 'Thought Process'}</span>
+          {isStreaming && <div className="ml-auto w-2 h-2 bg-primary-400 rounded-full animate-pulse"></div>}
+        </button>
+        {isExpanded && (
+          <div className="px-4 py-3 text-sm text-dark-300 border-t border-dark-700/50 italic bg-dark-900/30 whitespace-pre-wrap text-left">
+            {reasoning || 'Thinking...'}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -332,15 +401,44 @@ function Chat() {
                     )}
                   </p>
                 </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteChat(chat.id);
-                  }}
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 rounded transition-all"
-                >
-                  <Trash2 className="w-4 h-4 text-red-400" />
-                </button>
+                
+                <div className="flex items-center gap-1">
+                  {deletingChatId === chat.id ? (
+                    <>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteChat(chat.id);
+                        }}
+                        className="p-1 hover:bg-green-500/20 rounded transition-all"
+                        title="Confirm Delete"
+                      >
+                        <Check className="w-4 h-4 text-green-400" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletingChatId(null);
+                        }}
+                        className="p-1 hover:bg-red-500/20 rounded transition-all"
+                        title="Cancel"
+                      >
+                        <X className="w-4 h-4 text-red-400" />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeletingChatId(chat.id);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 rounded transition-all"
+                      title="Delete Chat"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-400" />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -526,15 +624,25 @@ function Chat() {
                   </div>
 
                   <div className={`flex-1 ${message.role === 'user' ? 'text-right' : ''}`}>
+                    {message.role === 'assistant' && message.reasoning_content && (
+                      <div className="text-left">
+                        <ThinkingSection 
+                          reasoning={message.reasoning_content} 
+                          isExpanded={isThinkingExpanded} 
+                          onToggle={() => setIsThinkingExpanded(!isThinkingExpanded)} 
+                          isStreaming={false}
+                        />
+                      </div>
+                    )}
                     <div className={`inline-block max-w-[80%] ${
                       message.role === 'user'
                         ? 'gradient-primary text-white rounded-2xl rounded-tr-sm px-4 py-3 shadow-glow'
-                        : 'glass-card rounded-2xl rounded-tl-sm px-4 py-3'
+                        : 'glass-card rounded-2xl rounded-tl-sm px-4 py-3 text-left'
                     }`}>
                       {message.role === 'user' ? (
                         <p className="whitespace-pre-wrap">{message.content}</p>
                       ) : (
-                        renderMessage(message)
+                        renderMessage(message.content)
                       )}
                     </div>
 
@@ -553,32 +661,36 @@ function Chat() {
                 </div>
               ))}
 
-              {streaming && streamingMessage && (
+              {(streaming || streamingMessage || streamingReasoning) && (
                 <div className="flex gap-4">
                   <div className="flex-shrink-0 w-8 h-8 rounded-full glass-card flex items-center justify-center">
                     <Bot className="w-4 h-4 text-primary-400" />
                   </div>
                   <div className="flex-1">
-                    <div className="inline-block max-w-[80%] glass-card rounded-2xl rounded-tl-sm px-4 py-3">
-                      {renderMessage({ content: streamingMessage })}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {streaming && !streamingMessage && (
-                <div className="flex gap-4">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full glass-card flex items-center justify-center">
-                    <Bot className="w-4 h-4 text-primary-400 animate-pulse" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="inline-block glass-card rounded-2xl rounded-tl-sm px-4 py-3">
-                      <div className="flex gap-1">
-                        <div className="w-2 h-2 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                        <div className="w-2 h-2 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                        <div className="w-2 h-2 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    {(streamingReasoning || (streaming && !streamingMessage)) && (
+                      <ThinkingSection 
+                        reasoning={streamingReasoning} 
+                        isExpanded={isThinkingExpanded} 
+                        onToggle={() => setIsThinkingExpanded(!isThinkingExpanded)} 
+                        isStreaming={!streamingMessage || (streamingReasoning && streaming)}
+                      />
+                    )}
+                    
+                    {streamingMessage && (
+                      <div className="inline-block max-w-[80%] glass-card rounded-2xl rounded-tl-sm px-4 py-3">
+                        {renderMessage(streamingMessage)}
                       </div>
-                    </div>
+                    )}
+
+                    {streaming && !streamingMessage && !streamingReasoning && (
+                      <div className="inline-block glass-card rounded-2xl rounded-tl-sm px-4 py-3">
+                        <div className="flex gap-1">
+                          <div className="w-2 h-2 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                          <div className="w-2 h-2 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                          <div className="w-2 h-2 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -608,13 +720,24 @@ function Chat() {
         {/* Input */}
         {currentChat && (
           <div className="border-t border-dark-700/50 glass p-4">
-            <form onSubmit={sendMessage} className="max-w-4xl mx-auto">
-              <div className="flex gap-3">
+            <div className="max-w-4xl mx-auto">
+              {streaming && (
+                <div className="flex justify-center mb-4">
+                  <button
+                    onClick={stopGeneration}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-sm font-medium hover:bg-red-500/30 transition-all"
+                  >
+                    <Square className="w-3 h-3 fill-current" />
+                    Stop Generating
+                  </button>
+                </div>
+              )}
+              <form onSubmit={sendMessage} className="flex gap-3">
                 <input
                   type="text"
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
-                  placeholder="Type your message..."
+                  placeholder={streaming ? "AI is responding..." : "Type your message..."}
                   className="flex-1 px-4 py-3 rounded-xl glass-input outline-none text-dark-100 bg-dark-800/50"
                   disabled={streaming}
                 />
@@ -626,8 +749,8 @@ function Chat() {
                   <Send className="w-4 h-4" />
                   Send
                 </button>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
         )}
       </div>
