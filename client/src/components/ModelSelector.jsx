@@ -225,9 +225,9 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 w-[420px] glass-card rounded-2xl z-50 overflow-hidden shadow-2xl scale-in">
+        <div className="absolute top-full left-0 mt-2 w-[420px] bg-dark-900 border border-dark-700 rounded-2xl z-[100] overflow-hidden shadow-2xl scale-in">
           {/* Search Bar */}
-          <div className="p-3 border-b border-white/[0.06]">
+          <div className="p-3 border-b border-dark-700 bg-dark-800">
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-400" />
               <input
@@ -236,7 +236,7 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search models..."
-                className="w-full pl-10 pr-9 py-2.5 rounded-xl glass-input outline-none text-dark-100 placeholder-dark-500 text-sm"
+                className="w-full pl-10 pr-9 py-2.5 rounded-xl bg-dark-800 border border-dark-600 outline-none text-dark-100 placeholder-dark-500 text-sm focus:border-primary-500/50"
               />
               {searchQuery && (
                 <button
@@ -249,7 +249,7 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
             </div>
           </div>
 
-          <div className="max-h-[400px] overflow-y-auto">
+          <div className="max-h-[400px] overflow-y-auto bg-dark-900">
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-6 h-6 text-primary-400 animate-spin" />
@@ -259,7 +259,7 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
               <>
                 {/* Recently Used Section */}
                 {!searchQuery && recentModelsData.length > 0 && (
-                  <div className="p-2 border-b border-white/[0.06]">
+                  <div className="p-2 border-b border-dark-700 bg-dark-900">
                     <div className="flex items-center gap-2 px-3 py-2 text-[11px] font-semibold text-dark-500 uppercase tracking-wider">
                       <Clock className="w-3 h-3" />
                       Recently Used
@@ -289,7 +289,7 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
                 )}
 
                 {/* All Models Section */}
-                <div className="p-2">
+                <div className="p-2 bg-dark-900">
                   {!searchQuery && (
                     <div className="px-3 py-2 text-[11px] font-semibold text-dark-500 uppercase tracking-wider">
                       All Models <span className="text-dark-600">({filteredModels.length})</span>

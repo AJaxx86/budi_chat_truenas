@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext, useRef, memo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   MessageSquare, Plus, Settings as SettingsIcon, LogOut, Brain,
@@ -18,11 +18,44 @@ marked.setOptions({
 
 const LAST_MODEL_KEY = 'budi_chat_last_model';
 
+// Memoized ThinkingSection component to prevent re-renders during streaming
+const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming }) => {
+  if (!reasoning && !isStreaming) return null;
+
+  return (
+    <div className="mb-4">
+      <button
+        type="button"
+        onMouseDown={(e) => {
+          e.preventDefault();
+          onToggle();
+        }}
+        className="flex items-center gap-2 text-sm font-medium text-dark-400 hover:text-dark-300 transition-colors px-3 py-1.5 rounded-lg hover:bg-white/[0.03] select-none"
+      >
+        <Brain className="w-4 h-4 text-accent-400" />
+        <span>{isStreaming ? 'Thinking...' : 'Thought Process'}</span>
+        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+      </button>
+      {isExpanded && (
+        <div className="mt-2 px-4 py-3 text-sm text-dark-300 rounded-xl border border-white/[0.06] italic bg-dark-900/40 whitespace-pre-wrap text-left max-h-[300px] overflow-y-auto">
+          {reasoning || 'Thinking...'}
+        </div>
+      )}
+    </div>
+  );
+});
+
 function Chat() {
   const { user, logout } = useContext(AuthContext);
   const navigate = useNavigate();
   const [chats, setChats] = useState([]);
-  const [currentChat, setCurrentChat] = useState(null);
+  const [currentChat, setCurrentChat] = useState(() => ({
+    title: 'New Chat',
+    model: localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL,
+    temperature: 0.7,
+    system_prompt: '',
+    agent_mode: false
+  }));
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -36,26 +69,34 @@ function Chat() {
   const [forkMessageId, setForkMessageId] = useState(null);
   const [forkModel, setForkModel] = useState(DEFAULT_MODEL);
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const abortControllerRef = useRef(null);
-  const [isThinkingExpanded, setIsThinkingExpanded] = useState(true);
+  const isCreatingChatRef = useRef(false);
+  const userHasScrolledUp = useRef(false);
+  const [expandedThinkingSections, setExpandedThinkingSections] = useState(new Set());
   const [copiedMessageId, setCopiedMessageId] = useState(null);
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editContent, setEditContent] = useState('');
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [usageStats, setUsageStats] = useState(null);
 
-  const [chatSettings, setChatSettings] = useState({
+  const [chatSettings, setChatSettings] = useState(() => ({
     model: localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL,
     temperature: 0.7,
     system_prompt: '',
     agent_mode: false
-  });
+  }));
 
   useEffect(() => {
     loadChats();
   }, []);
 
   useEffect(() => {
+    // Skip clearing/aborting if we're in the middle of creating a new chat
+    if (isCreatingChatRef.current) {
+      return;
+    }
+
     // Clear state immediately when switching chats or if no chat is selected
     setMessages([]);
     setStreamingMessage('');
@@ -73,12 +114,41 @@ function Chat() {
   }, [currentChat?.id]);
 
   useEffect(() => {
-    scrollToBottom();
+    // Only auto-scroll if user hasn't manually scrolled up
+    if (!userHasScrolledUp.current) {
+      scrollToBottom();
+    }
   }, [messages, streamingMessage]);
+
+  // Reset scroll flag when streaming ends
+  useEffect(() => {
+    if (!streaming) {
+      userHasScrolledUp.current = false;
+    }
+  }, [streaming]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  const handleMessagesScroll = (e) => {
+    const container = e.target;
+    const threshold = 100; // pixels from bottom
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
+    userHasScrolledUp.current = !isNearBottom;
+  };
+
+  const toggleThinkingSection = useCallback((messageId) => {
+    setExpandedThinkingSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(messageId)) {
+        newSet.delete(messageId);
+      } else {
+        newSet.add(messageId);
+      }
+      return newSet;
+    });
+  }, []);
 
   const loadChats = async () => {
     try {
@@ -105,38 +175,42 @@ function Chat() {
         system_prompt: data.system_prompt || '',
         agent_mode: !!data.agent_mode
       });
+      // Update currentChat with latest data (including updated title)
+      const { messages: _, ...chatData } = data;
+      setCurrentChat(prev => ({ ...prev, ...chatData }));
     } catch (error) {
       console.error('Failed to load messages:', error);
     }
   };
 
-  const createNewChat = async () => {
+  const createNewChat = () => {
     const modelToUse = localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL;
-    try {
-      const res = await fetch('/api/chats', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          title: 'New Chat',
-          model: modelToUse,
-          temperature: 0.7,
-          system_prompt: '',
-          agent_mode: false
-        })
-      });
-      const data = await res.json();
-      setChats([data, ...chats]);
-      setCurrentChat(data);
-    } catch (error) {
-      console.error('Failed to create chat:', error);
-    }
+    // Create a temporary chat object without an ID
+    // The actual chat will be created when the first message is sent
+    setCurrentChat({
+      title: 'New Chat',
+      model: modelToUse,
+      temperature: 0.7,
+      system_prompt: '',
+      agent_mode: false
+    });
+    setChatSettings({
+      model: modelToUse,
+      temperature: 0.7,
+      system_prompt: '',
+      agent_mode: false
+    });
   };
 
   const updateChatSettings = async () => {
     if (!currentChat) return;
+
+    // If it's a new chat without an ID, just update local state
+    if (!currentChat.id) {
+      setCurrentChat({ ...currentChat, ...chatSettings });
+      setShowSettings(false);
+      return;
+    }
 
     try {
       await fetch(`/api/chats/${currentChat.id}`, {
@@ -156,11 +230,11 @@ function Chat() {
   const handleModelChange = async (modelId) => {
     // Save as last used model
     localStorage.setItem(LAST_MODEL_KEY, modelId);
-    
+
     setChatSettings(prev => ({ ...prev, model: modelId }));
 
-    // If we have a current chat, update it immediately
-    if (currentChat) {
+    // If we have a current chat with an ID, update it immediately
+    if (currentChat && currentChat.id) {
       try {
         await fetch(`/api/chats/${currentChat.id}`, {
           method: 'PUT',
@@ -173,6 +247,9 @@ function Chat() {
       } catch (error) {
         console.error('Failed to update chat model:', error);
       }
+    } else if (currentChat && !currentChat.id) {
+      // If it's a new chat without an ID, just update local state
+      setCurrentChat({ ...currentChat, model: modelId });
     }
   };
 
@@ -256,7 +333,31 @@ function Chat() {
     setMessages(prev => [...prev, tempUserMessage]);
 
     try {
-      const res = await fetch(`/api/messages/${currentChat.id}`, {
+      // If this is a new chat without an ID, create it first
+      let chatId = currentChat.id;
+      if (!chatId) {
+        isCreatingChatRef.current = true;
+        const createRes = await fetch('/api/chats', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({
+            title: 'New Chat',
+            model: chatSettings.model,
+            temperature: chatSettings.temperature,
+            system_prompt: chatSettings.system_prompt,
+            agent_mode: chatSettings.agent_mode
+          })
+        });
+        const newChat = await createRes.json();
+        chatId = newChat.id;
+        setCurrentChat(newChat);
+        setChats(prev => [newChat, ...prev]);
+      }
+
+      const res = await fetch(`/api/messages/${chatId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -311,7 +412,7 @@ function Chat() {
                 }
                 // Don't clear streaming states immediately - let loadMessages handle it
                 // This prevents the thinking section from disappearing before the message is added
-                loadMessages(currentChat.id);
+                loadMessages(chatId);
                 loadChats();
                 // Clear streaming states after a short delay to ensure smooth transition
                 setTimeout(() => {
@@ -337,6 +438,7 @@ function Chat() {
     } finally {
       setStreaming(false);
       abortControllerRef.current = null;
+      isCreatingChatRef.current = false;
     }
   };
 
@@ -480,29 +582,6 @@ function Chat() {
     }
   };
 
-  const ThinkingSection = ({ reasoning, isExpanded, onToggle, isStreaming }) => {
-    if (!reasoning && !isStreaming) return null;
-
-    return (
-      <div className="mb-4">
-        <button
-          type="button"
-          onClick={onToggle}
-          className="flex items-center gap-2 text-sm font-medium text-dark-400 hover:text-dark-300 transition-colors px-3 py-1.5 rounded-lg hover:bg-white/[0.03]"
-        >
-          <Brain className="w-4 h-4 text-accent-400" />
-          <span>{isStreaming ? 'Thinking...' : 'Thought Process'}</span>
-          <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
-        </button>
-        {isExpanded && (
-          <div className="mt-2 px-4 py-3 text-sm text-dark-300 rounded-xl border border-white/[0.06] italic bg-dark-900/40 whitespace-pre-wrap text-left max-h-[300px] overflow-y-auto">
-            {reasoning || 'Thinking...'}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   return (
     <div className="flex h-screen bg-dark-950 bg-mesh">
       {/* Sidebar */}
@@ -644,7 +723,7 @@ function Chat() {
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="glass border-b border-white/[0.06] px-4 py-3 flex items-center justify-between">
+        <div className="glass border-b border-white/[0.06] px-4 py-3 flex items-center justify-between relative z-50">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setShowSidebar(!showSidebar)}
@@ -653,23 +732,24 @@ function Chat() {
               {showSidebar ? <X className="w-5 h-5 text-dark-400" /> : <Menu className="w-5 h-5 text-dark-400" />}
             </button>
 
-            {/* Model Selector */}
-            {currentChat && (
-              <ModelSelector
-                selectedModel={chatSettings.model}
-                onModelChange={handleModelChange}
-                isDropdown={true}
-              />
-            )}
-
-            {currentChat && chatSettings.agent_mode && (
-              <span className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-500/10 text-accent-400 rounded-lg text-xs font-semibold border border-accent-500/20">
-                <Zap className="w-3 h-3" />
-                Agent Mode
-              </span>
-            )}
-
-            {!currentChat && (
+            {/* Chat Title and Model Selector */}
+            {currentChat ? (
+              <>
+                <h2 className="text-base font-semibold text-dark-100">{currentChat.title}</h2>
+                <div className="h-4 w-px bg-white/[0.06]"></div>
+                <ModelSelector
+                  selectedModel={chatSettings.model}
+                  onModelChange={handleModelChange}
+                  isDropdown={true}
+                />
+                {chatSettings.agent_mode && (
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-500/10 text-accent-400 rounded-lg text-xs font-semibold border border-accent-500/20">
+                    <Zap className="w-3 h-3" />
+                    Agent Mode
+                  </span>
+                )}
+              </>
+            ) : (
               <p className="text-dark-500 text-sm">Select a chat or create a new one</p>
             )}
           </div>
@@ -783,8 +863,12 @@ function Chat() {
         )}
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {currentChat ? (
+        <div
+          ref={messagesContainerRef}
+          onScroll={handleMessagesScroll}
+          className="flex-1 overflow-y-auto p-6 relative z-0"
+        >
+          {currentChat && (
             <div className="max-w-4xl mx-auto space-y-6">
               {messages.length === 0 && !streaming && (
                 <div className="text-center py-16 fade-in">
@@ -821,10 +905,10 @@ function Chat() {
                   <div className={`flex-1 ${message.role === 'user' ? 'text-right' : ''}`}>
                     {message.role === 'assistant' && message.reasoning_content && (
                       <div className="text-left">
-                        <ThinkingSection 
-                          reasoning={message.reasoning_content} 
-                          isExpanded={isThinkingExpanded} 
-                          onToggle={() => setIsThinkingExpanded(!isThinkingExpanded)} 
+                        <ThinkingSection
+                          reasoning={message.reasoning_content}
+                          isExpanded={expandedThinkingSections.has(message.id)}
+                          onToggle={() => toggleThinkingSection(message.id)}
                           isStreaming={false}
                         />
                       </div>
@@ -923,10 +1007,10 @@ function Chat() {
                   </div>
                   <div className="flex-1">
                     {(streamingReasoning || (streaming && !streamingMessage)) && (
-                      <ThinkingSection 
-                        reasoning={streamingReasoning} 
-                        isExpanded={isThinkingExpanded} 
-                        onToggle={() => setIsThinkingExpanded(!isThinkingExpanded)} 
+                      <ThinkingSection
+                        reasoning={streamingReasoning}
+                        isExpanded={expandedThinkingSections.has('streaming')}
+                        onToggle={() => toggleThinkingSection('streaming')}
                         isStreaming={!streamingMessage || (streamingReasoning && streaming)}
                       />
                     )}
@@ -951,42 +1035,6 @@ function Chat() {
               )}
 
               <div ref={messagesEndRef} />
-            </div>
-          ) : (
-            <div className="h-full flex items-center justify-center fade-in">
-              <div className="text-center max-w-md mx-auto px-4">
-                <div className="relative inline-block mb-8">
-                  <div className="w-24 h-24 rounded-3xl gradient-primary flex items-center justify-center shadow-2xl glow-lg">
-                    <MessageSquare className="w-12 h-12 text-white" />
-                  </div>
-                  <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-xl bg-accent-500 flex items-center justify-center shadow-lg glow-accent">
-                    <Sparkles className="w-4 h-4 text-white" />
-                  </div>
-                </div>
-                <h2 className="text-3xl font-bold gradient-text mb-3 tracking-tight">Welcome to Budi Chat</h2>
-                <p className="text-dark-400 mb-8 text-base">Your AI-powered conversation assistant. Create a new chat to get started.</p>
-                <button
-                  onClick={createNewChat}
-                  className="px-8 py-4 gradient-primary text-white rounded-2xl font-semibold hover:shadow-glow transition-all duration-200 inline-flex items-center gap-3 shine active:scale-[0.98]"
-                >
-                  <Plus className="w-5 h-5" />
-                  Create Your First Chat
-                </button>
-                <div className="mt-8 flex items-center justify-center gap-6 text-xs text-dark-500">
-                  <span className="flex items-center gap-1.5">
-                    <Bot className="w-3.5 h-3.5" />
-                    Multiple AI models
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <Zap className="w-3.5 h-3.5" />
-                    Agent mode
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <Brain className="w-3.5 h-3.5" />
-                    Memories
-                  </span>
-                </div>
-              </div>
             </div>
           )}
         </div>
