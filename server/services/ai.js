@@ -1,4 +1,5 @@
 import db from '../database.js';
+import OpenAI from 'openai';
 
 export async function getApiKey(userId) {
   const user = db.prepare(`
@@ -13,11 +14,55 @@ export async function getApiKey(userId) {
     const defaultKey = db.prepare(`
       SELECT value FROM settings WHERE key = 'default_openai_api_key'
     `).get();
-    
+
     return defaultKey?.value || process.env.DEFAULT_OPENROUTER_API_KEY;
   }
 
   return null;
+}
+
+export async function generateChatTitle(userMessage, userId) {
+  try {
+    // Get the title generation model from settings
+    const setting = db.prepare(`
+      SELECT value FROM settings WHERE key = 'title_generation_model'
+    `).get();
+
+    const titleModel = setting?.value || 'google/gemini-2.5-flash-lite';
+
+    // Get API key for the user
+    const apiKey = await getApiKey(userId);
+    if (!apiKey) {
+      return null;
+    }
+
+    const openai = new OpenAI({
+      apiKey,
+      baseURL: 'https://openrouter.ai/api/v1'
+    });
+
+    const response = await openai.chat.completions.create({
+      model: titleModel,
+      messages: [
+        {
+          role: 'system',
+          content: 'Generate a short, concise title (max 50 characters) for a chat based on the user\'s message. Return only the title, nothing else.'
+        },
+        {
+          role: 'user',
+          content: userMessage
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 50
+    });
+
+    const title = response.choices[0]?.message?.content?.trim() || null;
+    return title;
+  } catch (error) {
+    console.error('Title generation error:', error);
+    return null;
+  }
 }
 
 export async function executeToolCall(toolCall) {

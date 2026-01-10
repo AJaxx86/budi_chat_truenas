@@ -23,6 +23,8 @@ function Admin() {
     use_default_key: false
   });
 
+  const [titleGenerationModel, setTitleGenerationModel] = useState('google/gemini-2.5-flash-lite');
+
   useEffect(() => {
     loadUsers();
     loadSettings();
@@ -48,6 +50,7 @@ function Admin() {
       const data = await res.json();
       setSettings(data);
       setDefaultApiKey(data.default_openai_api_key || '');
+      setTitleGenerationModel(data.title_generation_model || 'google/gemini-2.5-flash-lite');
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
@@ -63,7 +66,8 @@ function Admin() {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify({
-          default_openai_api_key: defaultApiKey
+          default_openai_api_key: defaultApiKey,
+          title_generation_model: titleGenerationModel
         })
       });
       alert('Settings saved successfully!');
@@ -201,6 +205,22 @@ function Admin() {
                     {showDefaultKey ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-dark-200 mb-2">
+                  Chat Title Generation Model
+                </label>
+                <p className="text-sm text-dark-400 mb-3">
+                  Model used to generate chat titles from the first message. Defaults to Google Gemini 2.5 Flash Lite.
+                </p>
+                <input
+                  type="text"
+                  value={titleGenerationModel}
+                  onChange={(e) => setTitleGenerationModel(e.target.value)}
+                  className="w-full px-4 py-3 rounded-lg glass-input outline-none text-sm text-dark-100 bg-dark-800/50"
+                  placeholder="google/gemini-2.5-flash-lite"
+                />
               </div>
 
               <button

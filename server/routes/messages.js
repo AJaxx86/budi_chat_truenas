@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import OpenAI from 'openai';
 import db from '../database.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { getApiKey, executeToolCall } from '../services/ai.js';
+import { getApiKey, executeToolCall, generateChatTitle } from '../services/ai.js';
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -14,9 +14,13 @@ router.post('/:chatId', async (req, res) => {
     const { chatId } = req.params;
     const { content } = req.body;
 
-    // Verify chat ownership
+    // Verify chat ownership and get message count
     const chat = db.prepare(`
-      SELECT * FROM chats WHERE id = ? AND user_id = ?
+      SELECT c.*, COUNT(m.id) as message_count
+      FROM chats c
+      LEFT JOIN messages m ON c.id = m.chat_id
+      WHERE c.id = ? AND c.user_id = ?
+      GROUP BY c.id
     `).get(chatId, req.user.id);
 
     if (!chat) {
@@ -26,9 +30,21 @@ router.post('/:chatId', async (req, res) => {
     // Get API key
     const apiKey = await getApiKey(req.user.id);
     if (!apiKey) {
-      return res.status(400).json({ 
-        error: 'No API key configured. Please set your OpenRouter API key in settings or ask an admin to enable the default key for you.' 
+      return res.status(400).json({
+        error: 'No API key configured. Please set your OpenRouter API key in settings or ask an admin to enable the default key for you.'
       });
+    }
+
+    // Generate title if chat still has default name and this is the first message
+    // Do this BEFORE saving the user message so message_count is still 0
+    if (chat.title === 'New Chat' && chat.message_count === 0) {
+      const generatedTitle = await generateChatTitle(content, req.user.id);
+      if (generatedTitle) {
+        db.prepare(`
+          UPDATE chats SET title = ? WHERE id = ?
+        `).run(generatedTitle, chatId);
+        chat.title = generatedTitle; // Update local reference
+      }
     }
 
     // Save user message
@@ -108,7 +124,8 @@ router.post('/:chatId', async (req, res) => {
       model: chat.model,
       messages: openaiMessages,
       temperature: chat.temperature,
-      stream: true
+      stream: true,
+      stream_options: { include_usage: true }
     };
 
     // Add tools if agent mode is enabled
@@ -139,6 +156,7 @@ router.post('/:chatId', async (req, res) => {
     let assistantMessage = '';
     let assistantReasoning = '';
     let toolCalls = [];
+    let usageData = null;
     const assistantMessageId = uuidv4();
 
     console.log(`Starting stream for model: ${chat.model}`);
@@ -146,11 +164,17 @@ router.post('/:chatId', async (req, res) => {
 
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta;
+
+      // Capture usage data if present (usually in final chunk)
+      if (chunk.usage) {
+        usageData = chunk.usage;
+      }
+
       if (!delta) continue;
 
       // Detect reasoning in various possible fields
       const reasoning = delta.reasoning_content || delta.reasoning || delta.thought;
-      
+
       if (reasoning) {
         assistantReasoning += reasoning;
         res.write(`data: ${JSON.stringify({ type: 'reasoning', content: reasoning })}\n\n`);
@@ -187,6 +211,9 @@ router.post('/:chatId', async (req, res) => {
     }
 
     console.log(`Stream complete. Captured ${assistantReasoning.length} reasoning chars and ${assistantMessage.length} content chars.`);
+    if (usageData) {
+      console.log(`Usage: ${JSON.stringify(usageData)}`);
+    }
 
     // Save assistant message
     db.prepare(`
@@ -234,7 +261,12 @@ router.post('/:chatId', async (req, res) => {
       UPDATE chats SET updated_at = CURRENT_TIMESTAMP WHERE id = ?
     `).run(chatId);
 
-    res.write(`data: ${JSON.stringify({ type: 'done', message_id: assistantMessageId })}\n\n`);
+    res.write(`data: ${JSON.stringify({
+      type: 'done',
+      message_id: assistantMessageId,
+      usage: usageData || null,
+      model: chat.model
+    })}\n\n`);
     res.end();
 
   } catch (error) {

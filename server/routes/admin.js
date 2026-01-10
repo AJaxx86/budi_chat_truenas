@@ -147,7 +147,7 @@ router.get('/settings', (req, res) => {
 // Update system settings
 router.put('/settings', (req, res) => {
   try {
-    const { default_openai_api_key } = req.body;
+    const { default_openai_api_key, title_generation_model } = req.body;
 
     const upsert = db.prepare(`
       INSERT INTO settings (key, value, updated_at)
@@ -157,6 +157,10 @@ router.put('/settings', (req, res) => {
 
     if (default_openai_api_key !== undefined) {
       upsert.run('default_openai_api_key', default_openai_api_key, default_openai_api_key);
+    }
+
+    if (title_generation_model !== undefined) {
+      upsert.run('title_generation_model', title_generation_model, title_generation_model);
     }
 
     res.json({ message: 'Settings updated successfully' });
