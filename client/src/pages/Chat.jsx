@@ -73,6 +73,7 @@ function Chat() {
   const abortControllerRef = useRef(null);
   const isCreatingChatRef = useRef(false);
   const userHasScrolledUp = useRef(false);
+  const statsPopupRef = useRef(null);
   const [expandedThinkingSections, setExpandedThinkingSections] = useState(new Set());
   const [copiedMessageId, setCopiedMessageId] = useState(null);
   const [editingMessageId, setEditingMessageId] = useState(null);
@@ -126,6 +127,19 @@ function Chat() {
       userHasScrolledUp.current = false;
     }
   }, [streaming]);
+
+  // Close stats popup when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (statsPopupRef.current && !statsPopupRef.current.contains(event.target)) {
+        setShowInfoModal(false);
+      }
+    };
+    if (showInfoModal) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showInfoModal]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -723,7 +737,7 @@ function Chat() {
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="glass border-b border-white/[0.06] px-4 py-3 flex items-center justify-between relative z-50">
+        <div className="glass border-b border-white/[0.06] px-4 py-3 flex items-center justify-between relative z-50 overflow-visible">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setShowSidebar(!showSidebar)}
@@ -755,18 +769,115 @@ function Chat() {
           </div>
 
           {currentChat && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowInfoModal(true)}
-                className={`p-2 rounded-xl transition-all duration-200 ${
-                  showInfoModal
-                    ? 'bg-accent-500/10 text-accent-400 border border-accent-500/20'
-                    : 'glass-button text-dark-400 hover:text-dark-200'
-                }`}
-                title="Usage Stats"
-              >
-                <Info className="w-4 h-4" />
-              </button>
+            <div className="flex items-center gap-2 overflow-visible">
+              <div className="relative overflow-visible" ref={statsPopupRef}>
+                <button
+                  onClick={() => setShowInfoModal(!showInfoModal)}
+                  className={`p-2 rounded-xl transition-all duration-200 ${
+                    showInfoModal
+                      ? 'bg-accent-500/10 text-accent-400 border border-accent-500/20'
+                      : 'glass-button text-dark-400 hover:text-dark-200'
+                  }`}
+                  title="Usage Stats"
+                >
+                  <Info className="w-4 h-4" />
+                </button>
+
+                {/* Usage Stats Panel */}
+                {showInfoModal && (
+                  <div className="fixed top-14 right-4 w-80 bg-dark-900 border border-dark-700 rounded-xl z-[100] shadow-2xl scale-in">
+                    <div className="p-3 border-b border-dark-700">
+                      <h4 className="text-sm font-semibold text-dark-200 flex items-center gap-2">
+                        <Hash className="w-3.5 h-3.5 text-accent-400" />
+                        Chat Stats
+                      </h4>
+                    </div>
+
+                    <div className="p-3 space-y-3">
+                      {/* Current Model */}
+                      <div className="p-2 rounded-lg bg-dark-800">
+                        <p className="text-dark-500 text-xs mb-1">Current Model</p>
+                        <p className="text-sm font-medium text-dark-200 truncate">{chatSettings.model}</p>
+                      </div>
+
+                      {/* Conversation Stats */}
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="p-2 rounded-lg bg-dark-800">
+                          <p className="text-dark-500">Messages</p>
+                          <p className="text-sm font-semibold text-dark-200">{messages.length}</p>
+                        </div>
+                        <div className="p-2 rounded-lg bg-dark-800">
+                          <p className="text-dark-500">AI Responses</p>
+                          <p className="text-sm font-semibold text-accent-400">{messages.filter(m => m.role === 'assistant').length}</p>
+                        </div>
+                      </div>
+
+                      {/* Token Usage - if available */}
+                      {usageStats && usageStats.totalTokens > 0 && (
+                        <>
+                          <div className="border-t border-dark-700 pt-3">
+                            <p className="text-dark-500 text-xs mb-2">Session Token Usage</p>
+                            <div className="space-y-1.5 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-dark-400">Total Tokens</span>
+                                <span className="font-semibold text-dark-200">{usageStats.totalTokens?.toLocaleString()}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-dark-400">Input / Output</span>
+                                <span className="font-medium">
+                                  <span className="text-primary-400">{usageStats.totalPromptTokens?.toLocaleString()}</span>
+                                  <span className="text-dark-500"> / </span>
+                                  <span className="text-accent-400">{usageStats.totalCompletionTokens?.toLocaleString()}</span>
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Token Bar */}
+                            <div className="h-1.5 bg-dark-700 rounded-full overflow-hidden flex mt-2">
+                              <div
+                                className="h-full bg-primary-500"
+                                style={{ width: `${(usageStats.totalPromptTokens / usageStats.totalTokens * 100)}%` }}
+                              />
+                              <div
+                                className="h-full bg-accent-500"
+                                style={{ width: `${(usageStats.totalCompletionTokens / usageStats.totalTokens * 100)}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between mt-1 text-[10px] text-dark-500">
+                              <span>Input</span>
+                              <span>Output</span>
+                            </div>
+                          </div>
+
+                          {/* Last Response */}
+                          {usageStats.lastMessage && (
+                            <div className="border-t border-dark-700 pt-3">
+                              <p className="text-dark-500 text-xs mb-2">Last Response</p>
+                              <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="flex justify-between">
+                                  <span className="text-dark-400">Input</span>
+                                  <span className="text-primary-400">{usageStats.lastMessage.promptTokens?.toLocaleString()}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-dark-400">Output</span>
+                                  <span className="text-accent-400">{usageStats.lastMessage.completionTokens?.toLocaleString()}</span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {/* No token data message */}
+                      {(!usageStats || usageStats.totalTokens === 0) && messages.length > 0 && (
+                        <p className="text-[10px] text-dark-500 text-center pt-2 border-t border-dark-700">
+                          Token usage tracking depends on model support
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
               <button
                 onClick={() => setShowSettings(!showSettings)}
                 className={`px-4 py-2 flex items-center gap-2 rounded-xl transition-all duration-200 text-sm font-medium ${
@@ -1132,115 +1243,6 @@ function Chat() {
         </div>
       )}
 
-      {/* Usage Stats Modal */}
-      {showInfoModal && (
-        <div className="fixed inset-0 bg-dark-950/80 backdrop-blur-md flex items-center justify-center z-50 scale-in">
-          <div className="glass-card rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-dark-100 flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-accent-500/20 flex items-center justify-center">
-                  <Info className="w-4 h-4 text-accent-400" />
-                </div>
-                Session Usage
-              </h3>
-              <button
-                onClick={() => setShowInfoModal(false)}
-                className="p-2 hover:bg-white/[0.05] rounded-xl transition-all duration-200"
-              >
-                <X className="w-5 h-5 text-dark-400" />
-              </button>
-            </div>
-
-            {usageStats ? (
-              <div className="space-y-4">
-                {/* Last Message Stats */}
-                {usageStats.lastMessage && (
-                  <div className="p-4 rounded-xl bg-dark-800/30 border border-white/[0.06]">
-                    <h4 className="text-sm font-medium text-dark-400 mb-3">Last Response</h4>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="flex items-center gap-2">
-                        <Hash className="w-4 h-4 text-primary-400" />
-                        <div>
-                          <p className="text-xs text-dark-500">Input</p>
-                          <p className="text-sm font-semibold text-dark-200">{usageStats.lastMessage.promptTokens.toLocaleString()}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Hash className="w-4 h-4 text-accent-400" />
-                        <div>
-                          <p className="text-xs text-dark-500">Output</p>
-                          <p className="text-sm font-semibold text-dark-200">{usageStats.lastMessage.completionTokens.toLocaleString()}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Session Totals */}
-                <div className="p-4 rounded-xl bg-dark-800/30 border border-white/[0.06]">
-                  <h4 className="text-sm font-medium text-dark-400 mb-3">Session Totals</h4>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-dark-400">Total Tokens</span>
-                      <span className="text-sm font-semibold text-dark-200">{usageStats.totalTokens?.toLocaleString() || 0}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-dark-400">Input Tokens</span>
-                      <span className="text-sm font-medium text-primary-400">{usageStats.totalPromptTokens?.toLocaleString() || 0}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-dark-400">Output Tokens</span>
-                      <span className="text-sm font-medium text-accent-400">{usageStats.totalCompletionTokens?.toLocaleString() || 0}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-dark-400">AI Responses</span>
-                      <span className="text-sm font-medium text-dark-200">{usageStats.messageCount || 0}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Token Usage Bar */}
-                <div className="p-4 rounded-xl bg-dark-800/30 border border-white/[0.06]">
-                  <h4 className="text-sm font-medium text-dark-400 mb-3">Token Distribution</h4>
-                  <div className="h-3 bg-dark-700/50 rounded-full overflow-hidden flex">
-                    <div
-                      className="h-full bg-gradient-to-r from-primary-500 to-primary-400 transition-all duration-500"
-                      style={{ width: `${usageStats.totalTokens ? (usageStats.totalPromptTokens / usageStats.totalTokens * 100) : 50}%` }}
-                    />
-                    <div
-                      className="h-full bg-gradient-to-r from-accent-500 to-accent-400 transition-all duration-500"
-                      style={{ width: `${usageStats.totalTokens ? (usageStats.totalCompletionTokens / usageStats.totalTokens * 100) : 50}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between mt-2 text-xs">
-                    <span className="text-primary-400">Input {usageStats.totalTokens ? Math.round(usageStats.totalPromptTokens / usageStats.totalTokens * 100) : 0}%</span>
-                    <span className="text-accent-400">Output {usageStats.totalTokens ? Math.round(usageStats.totalCompletionTokens / usageStats.totalTokens * 100) : 0}%</span>
-                  </div>
-                </div>
-
-                <p className="text-xs text-dark-500 text-center">
-                  Stats are tracked per session and reset when switching chats
-                </p>
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <div className="w-16 h-16 rounded-xl bg-dark-800/50 flex items-center justify-center mx-auto mb-4">
-                  <Hash className="w-8 h-8 text-dark-500" />
-                </div>
-                <p className="text-dark-400 font-medium">No usage data yet</p>
-                <p className="text-sm text-dark-500 mt-1">Send a message to see token usage stats</p>
-              </div>
-            )}
-
-            <button
-              onClick={() => setShowInfoModal(false)}
-              className="w-full mt-5 px-4 py-3 rounded-xl glass-button text-dark-300 font-semibold transition-all duration-200 hover:text-dark-100"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
