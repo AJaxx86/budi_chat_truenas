@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Bot, ChevronDown, Check, Search, Clock, Loader2, X } from 'lucide-react';
 
-const DEFAULT_MODEL = 'moonshotai/kimi-k2-instruct';
+const DEFAULT_MODEL = 'moonshotai/kimi-k2-thinking';
 const RECENT_MODELS_KEY = 'budi_chat_recent_models';
 const MODELS_CACHE_KEY = 'budi_chat_models_cache';
 const MODELS_CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
@@ -9,7 +9,7 @@ const MAX_RECENT_MODELS = 5;
 
 // Fallback models in case API fails
 const FALLBACK_MODELS = [
-  { id: 'moonshotai/kimi-k2-instruct', name: 'Kimi K2', description: 'Moonshot AI reasoning model' },
+  { id: 'moonshotai/kimi-k2-thinking', name: 'Kimi K2 Thinking', description: 'Moonshot AI reasoning model' },
   { id: 'anthropic/claude-sonnet-4', name: 'Claude Sonnet 4', description: 'Anthropic Claude Sonnet 4' },
   { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', description: 'Anthropic Claude 3.5 Sonnet' },
   { id: 'openai/gpt-4o', name: 'GPT-4o', description: 'OpenAI GPT-4o' },

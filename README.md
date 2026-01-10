@@ -243,7 +243,7 @@ docker-compose build
 
 ### Chat Settings (Per Chat)
 
-- **Model**: `gpt-4-turbo-preview`, `gpt-4`, `gpt-3.5-turbo`
+- **Model**: `kimi-k2-thinking`, `gpt-4-turbo-preview`, `gpt-4`, `gpt-3.5-turbo`
 - **Temperature**: 0.0 to 2.0 (default: 0.7)
 - **System Prompt**: Custom instructions for AI
 - **Agent Mode**: Enable/disable tool usage

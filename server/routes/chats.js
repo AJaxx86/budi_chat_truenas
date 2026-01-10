@@ -62,7 +62,7 @@ router.post('/', (req, res) => {
       id,
       req.user.id,
       title || 'New Chat',
-      model || 'gpt-4-turbo-preview',
+      model || 'moonshotai/kimi-k2-thinking',
       system_prompt || null,
       temperature !== undefined ? temperature : 0.7,
       agent_mode ? 1 : 0

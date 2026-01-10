@@ -4,7 +4,7 @@ import {
   MessageSquare, Plus, Settings as SettingsIcon, LogOut, Brain, 
   Send, Trash2, GitBranch, Bot, User as UserIcon,
   Sparkles, Zap, Menu, X, ChevronDown, ChevronRight, Square,
-  Check, Trash
+  Check, Trash, Copy, Pencil
 } from 'lucide-react';
 import { AuthContext } from '../contexts/AuthContext';
 import { marked } from 'marked';
@@ -38,6 +38,9 @@ function Chat() {
   const messagesEndRef = useRef(null);
   const abortControllerRef = useRef(null);
   const [isThinkingExpanded, setIsThinkingExpanded] = useState(false);
+  const [copiedMessageId, setCopiedMessageId] = useState(null);
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editContent, setEditContent] = useState('');
 
   const [chatSettings, setChatSettings] = useState({
     model: localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL,
@@ -284,10 +287,6 @@ function Chat() {
               
               if (data.type === 'reasoning') {
                 setStreamingReasoning(prev => prev + data.content);
-                // Auto-expand thinking section when reasoning starts
-                if (!isThinkingExpanded) {
-                  setIsThinkingExpanded(true);
-                }
               } else if (data.type === 'content') {
                 setStreamingMessage(prev => prev + data.content);
               } else if (data.type === 'done') {
@@ -327,23 +326,156 @@ function Chat() {
     return <div className="markdown-content" dangerouslySetInnerHTML={{ __html: html }} />;
   };
 
+  const stripMarkdown = (text) => {
+    if (!text) return '';
+    return text
+      .replace(/#{1,6}\s?/g, '')           // headers
+      .replace(/\*\*(.+?)\*\*/g, '$1')     // bold
+      .replace(/\*(.+?)\*/g, '$1')         // italic
+      .replace(/__(.+?)__/g, '$1')         // bold alt
+      .replace(/_(.+?)_/g, '$1')           // italic alt
+      .replace(/`{3}[\s\S]*?`{3}/g, '')    // code blocks
+      .replace(/`(.+?)`/g, '$1')           // inline code
+      .replace(/\[(.+?)\]\(.+?\)/g, '$1')  // links
+      .replace(/!\[.*?\]\(.+?\)/g, '')     // images
+      .replace(/^\s*[-*+]\s/gm, '')        // unordered lists
+      .replace(/^\s*\d+\.\s/gm, '')        // ordered lists
+      .replace(/>\s?/g, '')                // blockquotes
+      .replace(/---/g, '')                 // horizontal rules
+      .trim();
+  };
+
+  const handleCopy = async (messageId, content, type) => {
+    const textToCopy = type === 'raw' ? stripMarkdown(content) : content;
+    await navigator.clipboard.writeText(textToCopy);
+    setCopiedMessageId(`${messageId}-${type}`);
+    setTimeout(() => setCopiedMessageId(null), 2000);
+  };
+
+  const handleEditStart = (message) => {
+    setEditingMessageId(message.id);
+    setEditContent(message.content);
+  };
+
+  const handleEditCancel = () => {
+    setEditingMessageId(null);
+    setEditContent('');
+  };
+
+  const handleEditSave = async (messageId) => {
+    if (!editContent.trim() || !currentChat) return;
+    
+    try {
+      // 1. Delete branch from this message onward
+      const res = await fetch(`/api/messages/${messageId}/branch`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      if (!res.ok) throw new Error('Failed to delete message branch');
+
+      // 2. Trigger new message with edited content
+      // We manually call sendMessage implementation
+      const userMessage = editContent.trim();
+      setEditingMessageId(null);
+      setEditContent('');
+      setStreaming(true);
+      setStreamingMessage('');
+      setStreamingReasoning('');
+      abortControllerRef.current = new AbortController();
+
+      // Update UI: load messages again to show the deletion
+      await loadMessages(currentChat.id);
+
+      // Add temporary user message to UI for responsiveness
+      const tempUserMessage = {
+        id: Date.now(),
+        role: 'user',
+        content: userMessage,
+        created_at: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, tempUserMessage]);
+
+      // Trigger the API call to start regeneration
+      const sendRes = await fetch(`/api/messages/${currentChat.id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ content: userMessage }),
+        signal: abortControllerRef.current.signal
+      });
+
+      if (!sendRes.ok) {
+        const errorData = await sendRes.json();
+        throw new Error(errorData.error || 'Failed to send message');
+      }
+
+      const reader = sendRes.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === 'reasoning') {
+                setStreamingReasoning(prev => prev + data.content);
+              } else if (data.type === 'content') {
+                setStreamingMessage(prev => prev + data.content);
+              } else if (data.type === 'done') {
+                loadMessages(currentChat.id);
+                loadChats();
+                setTimeout(() => {
+                  setStreamingMessage('');
+                  setStreamingReasoning('');
+                }, 100);
+              } else if (data.type === 'error') {
+                alert('Error: ' + data.error);
+              }
+            } catch (e) {
+              console.error('Failed to parse SSE data:', e);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log('Generation aborted');
+      } else {
+        console.error('Failed to edit message:', error);
+        alert('Failed to edit message: ' + error.message);
+      }
+      setStreaming(false);
+    }
+  };
+
   const ThinkingSection = ({ reasoning, isExpanded, onToggle, isStreaming }) => {
     if (!reasoning && !isStreaming) return null;
     
     return (
-      <div className="mb-4 overflow-hidden rounded-xl border border-dark-700/50 bg-dark-800/30">
+      <div className="mb-4">
         <button
           type="button"
           onClick={onToggle}
-          className="flex w-full items-center gap-2 px-4 py-2 text-sm font-medium text-dark-400 hover:bg-dark-700/30 transition-colors"
+          className="flex items-center gap-2 text-sm font-medium text-dark-400 hover:text-dark-300 transition-colors"
         >
-          {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
           <Brain className="w-4 h-4 text-accent-400" />
           <span>{isStreaming ? 'Thinking...' : 'Thought Process'}</span>
-          {isStreaming && <div className="ml-auto w-2 h-2 bg-primary-400 rounded-full animate-pulse"></div>}
         </button>
         {isExpanded && (
-          <div className="px-4 py-3 text-sm text-dark-300 border-t border-dark-700/50 italic bg-dark-900/30 whitespace-pre-wrap text-left">
+          <div className="mt-2 px-4 py-3 text-sm text-dark-300 rounded-xl border border-dark-700/50 italic bg-dark-900/30 whitespace-pre-wrap text-left">
             {reasoning || 'Thinking...'}
           </div>
         )}
@@ -640,14 +772,73 @@ function Chat() {
                         : 'glass-card rounded-2xl rounded-tl-sm px-4 py-3 text-left'
                     }`}>
                       {message.role === 'user' ? (
-                        <p className="whitespace-pre-wrap">{message.content}</p>
+                        editingMessageId === message.id ? (
+                          <div className="space-y-2 text-left">
+                            <textarea
+                              value={editContent}
+                              onChange={(e) => setEditContent(e.target.value)}
+                              className="w-full min-w-[300px] bg-dark-800/50 border border-dark-600 rounded-lg p-2 text-white resize-none focus:outline-none focus:border-primary-400"
+                              rows={3}
+                              autoFocus
+                            />
+                            <div className="flex gap-2 justify-end">
+                              <button
+                                onClick={handleEditCancel}
+                                className="px-3 py-1 text-xs rounded-lg bg-dark-700 hover:bg-dark-600 transition-colors"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => handleEditSave(message.id)}
+                                className="px-3 py-1 text-xs rounded-lg bg-primary-500 hover:bg-primary-400 transition-colors"
+                              >
+                                Save & Regenerate
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap">{message.content}</p>
+                        )
                       ) : (
                         renderMessage(message.content)
                       )}
                     </div>
 
+                    {message.role === 'user' && editingMessageId !== message.id && (
+                      <div className="mt-2 flex gap-2 justify-end">
+                        <button
+                          onClick={() => handleCopy(message.id, message.content, 'raw')}
+                          className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors"
+                        >
+                          {copiedMessageId === `${message.id}-raw` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                          {copiedMessageId === `${message.id}-raw` ? 'Copied!' : 'Copy'}
+                        </button>
+                        <button
+                          onClick={() => handleEditStart(message)}
+                          className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors"
+                        >
+                          <Pencil className="w-3 h-3" />
+                          Edit
+                        </button>
+                      </div>
+                    )}
+
                     {message.role === 'assistant' && (
                       <div className="mt-2 flex gap-2">
+                        <button
+                          onClick={() => handleCopy(message.id, message.content, 'raw')}
+                          className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors"
+                        >
+                          {copiedMessageId === `${message.id}-raw` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                          {copiedMessageId === `${message.id}-raw` ? 'Copied!' : 'Copy Raw'}
+                        </button>
+                        <button
+                          onClick={() => handleCopy(message.id, message.content, 'markdown')}
+                          className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors"
+                        >
+                          {copiedMessageId === `${message.id}-markdown` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                          {copiedMessageId === `${message.id}-markdown` ? 'Copied!' : 'Copy Markdown'}
+                        </button>
                         <button
                           onClick={() => openForkModal(message.id)}
                           className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors"
@@ -657,6 +848,7 @@ function Chat() {
                         </button>
                       </div>
                     )}
+
                   </div>
                 </div>
               ))}

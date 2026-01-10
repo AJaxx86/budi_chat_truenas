@@ -40,7 +40,7 @@ router.post('/:chatId', async (req, res) => {
 
     // Get conversation history
     const messages = db.prepare(`
-      SELECT role, content, tool_calls, tool_call_id, name
+      SELECT role, content, reasoning_content, tool_calls, tool_call_id, name
       FROM messages 
       WHERE chat_id = ? 
       ORDER BY created_at ASC
@@ -77,6 +77,11 @@ router.post('/:chatId', async (req, res) => {
         role: msg.role,
         content: msg.content
       };
+
+      if (msg.reasoning_content) {
+        // Some models support pre-filled reasoning, but standard API doesn't usually
+        // We'll skip adding it to history for now unless the model supports it via specific fields
+      }
 
       if (msg.tool_calls) {
         openaiMsg.tool_calls = JSON.parse(msg.tool_calls);
@@ -132,20 +137,31 @@ router.post('/:chatId', async (req, res) => {
     res.setHeader('Connection', 'keep-alive');
 
     let assistantMessage = '';
+    let assistantReasoning = '';
     let toolCalls = [];
     const assistantMessageId = uuidv4();
 
+    console.log(`Starting stream for model: ${chat.model}`);
     const stream = await openai.chat.completions.create(requestOptions);
 
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta;
+      if (!delta) continue;
 
-      if (delta?.content) {
+      // Detect reasoning in various possible fields
+      const reasoning = delta.reasoning_content || delta.reasoning || delta.thought;
+      
+      if (reasoning) {
+        assistantReasoning += reasoning;
+        res.write(`data: ${JSON.stringify({ type: 'reasoning', content: reasoning })}\n\n`);
+      }
+
+      if (delta.content) {
         assistantMessage += delta.content;
         res.write(`data: ${JSON.stringify({ type: 'content', content: delta.content })}\n\n`);
       }
 
-      if (delta?.tool_calls) {
+      if (delta.tool_calls) {
         for (const toolCall of delta.tool_calls) {
           if (!toolCalls[toolCall.index]) {
             toolCalls[toolCall.index] = {
@@ -170,14 +186,17 @@ router.post('/:chatId', async (req, res) => {
       }
     }
 
+    console.log(`Stream complete. Captured ${assistantReasoning.length} reasoning chars and ${assistantMessage.length} content chars.`);
+
     // Save assistant message
     db.prepare(`
-      INSERT INTO messages (id, chat_id, role, content, tool_calls)
-      VALUES (?, ?, 'assistant', ?, ?)
+      INSERT INTO messages (id, chat_id, role, content, reasoning_content, tool_calls)
+      VALUES (?, ?, 'assistant', ?, ?, ?)
     `).run(
       assistantMessageId,
       chatId,
       assistantMessage,
+      assistantReasoning || null,
       toolCalls.length > 0 ? JSON.stringify(toolCalls) : null
     );
 
@@ -251,6 +270,40 @@ router.get('/:chatId', (req, res) => {
   } catch (error) {
     console.error('Get messages error:', error);
     res.status(500).json({ error: 'Failed to fetch messages' });
+  }
+});
+
+// Delete message and all subsequent messages (branch)
+router.delete('/:messageId/branch', async (req, res) => {
+  try {
+    const { messageId } = req.params;
+
+    // Get the message to find its chat_id and created_at
+    const message = db.prepare(`
+      SELECT m.* FROM messages m
+      JOIN chats c ON m.chat_id = c.id
+      WHERE m.id = ? AND c.user_id = ?
+    `).get(messageId, req.user.id);
+
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    // Delete this message and all subsequent messages in the same chat
+    db.prepare(`
+      DELETE FROM messages 
+      WHERE chat_id = ? AND created_at >= ?
+    `).run(message.chat_id, message.created_at);
+
+    // Update chat timestamp
+    db.prepare(`
+      UPDATE chats SET updated_at = CURRENT_TIMESTAMP WHERE id = ?
+    `).run(message.chat_id);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete branch error:', error);
+    res.status(500).json({ error: 'Failed to delete message branch' });
   }
 });
 

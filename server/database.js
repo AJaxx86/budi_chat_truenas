@@ -51,7 +51,7 @@ function initDatabase() {
       title TEXT NOT NULL,
       parent_chat_id TEXT,
       fork_point_message_id TEXT,
-      model TEXT DEFAULT 'gpt-4-turbo-preview',
+      model TEXT DEFAULT 'moonshotai/kimi-k2-thinking',
       system_prompt TEXT,
       temperature REAL DEFAULT 0.7,
       agent_mode INTEGER DEFAULT 0,
@@ -69,6 +69,7 @@ function initDatabase() {
       chat_id TEXT NOT NULL,
       role TEXT NOT NULL,
       content TEXT NOT NULL,
+      reasoning_content TEXT,
       tool_calls TEXT,
       tool_call_id TEXT,
       name TEXT,
@@ -102,6 +103,18 @@ function initDatabase() {
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Migration: Add reasoning_content to messages if it doesn't exist
+  const tableInfo = db.prepare("PRAGMA table_info(messages)").all();
+  const hasReasoning = tableInfo.some(col => col.name === 'reasoning_content');
+  if (!hasReasoning) {
+    try {
+      db.exec("ALTER TABLE messages ADD COLUMN reasoning_content TEXT");
+      console.log('✅ Migration: Added reasoning_content to messages table');
+    } catch (e) {
+      console.error('Migration error:', e);
+    }
+  }
 
   // Create default admin user if not exists
   const adminExists = db.prepare('SELECT id FROM users WHERE is_admin = 1').get();
