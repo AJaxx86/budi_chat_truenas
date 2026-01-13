@@ -8,6 +8,7 @@ import adminRoutes from './routes/admin.js';
 import chatsRoutes from './routes/chats.js';
 import messagesRoutes from './routes/messages.js';
 import memoriesRoutes from './routes/memories.js';
+import statsRoutes from './routes/stats.js';
 
 dotenv.config();
 
@@ -27,11 +28,12 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/chats', chatsRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/memories', memoriesRoutes);
+app.use('/api/stats', statsRoutes);
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(join(__dirname, '../client/dist')));
-  
+
   app.get('*', (req, res) => {
     res.sendFile(join(__dirname, '../client/dist/index.html'));
   });

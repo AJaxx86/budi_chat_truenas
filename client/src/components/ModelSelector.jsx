@@ -131,15 +131,38 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
     setSearchQuery('');
   };
 
-  // Filter models based on search query
+  // Filter and rank models based on search query
   const filteredModels = useMemo(() => {
     if (!searchQuery.trim()) return models;
     const query = searchQuery.toLowerCase();
-    return models.filter(model =>
+
+    // Filter matching models
+    const matches = models.filter(model =>
       model.id.toLowerCase().includes(query) ||
       model.name.toLowerCase().includes(query) ||
       (model.description && model.description.toLowerCase().includes(query))
     );
+
+    // Rank by relevance: name match > ID match > description match
+    return matches.sort((a, b) => {
+      const aName = a.name.toLowerCase();
+      const bName = b.name.toLowerCase();
+      const aId = a.id.toLowerCase();
+      const bId = b.id.toLowerCase();
+
+      // Exact name starts with query
+      const aNameStarts = aName.startsWith(query) ? 3 : (aName.includes(query) ? 2 : 0);
+      const bNameStarts = bName.startsWith(query) ? 3 : (bName.includes(query) ? 2 : 0);
+      if (aNameStarts !== bNameStarts) return bNameStarts - aNameStarts;
+
+      // ID contains query
+      const aIdMatch = aId.includes(query) ? 1 : 0;
+      const bIdMatch = bId.includes(query) ? 1 : 0;
+      if (aIdMatch !== bIdMatch) return bIdMatch - aIdMatch;
+
+      // Alphabetical fallback
+      return aName.localeCompare(bName);
+    });
   }, [models, searchQuery]);
 
   // Get recent models data
@@ -209,11 +232,10 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl transition-all duration-200 text-sm ${
-          isOpen
-            ? 'bg-primary-500/10 border border-primary-500/20 shadow-lg'
-            : 'glass-button'
-        }`}
+        className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl transition-all duration-200 text-sm ${isOpen
+          ? 'bg-primary-500/10 border border-primary-500/20 shadow-lg'
+          : 'glass-button'
+          }`}
       >
         <div className="w-6 h-6 rounded-lg gradient-primary flex items-center justify-center flex-shrink-0">
           <Bot className="w-3.5 h-3.5 text-white" />
@@ -268,15 +290,24 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
                       <button
                         key={`recent-${model.id}`}
                         onClick={() => handleSelect(model.id)}
-                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-150 text-left group ${
-                          selectedModel === model.id
-                            ? 'bg-primary-500/15 border border-primary-500/25'
-                            : 'hover:bg-white/[0.03] border border-transparent'
-                        }`}
+                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-150 text-left group ${selectedModel === model.id
+                          ? 'bg-primary-500/15 border border-primary-500/25'
+                          : 'hover:bg-white/[0.03] border border-transparent'
+                          }`}
                       >
                         <div className="flex-1 min-w-0">
                           <p className={`text-sm font-medium truncate ${selectedModel === model.id ? 'text-dark-50' : 'text-dark-200 group-hover:text-dark-100'}`}>{model.name}</p>
-                          <p className="text-xs text-dark-500 truncate">{getProvider(model.id)}</p>
+                          <p className="text-xs text-dark-500 truncate">
+                            {getProvider(model.id)}
+                            {model.contextLength && (
+                              <span className="ml-1.5 text-dark-600">• {Math.round(model.contextLength / 1000)}k</span>
+                            )}
+                            {model.pricing && (
+                              <span className="ml-1.5 text-green-500/80">
+                                • ${(parseFloat(model.pricing.prompt) * 1000000).toFixed(2)} / ${(parseFloat(model.pricing.completion) * 1000000).toFixed(2)}
+                              </span>
+                            )}
+                          </p>
                         </div>
                         {selectedModel === model.id && (
                           <div className="w-5 h-5 rounded-md gradient-primary flex items-center justify-center flex-shrink-0 ml-2">
@@ -315,11 +346,10 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
                         <button
                           key={model.id}
                           onClick={() => handleSelect(model.id)}
-                          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-150 text-left group ${
-                            selectedModel === model.id
-                              ? 'bg-primary-500/15 border border-primary-500/25'
-                              : 'hover:bg-white/[0.03] border border-transparent'
-                          }`}
+                          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-150 text-left group ${selectedModel === model.id
+                            ? 'bg-primary-500/15 border border-primary-500/25'
+                            : 'hover:bg-white/[0.03] border border-transparent'
+                            }`}
                         >
                           <div className="flex-1 min-w-0">
                             <p className={`text-sm font-medium truncate ${selectedModel === model.id ? 'text-dark-50' : 'text-dark-200 group-hover:text-dark-100'}`}>{model.name}</p>
@@ -327,6 +357,11 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
                               {getProvider(model.id)}
                               {model.contextLength && (
                                 <span className="ml-1.5 text-dark-600">• {Math.round(model.contextLength / 1000)}k</span>
+                              )}
+                              {model.pricing && (
+                                <span className="ml-1.5 text-green-500/80">
+                                  • ${(parseFloat(model.pricing.prompt) * 1000000).toFixed(2)} / ${(parseFloat(model.pricing.completion) * 1000000).toFixed(2)}
+                                </span>
                               )}
                             </p>
                           </div>

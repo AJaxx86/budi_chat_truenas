@@ -1,6 +1,6 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Key, User, Save, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Key, User, Save, Eye, EyeOff, BarChart2, Coins, Zap, Calendar, TrendingUp } from 'lucide-react';
 import { AuthContext } from '../contexts/AuthContext';
 
 function Settings() {
@@ -14,10 +14,26 @@ function Settings() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
+  const [stats, setStats] = useState(null);
 
   useEffect(() => {
     loadUserData();
+    loadStats();
   }, []);
+
+  const loadStats = async () => {
+    try {
+      const res = await fetch('/api/stats', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data);
+      }
+    } catch (error) {
+      console.error('Failed to load stats:', error);
+    }
+  };
 
   const loadUserData = async () => {
     try {
@@ -40,7 +56,7 @@ function Settings() {
 
     try {
       const updates = { name };
-      
+
       if (password) {
         updates.password = password;
       }
@@ -243,6 +259,95 @@ function Settings() {
                 </p>
               </div>
             </div>
+
+            {/* Statistics Section */}
+            {stats && (
+              <div className="pb-6">
+                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-dark-100">
+                  <BarChart2 className="w-5 h-5 text-secondary-400" />
+                  Usage Statistics
+                </h2>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-dark-800/50 p-4 rounded-lg border border-dark-700/50">
+                    <div className="flex items-center gap-2 text-dark-400 mb-1 text-sm">
+                      <Zap className="w-4 h-4" />
+                      Total Tokens
+                    </div>
+                    <div className="text-2xl font-bold text-dark-100">
+                      {stats.totals.total_tokens.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-dark-500 mt-1">
+                      {stats.totals.prompt_tokens.toLocaleString()} in / {stats.totals.completion_tokens.toLocaleString()} out
+                    </div>
+                  </div>
+
+                  <div className="bg-dark-800/50 p-4 rounded-lg border border-dark-700/50">
+                    <div className="flex items-center gap-2 text-dark-400 mb-1 text-sm">
+                      <Coins className="w-4 h-4" />
+                      Total Cost
+                    </div>
+                    <div className="text-2xl font-bold text-dark-100">
+                      ${stats.totals.cost.toFixed(4)}
+                    </div>
+                    <div className="text-xs text-dark-500 mt-1">
+                      Based on model pricing
+                    </div>
+                  </div>
+
+                  <div className="bg-dark-800/50 p-4 rounded-lg border border-dark-700/50">
+                    <div className="flex items-center gap-2 text-dark-400 mb-1 text-sm">
+                      <Calendar className="w-4 h-4" />
+                      Chattiest Day
+                    </div>
+                    <div className="text-xl font-bold text-dark-100 truncate">
+                      {stats.fun_stats.chattiest_day ? new Date(stats.fun_stats.chattiest_day.date).toLocaleDateString() : 'N/A'}
+                    </div>
+                    <div className="text-xs text-dark-500 mt-1">
+                      {stats.fun_stats.chattiest_day ? `${stats.fun_stats.chattiest_day.count} messages` : 'No messages yet'}
+                    </div>
+                  </div>
+
+                  <div className="bg-dark-800/50 p-4 rounded-lg border border-dark-700/50">
+                    <div className="flex items-center gap-2 text-dark-400 mb-1 text-sm">
+                      <TrendingUp className="w-4 h-4" />
+                      Avg Response
+                    </div>
+                    <div className="text-2xl font-bold text-dark-100">
+                      {stats.totals.avg_response_time_ms}ms
+                    </div>
+                    <div className="text-xs text-dark-500 mt-1">
+                      Per message
+                    </div>
+                  </div>
+                </div>
+
+                {stats.top_models.length > 0 && (
+                  <div className="bg-dark-800/30 rounded-lg p-4 border border-dark-700/30">
+                    <h3 className="text-sm font-medium text-dark-300 mb-3">Top Models</h3>
+                    <div className="space-y-3">
+                      {stats.top_models.map((model, idx) => (
+                        <div key={model.model} className="flex items-center gap-3">
+                          <div className="text-xs font-mono text-dark-500 w-4">{idx + 1}</div>
+                          <div className="flex-1">
+                            <div className="flex justify-between text-sm mb-1">
+                              <span className="text-dark-200">{model.model}</span>
+                              <span className="text-dark-400">{model.usage_count} uses</span>
+                            </div>
+                            <div className="h-1.5 bg-dark-700 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-primary-500/50 rounded-full"
+                                style={{ width: `${(model.usage_count / stats.top_models[0].usage_count) * 100}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <button
               type="submit"
