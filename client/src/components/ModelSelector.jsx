@@ -350,4 +350,4 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
 }
 
 export default ModelSelector;
-export { DEFAULT_MODEL, RECENT_MODELS_KEY };
+export { DEFAULT_MODEL, RECENT_MODELS_KEY, MODELS_CACHE_KEY };

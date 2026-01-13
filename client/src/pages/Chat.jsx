@@ -9,7 +9,7 @@ import {
 import { AuthContext } from '../contexts/AuthContext';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import ModelSelector, { DEFAULT_MODEL, RECENT_MODELS_KEY } from '../components/ModelSelector';
+import ModelSelector, { DEFAULT_MODEL, RECENT_MODELS_KEY, MODELS_CACHE_KEY } from '../components/ModelSelector';
 
 marked.setOptions({
   breaks: true,
@@ -29,36 +29,36 @@ const formatThinkingTime = (seconds) => {
   return `${mins}m ${secs.toString().padStart(2, '0')}s`;
 };
 
-// Model pricing per 1M tokens (input/output)
-const MODEL_PRICING = {
-  'gpt-4': { input: 30, output: 60 },
-  'gpt-4-turbo': { input: 10, output: 30 },
-  'gpt-4o': { input: 2.5, output: 10 },
-  'gpt-4o-mini': { input: 0.15, output: 0.6 },
-  'gpt-3.5-turbo': { input: 0.5, output: 1.5 },
-  'claude-3-opus': { input: 15, output: 75 },
-  'claude-3-sonnet': { input: 3, output: 15 },
-  'claude-3-haiku': { input: 0.25, output: 1.25 },
-  'claude-3.5-sonnet': { input: 3, output: 15 },
-  'claude-3.5-haiku': { input: 0.8, output: 4 },
-  'deepseek': { input: 0.14, output: 0.28 },
-  'default': { input: 1, output: 3 }
-};
-
-const getModelPricing = (modelId) => {
-  if (!modelId) return MODEL_PRICING.default;
-  const lowerModel = modelId.toLowerCase();
-  for (const [key, pricing] of Object.entries(MODEL_PRICING)) {
-    if (lowerModel.includes(key)) return pricing;
+// Get model data from OpenRouter cache
+const getModelFromCache = (modelId) => {
+  try {
+    const cached = localStorage.getItem(MODELS_CACHE_KEY);
+    if (cached) {
+      const { models } = JSON.parse(cached);
+      return models.find(m => m.id === modelId);
+    }
+  } catch (e) {
+    console.error('Failed to get model from cache:', e);
   }
-  return MODEL_PRICING.default;
+  return null;
 };
 
+// Get context window size for a model (from cache or fallback)
+const getModelContext = (modelId) => {
+  const model = getModelFromCache(modelId);
+  return model?.contextLength || 128000; // fallback to 128k
+};
+
+// Calculate cost using cached pricing data
 const calculateCost = (promptTokens, completionTokens, modelId) => {
-  const pricing = getModelPricing(modelId);
-  const inputCost = (promptTokens / 1_000_000) * pricing.input;
-  const outputCost = (completionTokens / 1_000_000) * pricing.output;
-  return inputCost + outputCost;
+  const model = getModelFromCache(modelId);
+  if (model?.pricing) {
+    const inputCost = promptTokens * parseFloat(model.pricing.prompt);
+    const outputCost = completionTokens * parseFloat(model.pricing.completion);
+    return inputCost + outputCost;
+  }
+  // Fallback: rough estimate
+  return (promptTokens + completionTokens) * 0.000001;
 };
 
 // Memoized ThinkingSection component to prevent re-renders during streaming
@@ -159,6 +159,7 @@ function Chat() {
   const isCreatingChatRef = useRef(false);
   const userHasScrolledUp = useRef(false);
   const statsPopupRef = useRef(null);
+  const textareaRef = useRef(null);
   const [expandedThinkingSections, setExpandedThinkingSections] = useState(new Set());
   const [copiedMessageId, setCopiedMessageId] = useState(null);
   const [editingMessageId, setEditingMessageId] = useState(null);
@@ -451,6 +452,10 @@ function Chat() {
 
     const userMessage = inputMessage.trim();
     setInputMessage('');
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = '52px';
+    }
     setStreaming(true);
     setStreamingMessage('');
     setStreamingReasoning('');
@@ -791,8 +796,8 @@ function Chat() {
             <div
               key={chat.id}
               className={`group p-3 rounded-xl cursor-pointer transition-all duration-200 ${currentChat?.id === chat.id
-                  ? 'glass-card border-primary-500/20 shadow-lg'
-                  : 'hover:bg-white/[0.03] border border-transparent hover:border-white/[0.06]'
+                ? 'glass-card border-primary-500/20 shadow-lg'
+                : 'hover:bg-white/[0.03] border border-transparent hover:border-white/[0.06]'
                 }`}
               onClick={() => setCurrentChat(chat)}
             >
@@ -927,8 +932,8 @@ function Chat() {
                 <button
                   onClick={() => setShowInfoModal(!showInfoModal)}
                   className={`p-2 rounded-xl transition-all duration-200 ${showInfoModal
-                      ? 'bg-accent-500/10 text-accent-400 border border-accent-500/20'
-                      : 'glass-button text-dark-400 hover:text-dark-200'
+                    ? 'bg-accent-500/10 text-accent-400 border border-accent-500/20'
+                    : 'glass-button text-dark-400 hover:text-dark-200'
                     }`}
                   title="Usage Stats"
                 >
@@ -977,25 +982,57 @@ function Chat() {
                             </div>
                           </div>
 
-                          {/* Token Bar with USED/LIMIT label */}
-                          <div className="flex justify-between mt-3 mb-1 text-xs">
-                            <span className="text-dark-400">Tokens Used</span>
-                            <span className="font-medium text-dark-200">{chatTotals.totalTokens.toLocaleString()}</span>
-                          </div>
-                          <div className="h-1.5 bg-dark-700 rounded-full overflow-hidden flex">
-                            <div
-                              className="h-full bg-primary-500"
-                              style={{ width: `${(chatTotals.totalPromptTokens / chatTotals.totalTokens * 100)}%` }}
-                            />
-                            <div
-                              className="h-full bg-accent-500"
-                              style={{ width: `${(chatTotals.totalCompletionTokens / chatTotals.totalTokens * 100)}%` }}
-                            />
-                          </div>
-                          <div className="flex justify-between mt-1 text-[10px] text-dark-500">
-                            <span>Input ({chatTotals.totalPromptTokens.toLocaleString()})</span>
-                            <span>Output ({chatTotals.totalCompletionTokens.toLocaleString()})</span>
-                          </div>
+                          {/* Token Bar with USED/CONTEXT label */}
+                          {(() => {
+                            const contextLimit = getModelContext(chatSettings.model);
+                            const inputPercent = (chatTotals.totalPromptTokens / contextLimit) * 100;
+                            const outputPercent = (chatTotals.totalCompletionTokens / contextLimit) * 100;
+                            const freePercent = Math.max(0, 100 - inputPercent - outputPercent);
+                            return (
+                              <>
+                                <div className="flex justify-between mt-3 mb-1 text-xs">
+                                  <span className="text-dark-400">Tokens Used</span>
+                                  <span className="font-medium text-dark-200">
+                                    {chatTotals.totalTokens.toLocaleString()}
+                                    <span className="text-dark-500"> / {contextLimit.toLocaleString()}</span>
+                                  </span>
+                                </div>
+                                <div className="h-2 bg-dark-600 rounded-full overflow-hidden flex">
+                                  <div
+                                    className="h-full bg-cyan-500"
+                                    style={{ width: `${inputPercent}%` }}
+                                    title={`Input: ${chatTotals.totalPromptTokens.toLocaleString()}`}
+                                  />
+                                  <div
+                                    className="h-full bg-accent-500"
+                                    style={{ width: `${outputPercent}%` }}
+                                    title={`Output: ${chatTotals.totalCompletionTokens.toLocaleString()}`}
+                                  />
+                                  <div
+                                    className="h-full bg-dark-700"
+                                    style={{ width: `${freePercent}%` }}
+                                    title={`Free: ${(contextLimit - chatTotals.totalTokens).toLocaleString()}`}
+                                  />
+                                </div>
+                                <div className="flex justify-between mt-1 text-[10px] text-dark-500">
+                                  <div className="flex items-center gap-2">
+                                    <span className="flex items-center gap-1">
+                                      <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
+                                      Input ({chatTotals.totalPromptTokens.toLocaleString()})
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <span className="w-2 h-2 rounded-full bg-accent-500"></span>
+                                      Output ({chatTotals.totalCompletionTokens.toLocaleString()})
+                                    </span>
+                                  </div>
+                                  <span className="flex items-center gap-1">
+                                    <span className="w-2 h-2 rounded-full bg-dark-700"></span>
+                                    Free
+                                  </span>
+                                </div>
+                              </>
+                            );
+                          })()}
                         </div>
                       )}
 
@@ -1012,8 +1049,8 @@ function Chat() {
               <button
                 onClick={() => setShowSettings(!showSettings)}
                 className={`px-4 py-2 flex items-center gap-2 rounded-xl transition-all duration-200 text-sm font-medium ${showSettings
-                    ? 'bg-primary-500/10 text-primary-400 border border-primary-500/20'
-                    : 'glass-button text-dark-300 hover:text-dark-100'
+                  ? 'bg-primary-500/10 text-primary-400 border border-primary-500/20'
+                  : 'glass-button text-dark-300 hover:text-dark-100'
                   }`}
               >
                 <SettingsIcon className="w-4 h-4" />
@@ -1132,8 +1169,8 @@ function Chat() {
                   className={`flex gap-4 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}
                 >
                   <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${message.role === 'user'
-                      ? 'gradient-primary shadow-glow'
-                      : 'glass-card'
+                    ? 'gradient-primary shadow-glow'
+                    : 'glass-card'
                     }`}>
                     {message.role === 'user' ? (
                       <UserIcon className="w-4 h-4 text-white" />
@@ -1156,8 +1193,8 @@ function Chat() {
                       </div>
                     )}
                     <div className={`inline-block max-w-[80%] ${message.role === 'user'
-                        ? 'gradient-primary text-white rounded-2xl rounded-tr-sm px-4 py-3 shadow-glow'
-                        : 'glass-card rounded-2xl rounded-tl-sm px-4 py-3 text-left'
+                      ? 'gradient-primary text-white rounded-2xl rounded-tr-sm px-4 py-3 shadow-glow'
+                      : 'glass-card rounded-2xl rounded-tl-sm px-4 py-3 text-left'
                       }`}>
                       {message.role === 'user' ? (
                         editingMessageId === message.id ? (
@@ -1334,13 +1371,27 @@ function Chat() {
               )}
               <form onSubmit={sendMessage} className="flex gap-3">
                 <div className="flex-1 relative">
-                  <input
-                    type="text"
+                  <textarea
+                    ref={textareaRef}
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
-                    placeholder={streaming ? "AI is responding..." : "Type your message..."}
-                    className="w-full px-5 py-3.5 rounded-2xl glass-input outline-none text-dark-100 placeholder-dark-500 text-sm pr-4"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if (inputMessage.trim() && !streaming) {
+                          sendMessage(e);
+                        }
+                      }
+                    }}
+                    placeholder={streaming ? "AI is responding..." : "Type your message... (Shift+Enter for new line)"}
+                    className="w-full px-5 py-3.5 rounded-2xl glass-input outline-none text-dark-100 placeholder-dark-500 text-sm pr-4 resize-none overflow-y-auto"
+                    style={{ minHeight: '52px', maxHeight: '140px' }}
+                    rows={1}
                     disabled={streaming}
+                    onInput={(e) => {
+                      e.target.style.height = 'auto';
+                      e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px';
+                    }}
                   />
                 </div>
                 <button
