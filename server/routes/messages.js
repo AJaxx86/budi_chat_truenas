@@ -125,7 +125,7 @@ router.post('/:chatId', async (req, res) => {
       messages: openaiMessages,
       temperature: chat.temperature,
       stream: true,
-      stream_options: { include_usage: true }
+      usage: { include: true }
     };
 
     // Add tools if agent mode is enabled
@@ -206,9 +206,6 @@ router.post('/:chatId', async (req, res) => {
         }
       }
 
-      if (chunk.choices[0]?.finish_reason) {
-        break;
-      }
     }
 
     const responseTimeMs = Date.now() - requestStartTime;

@@ -199,7 +199,6 @@ function Chat() {
     }
 
     // Clear state immediately when switching chats or if no chat is selected
-    setMessages([]);
     setStreamingMessage('');
     setStreamingReasoning('');
     setStreaming(false);
@@ -395,8 +394,9 @@ function Chat() {
       });
       setChats(chats.filter(c => c.id !== chatId));
       if (currentChat?.id === chatId) {
-        setCurrentChat(null);
+        // Automatically open a new chat instead of leaving blank
         setMessages([]);
+        createNewChat();
       }
       setDeletingChatId(null);
     } catch (error) {
@@ -420,9 +420,9 @@ function Chat() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           message_id: forkMessageId,
-          model: forkModel 
+          model: forkModel
         })
       });
       const data = await res.json();
@@ -430,7 +430,7 @@ function Chat() {
       setCurrentChat(data);
       setShowForkModal(false);
       setForkMessageId(null);
-      
+
       // Save the fork model as last used
       localStorage.setItem(LAST_MODEL_KEY, forkModel);
     } catch (error) {
@@ -522,7 +522,7 @@ function Chat() {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
-              
+
               if (data.type === 'reasoning') {
                 setStreamingReasoning(prev => prev + data.content);
               } else if (data.type === 'content') {
@@ -629,7 +629,7 @@ function Chat() {
 
   const handleEditSave = async (messageId) => {
     if (!editContent.trim() || !currentChat) return;
-    
+
     try {
       // 1. Delete branch from this message onward
       const res = await fetch(`/api/messages/${messageId}/branch`, {
@@ -790,11 +790,10 @@ function Chat() {
           {chats.map(chat => (
             <div
               key={chat.id}
-              className={`group p-3 rounded-xl cursor-pointer transition-all duration-200 ${
-                currentChat?.id === chat.id
+              className={`group p-3 rounded-xl cursor-pointer transition-all duration-200 ${currentChat?.id === chat.id
                   ? 'glass-card border-primary-500/20 shadow-lg'
                   : 'hover:bg-white/[0.03] border border-transparent hover:border-white/[0.06]'
-              }`}
+                }`}
               onClick={() => setCurrentChat(chat)}
             >
               <div className="flex items-start justify-between gap-2">
@@ -927,11 +926,10 @@ function Chat() {
               <div className="relative overflow-visible" ref={statsPopupRef}>
                 <button
                   onClick={() => setShowInfoModal(!showInfoModal)}
-                  className={`p-2 rounded-xl transition-all duration-200 ${
-                    showInfoModal
+                  className={`p-2 rounded-xl transition-all duration-200 ${showInfoModal
                       ? 'bg-accent-500/10 text-accent-400 border border-accent-500/20'
                       : 'glass-button text-dark-400 hover:text-dark-200'
-                  }`}
+                    }`}
                   title="Usage Stats"
                 >
                   <Info className="w-4 h-4" />
@@ -972,35 +970,19 @@ function Chat() {
                           <p className="text-dark-500 text-xs mb-2">Chat Token Usage</p>
                           <div className="space-y-1.5 text-xs">
                             <div className="flex justify-between">
-                              <span className="text-dark-400">Total Tokens</span>
-                              <span className="font-semibold text-dark-200">{chatTotals.totalTokens.toLocaleString()}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-dark-400">Input / Output</span>
-                              <span className="font-medium">
-                                <span className="text-primary-400">{chatTotals.totalPromptTokens.toLocaleString()}</span>
-                                <span className="text-dark-500"> / </span>
-                                <span className="text-accent-400">{chatTotals.totalCompletionTokens.toLocaleString()}</span>
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
                               <span className="text-dark-400">Total Cost</span>
                               <span className="font-semibold text-accent-400">
-                                {chatTotals.totalCost < 0.01
-                                  ? chatTotals.totalCost.toFixed(6)
-                                  : chatTotals.totalCost.toFixed(3)}
+                                ${chatTotals.totalCost.toFixed(2)}
                               </span>
                             </div>
-                            {chatTotals.totalTimeMs > 0 && (
-                              <div className="flex justify-between">
-                                <span className="text-dark-400">Total Time</span>
-                                <span className="font-mono text-dark-200">{formatThinkingTime(chatTotals.totalTimeMs / 1000)}</span>
-                              </div>
-                            )}
                           </div>
 
-                          {/* Token Bar */}
-                          <div className="h-1.5 bg-dark-700 rounded-full overflow-hidden flex mt-2">
+                          {/* Token Bar with USED/LIMIT label */}
+                          <div className="flex justify-between mt-3 mb-1 text-xs">
+                            <span className="text-dark-400">Tokens Used</span>
+                            <span className="font-medium text-dark-200">{chatTotals.totalTokens.toLocaleString()}</span>
+                          </div>
+                          <div className="h-1.5 bg-dark-700 rounded-full overflow-hidden flex">
                             <div
                               className="h-full bg-primary-500"
                               style={{ width: `${(chatTotals.totalPromptTokens / chatTotals.totalTokens * 100)}%` }}
@@ -1011,8 +993,8 @@ function Chat() {
                             />
                           </div>
                           <div className="flex justify-between mt-1 text-[10px] text-dark-500">
-                            <span>Input</span>
-                            <span>Output</span>
+                            <span>Input ({chatTotals.totalPromptTokens.toLocaleString()})</span>
+                            <span>Output ({chatTotals.totalCompletionTokens.toLocaleString()})</span>
                           </div>
                         </div>
                       )}
@@ -1029,11 +1011,10 @@ function Chat() {
               </div>
               <button
                 onClick={() => setShowSettings(!showSettings)}
-                className={`px-4 py-2 flex items-center gap-2 rounded-xl transition-all duration-200 text-sm font-medium ${
-                  showSettings
+                className={`px-4 py-2 flex items-center gap-2 rounded-xl transition-all duration-200 text-sm font-medium ${showSettings
                     ? 'bg-primary-500/10 text-primary-400 border border-primary-500/20'
                     : 'glass-button text-dark-300 hover:text-dark-100'
-                }`}
+                  }`}
               >
                 <SettingsIcon className="w-4 h-4" />
                 Settings
@@ -1150,11 +1131,10 @@ function Chat() {
                   key={message.id}
                   className={`flex gap-4 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}
                 >
-                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                    message.role === 'user'
+                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${message.role === 'user'
                       ? 'gradient-primary shadow-glow'
                       : 'glass-card'
-                  }`}>
+                    }`}>
                     {message.role === 'user' ? (
                       <UserIcon className="w-4 h-4 text-white" />
                     ) : (
@@ -1175,11 +1155,10 @@ function Chat() {
                         />
                       </div>
                     )}
-                    <div className={`inline-block max-w-[80%] ${
-                      message.role === 'user'
+                    <div className={`inline-block max-w-[80%] ${message.role === 'user'
                         ? 'gradient-primary text-white rounded-2xl rounded-tr-sm px-4 py-3 shadow-glow'
                         : 'glass-card rounded-2xl rounded-tl-sm px-4 py-3 text-left'
-                    }`}>
+                      }`}>
                       {message.role === 'user' ? (
                         editingMessageId === message.id ? (
                           <div className="space-y-2 text-left">
@@ -1281,9 +1260,7 @@ function Chat() {
                                     <div className="flex justify-between gap-4">
                                       <span className="text-dark-400">Cost:</span>
                                       <span className="text-accent-400 font-mono">
-                                        {message.cost < 0.01
-                                          ? message.cost.toFixed(6)
-                                          : message.cost.toFixed(3)}
+                                        ${message.cost.toFixed(2)}
                                       </span>
                                     </div>
                                   )}
@@ -1315,7 +1292,7 @@ function Chat() {
                         stats={lastThinkingStats}
                       />
                     )}
-                    
+
                     {streamingMessage && (
                       <div className="inline-block max-w-[80%] glass-card rounded-2xl rounded-tl-sm px-4 py-3">
                         {renderMessage(streamingMessage)}
