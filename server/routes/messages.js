@@ -160,6 +160,7 @@ router.post('/:chatId', async (req, res) => {
     const assistantMessageId = uuidv4();
 
     console.log(`Starting stream for model: ${chat.model}`);
+    const requestStartTime = Date.now();
     const stream = await openai.chat.completions.create(requestOptions);
 
     for await (const chunk of stream) {
@@ -210,21 +211,27 @@ router.post('/:chatId', async (req, res) => {
       }
     }
 
-    console.log(`Stream complete. Captured ${assistantReasoning.length} reasoning chars and ${assistantMessage.length} content chars.`);
+    const responseTimeMs = Date.now() - requestStartTime;
+    console.log(`Stream complete. Captured ${assistantReasoning.length} reasoning chars and ${assistantMessage.length} content chars. Time: ${responseTimeMs}ms`);
     if (usageData) {
       console.log(`Usage: ${JSON.stringify(usageData)}`);
     }
 
-    // Save assistant message
+    // Save assistant message with usage stats
     db.prepare(`
-      INSERT INTO messages (id, chat_id, role, content, reasoning_content, tool_calls)
-      VALUES (?, ?, 'assistant', ?, ?, ?)
+      INSERT INTO messages (id, chat_id, role, content, reasoning_content, tool_calls, prompt_tokens, completion_tokens, response_time_ms, model, cost)
+      VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       assistantMessageId,
       chatId,
       assistantMessage,
       assistantReasoning || null,
-      toolCalls.length > 0 ? JSON.stringify(toolCalls) : null
+      toolCalls.length > 0 ? JSON.stringify(toolCalls) : null,
+      usageData?.prompt_tokens || null,
+      usageData?.completion_tokens || null,
+      responseTimeMs,
+      chat.model,
+      usageData?.cost || 0
     );
 
     // Handle tool calls if any
@@ -265,7 +272,8 @@ router.post('/:chatId', async (req, res) => {
       type: 'done',
       message_id: assistantMessageId,
       usage: usageData || null,
-      model: chat.model
+      model: chat.model,
+      cost: usageData?.cost || 0
     })}\n\n`);
     res.end();
 

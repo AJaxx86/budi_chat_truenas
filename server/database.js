@@ -116,6 +116,31 @@ function initDatabase() {
     }
   }
 
+    // Migration: Add token usage and timing columns to messages
+    const hasTokens = tableInfo.some(col => col.name === 'prompt_tokens');
+    if (!hasTokens) {
+      try {
+        db.exec("ALTER TABLE messages ADD COLUMN prompt_tokens INTEGER");
+        db.exec("ALTER TABLE messages ADD COLUMN completion_tokens INTEGER");
+        db.exec("ALTER TABLE messages ADD COLUMN response_time_ms INTEGER");
+        console.log('✅ Migration: Added token usage and timing columns to messages table');
+      } catch (e) {
+        console.error('Migration error:', e);
+      }
+    }
+
+    // Migration: Add model and cost columns to messages
+    const hasModel = tableInfo.some(col => col.name === 'model');
+    if (!hasModel) {
+      try {
+        db.exec("ALTER TABLE messages ADD COLUMN model TEXT");
+        db.exec("ALTER TABLE messages ADD COLUMN cost REAL DEFAULT 0");
+        console.log('✅ Migration: Added model and cost columns to messages table');
+      } catch (e) {
+        console.error('Migration error:', e);
+      }
+    }
+
   // Create default admin user if not exists
   const adminExists = db.prepare('SELECT id FROM users WHERE is_admin = 1').get();
   if (!adminExists) {

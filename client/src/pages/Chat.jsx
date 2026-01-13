@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useRef, memo, useCallback } from 'react';
+import React, { useState, useEffect, useContext, useRef, memo, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   MessageSquare, Plus, Settings as SettingsIcon, LogOut, Brain,
@@ -18,24 +18,109 @@ marked.setOptions({
 
 const LAST_MODEL_KEY = 'budi_chat_last_model';
 
+// Format time as seconds or minutes:seconds (integer display)
+const formatThinkingTime = (seconds) => {
+  const s = Math.floor(seconds);
+  if (s < 60) {
+    return `${s}s`;
+  }
+  const mins = Math.floor(s / 60);
+  const secs = s % 60;
+  return `${mins}m ${secs.toString().padStart(2, '0')}s`;
+};
+
+// Model pricing per 1M tokens (input/output)
+const MODEL_PRICING = {
+  'gpt-4': { input: 30, output: 60 },
+  'gpt-4-turbo': { input: 10, output: 30 },
+  'gpt-4o': { input: 2.5, output: 10 },
+  'gpt-4o-mini': { input: 0.15, output: 0.6 },
+  'gpt-3.5-turbo': { input: 0.5, output: 1.5 },
+  'claude-3-opus': { input: 15, output: 75 },
+  'claude-3-sonnet': { input: 3, output: 15 },
+  'claude-3-haiku': { input: 0.25, output: 1.25 },
+  'claude-3.5-sonnet': { input: 3, output: 15 },
+  'claude-3.5-haiku': { input: 0.8, output: 4 },
+  'deepseek': { input: 0.14, output: 0.28 },
+  'default': { input: 1, output: 3 }
+};
+
+const getModelPricing = (modelId) => {
+  if (!modelId) return MODEL_PRICING.default;
+  const lowerModel = modelId.toLowerCase();
+  for (const [key, pricing] of Object.entries(MODEL_PRICING)) {
+    if (lowerModel.includes(key)) return pricing;
+  }
+  return MODEL_PRICING.default;
+};
+
+const calculateCost = (promptTokens, completionTokens, modelId) => {
+  const pricing = getModelPricing(modelId);
+  const inputCost = (promptTokens / 1_000_000) * pricing.input;
+  const outputCost = (completionTokens / 1_000_000) * pricing.output;
+  return inputCost + outputCost;
+};
+
 // Memoized ThinkingSection component to prevent re-renders during streaming
-const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming }) => {
+const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming, elapsedTime, stats }) => {
   if (!reasoning && !isStreaming) return null;
+
+  const hasStats = stats && (stats.totalTokens > 0 || stats.duration > 0);
+  const cost = hasStats ? (stats.cost || (stats.promptTokens || 0) > 0 ? calculateCost(stats.promptTokens || 0, stats.completionTokens || 0, stats.model) : 0) : 0;
 
   return (
     <div className="mb-4">
-      <button
-        type="button"
-        onMouseDown={(e) => {
-          e.preventDefault();
-          onToggle();
-        }}
-        className="flex items-center gap-2 text-sm font-medium text-dark-400 hover:text-dark-300 transition-colors px-3 py-1.5 rounded-lg hover:bg-white/[0.03] select-none"
-      >
-        <Brain className="w-4 h-4 text-accent-400" />
-        <span>{isStreaming ? 'Thinking...' : 'Thought Process'}</span>
-        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
-      </button>
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onToggle();
+          }}
+          className="flex items-center gap-2 text-sm font-medium text-dark-400 hover:text-dark-300 transition-colors px-3 py-1.5 rounded-lg hover:bg-white/[0.03] select-none"
+        >
+          <Brain className="w-4 h-4 text-accent-400" />
+          <span>
+            {isStreaming ? (
+              <>Thinking... <span className="text-accent-400 font-mono text-xs ml-1">{formatThinkingTime(elapsedTime || 0)}</span></>
+            ) : (
+              'Thought Process'
+            )}
+          </span>
+          <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+        </button>
+
+        {/* Details on hover - bottom right */}
+        {!isStreaming && hasStats && (
+          <div className="group relative">
+            <span className="text-[10px] text-dark-500 cursor-default">details</span>
+            <div className="absolute bottom-full right-0 mb-1 hidden group-hover:block z-10">
+              <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
+                <div className="space-y-1">
+                  {stats.duration > 0 && (
+                    <div className="flex justify-between gap-4">
+                      <span className="text-dark-400">Time:</span>
+                      <span className="text-dark-200 font-mono">{formatThinkingTime(stats.duration)}</span>
+                    </div>
+                  )}
+                  {stats.totalTokens > 0 && (
+                    <div className="flex justify-between gap-4">
+                      <span className="text-dark-400">Tokens:</span>
+                      <span className="text-dark-200 font-mono">{stats.totalTokens.toLocaleString()} tks</span>
+                    </div>
+                  )}
+                  {cost > 0 && (
+                    <div className="flex justify-between gap-4">
+                      <span className="text-dark-400">Cost:</span>
+                      <span className="text-accent-400 font-mono">${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
       {isExpanded && (
         <div className="mt-2 px-4 py-3 text-sm text-dark-300 rounded-xl border border-white/[0.06] italic bg-dark-900/40 whitespace-pre-wrap text-left max-h-[300px] overflow-y-auto">
           {reasoning || 'Thinking...'}
@@ -80,6 +165,9 @@ function Chat() {
   const [editContent, setEditContent] = useState('');
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [usageStats, setUsageStats] = useState(null);
+  const [thinkingStartTime, setThinkingStartTime] = useState(null);
+  const [thinkingElapsedTime, setThinkingElapsedTime] = useState(0);
+  const [lastThinkingStats, setLastThinkingStats] = useState(null);
 
   const [chatSettings, setChatSettings] = useState(() => ({
     model: localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL,
@@ -87,6 +175,18 @@ function Chat() {
     system_prompt: '',
     agent_mode: false
   }));
+
+  // Calculate chat totals from persisted message data
+  const chatTotals = useMemo(() => {
+    const assistantMsgs = messages.filter(m => m.role === 'assistant');
+    return {
+      totalPromptTokens: assistantMsgs.reduce((sum, m) => sum + (m.prompt_tokens || 0), 0),
+      totalCompletionTokens: assistantMsgs.reduce((sum, m) => sum + (m.completion_tokens || 0), 0),
+      totalTokens: assistantMsgs.reduce((sum, m) => sum + (m.prompt_tokens || 0) + (m.completion_tokens || 0), 0),
+      totalTimeMs: assistantMsgs.reduce((sum, m) => sum + (m.response_time_ms || 0), 0),
+      totalCost: assistantMsgs.reduce((sum, m) => sum + (m.cost || 0), 0),
+    };
+  }, [messages]);
 
   useEffect(() => {
     loadChats();
@@ -125,6 +225,26 @@ function Chat() {
   useEffect(() => {
     if (!streaming) {
       userHasScrolledUp.current = false;
+    }
+  }, [streaming]);
+
+  // Timer for thinking section
+  useEffect(() => {
+    let interval;
+    if (streaming && thinkingStartTime) {
+      interval = setInterval(() => {
+        setThinkingElapsedTime((Date.now() - thinkingStartTime) / 1000);
+      }, 100);
+    }
+    return () => clearInterval(interval);
+  }, [streaming, thinkingStartTime]);
+
+  // Reset thinking timer when streaming starts
+  useEffect(() => {
+    if (streaming) {
+      setThinkingStartTime(Date.now());
+      setThinkingElapsedTime(0);
+      setLastThinkingStats(null);
     }
   }, [streaming]);
 
@@ -408,21 +528,31 @@ function Chat() {
               } else if (data.type === 'content') {
                 setStreamingMessage(prev => prev + data.content);
               } else if (data.type === 'done') {
+                // Calculate thinking duration
+                const thinkingDuration = thinkingStartTime ? (Date.now() - thinkingStartTime) / 1000 : 0;
+
                 // Capture usage data if provided
                 if (data.usage) {
+                  const stats = {
+                    promptTokens: data.usage.prompt_tokens || 0,
+                    completionTokens: data.usage.completion_tokens || 0,
+                    totalTokens: data.usage.total_tokens || 0,
+                    model: data.model,
+                    duration: thinkingDuration,
+                    cost: data.cost || 0
+                  };
+                  setLastThinkingStats(stats);
                   setUsageStats(prev => ({
                     ...prev,
-                    lastMessage: {
-                      promptTokens: data.usage.prompt_tokens || 0,
-                      completionTokens: data.usage.completion_tokens || 0,
-                      totalTokens: data.usage.total_tokens || 0,
-                      model: data.model
-                    },
+                    lastMessage: stats,
                     totalPromptTokens: (prev?.totalPromptTokens || 0) + (data.usage.prompt_tokens || 0),
                     totalCompletionTokens: (prev?.totalCompletionTokens || 0) + (data.usage.completion_tokens || 0),
                     totalTokens: (prev?.totalTokens || 0) + (data.usage.total_tokens || 0),
                     messageCount: (prev?.messageCount || 0) + 1
                   }));
+                } else {
+                  // No usage data, but we still have duration
+                  setLastThinkingStats({ duration: thinkingDuration, totalTokens: 0 });
                 }
                 // Don't clear streaming states immediately - let loadMessages handle it
                 // This prevents the thinking section from disappearing before the message is added
@@ -570,6 +700,30 @@ function Chat() {
               } else if (data.type === 'content') {
                 setStreamingMessage(prev => prev + data.content);
               } else if (data.type === 'done') {
+                // Calculate thinking duration
+                const thinkingDuration = thinkingStartTime ? (Date.now() - thinkingStartTime) / 1000 : 0;
+
+                if (data.usage) {
+                  const stats = {
+                    promptTokens: data.usage.prompt_tokens || 0,
+                    completionTokens: data.usage.completion_tokens || 0,
+                    totalTokens: data.usage.total_tokens || 0,
+                    model: data.model,
+                    duration: thinkingDuration,
+                    cost: data.cost || 0
+                  };
+                  setLastThinkingStats(stats);
+                  setUsageStats(prev => ({
+                    ...prev,
+                    lastMessage: stats,
+                    totalPromptTokens: (prev?.totalPromptTokens || 0) + (data.usage.prompt_tokens || 0),
+                    totalCompletionTokens: (prev?.totalCompletionTokens || 0) + (data.usage.completion_tokens || 0),
+                    totalTokens: (prev?.totalTokens || 0) + (data.usage.total_tokens || 0),
+                    messageCount: (prev?.messageCount || 0) + 1
+                  }));
+                } else {
+                  setLastThinkingStats({ duration: thinkingDuration, totalTokens: 0 });
+                }
                 loadMessages(currentChat.id);
                 loadChats();
                 setTimeout(() => {
@@ -812,66 +966,61 @@ function Chat() {
                         </div>
                       </div>
 
-                      {/* Token Usage - if available */}
-                      {usageStats && usageStats.totalTokens > 0 && (
-                        <>
-                          <div className="border-t border-dark-700 pt-3">
-                            <p className="text-dark-500 text-xs mb-2">Session Token Usage</p>
-                            <div className="space-y-1.5 text-xs">
+                      {/* Token Usage - from persisted data */}
+                      {chatTotals.totalTokens > 0 && (
+                        <div className="border-t border-dark-700 pt-3">
+                          <p className="text-dark-500 text-xs mb-2">Chat Token Usage</p>
+                          <div className="space-y-1.5 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-dark-400">Total Tokens</span>
+                              <span className="font-semibold text-dark-200">{chatTotals.totalTokens.toLocaleString()}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-dark-400">Input / Output</span>
+                              <span className="font-medium">
+                                <span className="text-primary-400">{chatTotals.totalPromptTokens.toLocaleString()}</span>
+                                <span className="text-dark-500"> / </span>
+                                <span className="text-accent-400">{chatTotals.totalCompletionTokens.toLocaleString()}</span>
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-dark-400">Total Cost</span>
+                              <span className="font-semibold text-accent-400">
+                                {chatTotals.totalCost < 0.01
+                                  ? chatTotals.totalCost.toFixed(6)
+                                  : chatTotals.totalCost.toFixed(3)}
+                              </span>
+                            </div>
+                            {chatTotals.totalTimeMs > 0 && (
                               <div className="flex justify-between">
-                                <span className="text-dark-400">Total Tokens</span>
-                                <span className="font-semibold text-dark-200">{usageStats.totalTokens?.toLocaleString()}</span>
+                                <span className="text-dark-400">Total Time</span>
+                                <span className="font-mono text-dark-200">{formatThinkingTime(chatTotals.totalTimeMs / 1000)}</span>
                               </div>
-                              <div className="flex justify-between">
-                                <span className="text-dark-400">Input / Output</span>
-                                <span className="font-medium">
-                                  <span className="text-primary-400">{usageStats.totalPromptTokens?.toLocaleString()}</span>
-                                  <span className="text-dark-500"> / </span>
-                                  <span className="text-accent-400">{usageStats.totalCompletionTokens?.toLocaleString()}</span>
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Token Bar */}
-                            <div className="h-1.5 bg-dark-700 rounded-full overflow-hidden flex mt-2">
-                              <div
-                                className="h-full bg-primary-500"
-                                style={{ width: `${(usageStats.totalPromptTokens / usageStats.totalTokens * 100)}%` }}
-                              />
-                              <div
-                                className="h-full bg-accent-500"
-                                style={{ width: `${(usageStats.totalCompletionTokens / usageStats.totalTokens * 100)}%` }}
-                              />
-                            </div>
-                            <div className="flex justify-between mt-1 text-[10px] text-dark-500">
-                              <span>Input</span>
-                              <span>Output</span>
-                            </div>
+                            )}
                           </div>
 
-                          {/* Last Response */}
-                          {usageStats.lastMessage && (
-                            <div className="border-t border-dark-700 pt-3">
-                              <p className="text-dark-500 text-xs mb-2">Last Response</p>
-                              <div className="grid grid-cols-2 gap-2 text-xs">
-                                <div className="flex justify-between">
-                                  <span className="text-dark-400">Input</span>
-                                  <span className="text-primary-400">{usageStats.lastMessage.promptTokens?.toLocaleString()}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span className="text-dark-400">Output</span>
-                                  <span className="text-accent-400">{usageStats.lastMessage.completionTokens?.toLocaleString()}</span>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </>
+                          {/* Token Bar */}
+                          <div className="h-1.5 bg-dark-700 rounded-full overflow-hidden flex mt-2">
+                            <div
+                              className="h-full bg-primary-500"
+                              style={{ width: `${(chatTotals.totalPromptTokens / chatTotals.totalTokens * 100)}%` }}
+                            />
+                            <div
+                              className="h-full bg-accent-500"
+                              style={{ width: `${(chatTotals.totalCompletionTokens / chatTotals.totalTokens * 100)}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between mt-1 text-[10px] text-dark-500">
+                            <span>Input</span>
+                            <span>Output</span>
+                          </div>
+                        </div>
                       )}
 
-                      {/* No token data message */}
-                      {(!usageStats || usageStats.totalTokens === 0) && messages.length > 0 && (
+                      {/* No token data message - only show if no persisted data */}
+                      {chatTotals.totalTokens === 0 && messages.length > 0 && (
                         <p className="text-[10px] text-dark-500 text-center pt-2 border-t border-dark-700">
-                          Token usage tracking depends on model support
+                          Token usage will appear after sending messages
                         </p>
                       )}
                     </div>
@@ -1021,6 +1170,8 @@ function Chat() {
                           isExpanded={expandedThinkingSections.has(message.id)}
                           onToggle={() => toggleThinkingSection(message.id)}
                           isStreaming={false}
+                          elapsedTime={0}
+                          stats={null}
                         />
                       </div>
                     )}
@@ -1082,7 +1233,7 @@ function Chat() {
                     )}
 
                     {message.role === 'assistant' && (
-                      <div className="mt-2 flex gap-2">
+                      <div className="mt-2 flex gap-2 items-center">
                         <button
                           onClick={() => handleCopy(message.id, message.content, 'raw')}
                           className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors"
@@ -1104,6 +1255,43 @@ function Chat() {
                           <GitBranch className="w-3 h-3" />
                           Fork from here
                         </button>
+
+                        {/* Details hover - show if message has stats */}
+                        {(message.prompt_tokens || message.response_time_ms || message.cost > 0) && (
+                          <div className="group relative">
+                            <button className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors">
+                              <Info className="w-3 h-3" />
+                            </button>
+                            <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10">
+                              <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
+                                <div className="space-y-1">
+                                  {message.response_time_ms > 0 && (
+                                    <div className="flex justify-between gap-4">
+                                      <span className="text-dark-400">Time:</span>
+                                      <span className="text-dark-200 font-mono">{formatThinkingTime(message.response_time_ms / 1000)}</span>
+                                    </div>
+                                  )}
+                                  {(message.prompt_tokens || message.completion_tokens) && (
+                                    <div className="flex justify-between gap-4">
+                                      <span className="text-dark-400">Tokens:</span>
+                                      <span className="text-dark-200 font-mono">{((message.prompt_tokens || 0) + (message.completion_tokens || 0)).toLocaleString()} tks</span>
+                                    </div>
+                                  )}
+                                  {message.cost > 0 && (
+                                    <div className="flex justify-between gap-4">
+                                      <span className="text-dark-400">Cost:</span>
+                                      <span className="text-accent-400 font-mono">
+                                        {message.cost < 0.01
+                                          ? message.cost.toFixed(6)
+                                          : message.cost.toFixed(3)}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -1123,6 +1311,8 @@ function Chat() {
                         isExpanded={expandedThinkingSections.has('streaming')}
                         onToggle={() => toggleThinkingSection('streaming')}
                         isStreaming={!streamingMessage || (streamingReasoning && streaming)}
+                        elapsedTime={thinkingElapsedTime}
+                        stats={lastThinkingStats}
                       />
                     )}
                     

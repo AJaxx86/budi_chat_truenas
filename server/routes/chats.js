@@ -181,8 +181,8 @@ router.post('/:id/fork', (req, res) => {
     `).all(id, message_id);
 
     const insertMessage = db.prepare(`
-      INSERT INTO messages (id, chat_id, role, content, tool_calls, tool_call_id, name, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO messages (id, chat_id, role, content, tool_calls, tool_call_id, name, created_at, prompt_tokens, completion_tokens, response_time_ms, model, cost)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const msg of messages) {
@@ -194,7 +194,12 @@ router.post('/:id/fork', (req, res) => {
         msg.tool_calls,
         msg.tool_call_id,
         msg.name,
-        msg.created_at
+        msg.created_at,
+        msg.prompt_tokens,
+        msg.completion_tokens,
+        msg.response_time_ms,
+        msg.model,
+        msg.cost
       );
     }
 
