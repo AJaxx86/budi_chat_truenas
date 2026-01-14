@@ -141,6 +141,17 @@ function initDatabase() {
       }
     }
 
+    // Migration: Add used_default_key column to track which API key type was used
+    const hasUsedDefaultKey = tableInfo.some(col => col.name === 'used_default_key');
+    if (!hasUsedDefaultKey) {
+      try {
+        db.exec("ALTER TABLE messages ADD COLUMN used_default_key INTEGER DEFAULT 0");
+        console.log('✅ Migration: Added used_default_key to messages table');
+      } catch (e) {
+        console.error('Migration error:', e);
+      }
+    }
+
   // Create default admin user if not exists
   const adminExists = db.prepare('SELECT id FROM users WHERE is_admin = 1').get();
   if (!adminExists) {

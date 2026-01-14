@@ -27,34 +27,55 @@ router.get('/', (req, res) => {
 
         // Get chattiest day
         const chattiestDay = db.prepare(`
-      SELECT DATE(created_at) as date, COUNT(*) as count
+      SELECT DATE(m.created_at) as date, COUNT(*) as count
       FROM messages m
       JOIN chats c ON m.chat_id = c.id
       WHERE c.user_id = ? AND m.role = 'user'
-      GROUP BY DATE(created_at)
+      GROUP BY DATE(m.created_at)
       ORDER BY count DESC
       LIMIT 1
     `).get(userId);
 
-        // Get most used models
+        // Get most used models with token counts
         const topModels = db.prepare(`
-      SELECT model, COUNT(*) as usage_count
+      SELECT
+        model,
+        COUNT(*) as usage_count,
+        COALESCE(SUM(prompt_tokens), 0) as total_prompt_tokens,
+        COALESCE(SUM(completion_tokens), 0) as total_completion_tokens,
+        COALESCE(SUM(prompt_tokens + completion_tokens), 0) as total_tokens,
+        COALESCE(SUM(cost), 0) as total_cost
       FROM messages m
       JOIN chats c ON m.chat_id = c.id
       WHERE c.user_id = ? AND m.role = 'assistant' AND model IS NOT NULL
       GROUP BY model
-      ORDER BY usage_count DESC
-      LIMIT 5
+      ORDER BY total_tokens DESC
+      LIMIT 3
     `).all(userId);
 
         // Get usage trend (last 7 days token usage)
         const usageTrend = db.prepare(`
-      SELECT DATE(created_at) as date, SUM(prompt_tokens + completion_tokens) as total_tokens
+      SELECT DATE(m.created_at) as date, SUM(prompt_tokens + completion_tokens) as total_tokens
       FROM messages m
       JOIN chats c ON m.chat_id = c.id
-      WHERE c.user_id = ? AND m.role = 'assistant' 
-      AND created_at >= date('now', '-7 days')
-      GROUP BY DATE(created_at)
+      WHERE c.user_id = ? AND m.role = 'assistant'
+      AND m.created_at >= date('now', '-7 days')
+      GROUP BY DATE(m.created_at)
+      ORDER BY date ASC
+    `).all(userId);
+
+        // Get recent activity (last 14 days) for weekly progress calendar
+        // Frontend filters to current week Mon-Fri
+        const weekActivity = db.prepare(`
+      SELECT
+        DATE(m.created_at) as date,
+        COUNT(*) as message_count
+      FROM messages m
+      JOIN chats c ON m.chat_id = c.id
+      WHERE c.user_id = ?
+        AND m.role = 'user'
+        AND DATE(m.created_at) >= DATE('now', '-14 days')
+      GROUP BY DATE(m.created_at)
       ORDER BY date ASC
     `).all(userId);
 
@@ -72,7 +93,8 @@ router.get('/', (req, res) => {
                 chattiest_day: chattiestDay || null,
             },
             top_models: topModels || [],
-            usage_trend: usageTrend || []
+            usage_trend: usageTrend || [],
+            week_activity: weekActivity || []
         });
 
     } catch (error) {

@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import OpenAI from 'openai';
 import db from '../database.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { getApiKey, executeToolCall, generateChatTitle } from '../services/ai.js';
+import { getApiKeyInfo, executeToolCall, generateChatTitle } from '../services/ai.js';
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -27,13 +27,14 @@ router.post('/:chatId', async (req, res) => {
       return res.status(404).json({ error: 'Chat not found' });
     }
 
-    // Get API key
-    const apiKey = await getApiKey(req.user.id);
-    if (!apiKey) {
+    // Get API key info
+    const apiKeyInfo = await getApiKeyInfo(req.user.id);
+    if (!apiKeyInfo) {
       return res.status(400).json({
         error: 'No API key configured. Please set your OpenRouter API key in settings or ask an admin to enable the default key for you.'
       });
     }
+    const { key: apiKey, isDefault: usedDefaultKey } = apiKeyInfo;
 
     // Generate title if chat still has default name and this is the first message
     // Do this BEFORE saving the user message so message_count is still 0
@@ -216,8 +217,8 @@ router.post('/:chatId', async (req, res) => {
 
     // Save assistant message with usage stats
     db.prepare(`
-      INSERT INTO messages (id, chat_id, role, content, reasoning_content, tool_calls, prompt_tokens, completion_tokens, response_time_ms, model, cost)
-      VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO messages (id, chat_id, role, content, reasoning_content, tool_calls, prompt_tokens, completion_tokens, response_time_ms, model, cost, used_default_key)
+      VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       assistantMessageId,
       chatId,
@@ -228,7 +229,8 @@ router.post('/:chatId', async (req, res) => {
       usageData?.completion_tokens || null,
       responseTimeMs,
       chat.model,
-      usageData?.cost || 0
+      usageData?.cost || 0,
+      usedDefaultKey ? 1 : 0
     );
 
     // Handle tool calls if any

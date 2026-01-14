@@ -4,7 +4,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Chat from './pages/Chat';
 import Admin from './pages/Admin';
-import Settings from './pages/Settings';
+import Profile from './pages/Profile';
 import Memories from './pages/Memories';
 import { AuthContext } from './contexts/AuthContext';
 
@@ -68,7 +68,7 @@ function App() {
           <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
           <Route path="/" element={user ? <Chat /> : <Navigate to="/login" />} />
           <Route path="/admin" element={user?.is_admin ? <Admin /> : <Navigate to="/" />} />
-          <Route path="/settings" element={user ? <Settings /> : <Navigate to="/login" />} />
+          <Route path="/settings" element={user ? <Profile /> : <Navigate to="/login" />} />
           <Route path="/memories" element={user ? <Memories /> : <Navigate to="/login" />} />
         </Routes>
       </Router>

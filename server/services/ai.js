@@ -2,12 +2,17 @@ import db from '../database.js';
 import OpenAI from 'openai';
 
 export async function getApiKey(userId) {
+  const keyInfo = await getApiKeyInfo(userId);
+  return keyInfo?.key || null;
+}
+
+export async function getApiKeyInfo(userId) {
   const user = db.prepare(`
     SELECT openai_api_key, use_default_key FROM users WHERE id = ?
   `).get(userId);
 
   if (user.openai_api_key) {
-    return user.openai_api_key;
+    return { key: user.openai_api_key, isDefault: false };
   }
 
   if (user.use_default_key) {
@@ -15,7 +20,10 @@ export async function getApiKey(userId) {
       SELECT value FROM settings WHERE key = 'default_openai_api_key'
     `).get();
 
-    return defaultKey?.value || process.env.DEFAULT_OPENROUTER_API_KEY;
+    const key = defaultKey?.value || process.env.DEFAULT_OPENROUTER_API_KEY;
+    if (key) {
+      return { key, isDefault: true };
+    }
   }
 
   return null;

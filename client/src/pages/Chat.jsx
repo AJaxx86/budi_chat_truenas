@@ -146,10 +146,11 @@ const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming, el
         <div
           ref={contentRef}
           onScroll={handleScroll}
-          className="mt-2 px-4 py-3 text-sm text-dark-300 rounded-xl border border-white/[0.06] italic bg-dark-900/40 whitespace-pre-wrap text-left max-h-[300px] overflow-y-auto"
-        >
-          {reasoning || 'Thinking...'}
-        </div>
+          className="mt-2 px-4 py-3 text-sm text-dark-300 rounded-xl border border-white/[0.06] italic bg-dark-900/40 text-left max-h-[300px] overflow-y-auto prose prose-invert prose-sm max-w-none"
+          dangerouslySetInnerHTML={{
+            __html: DOMPurify.sanitize(marked.parse(reasoning || 'Thinking...'))
+          }}
+        />
       )}
     </div>
   );

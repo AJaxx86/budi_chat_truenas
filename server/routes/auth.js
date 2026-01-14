@@ -129,4 +129,39 @@ router.put('/profile', authMiddleware, (req, res) => {
   }
 });
 
+// Delete user account
+router.delete('/profile', authMiddleware, (req, res) => {
+  try {
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({ error: 'Password confirmation required' });
+    }
+
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (user.is_admin) {
+      return res.status(403).json({ error: 'Admin accounts cannot be deleted' });
+    }
+
+    if (!bcrypt.compareSync(password, user.password)) {
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+
+    // Delete user's data
+    db.prepare('DELETE FROM memories WHERE user_id = ?').run(req.user.id);
+    db.prepare('DELETE FROM chats WHERE user_id = ?').run(req.user.id);
+    db.prepare('DELETE FROM users WHERE id = ?').run(req.user.id);
+
+    res.json({ message: 'Account deleted successfully' });
+  } catch (error) {
+    console.error('Account deletion error:', error);
+    res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
 export default router;

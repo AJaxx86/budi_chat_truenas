@@ -9,7 +9,7 @@ const router = express.Router();
 router.use(authMiddleware);
 router.use(adminMiddleware);
 
-// Get all users
+// Get all users with usage stats
 router.get('/users', (req, res) => {
   try {
     const users = db.prepare(`
@@ -19,7 +19,36 @@ router.get('/users', (req, res) => {
       ORDER BY created_at DESC
     `).all();
 
-    res.json(users);
+    // Get usage stats for each user
+    const usersWithStats = users.map(user => {
+      const defaultKeyStats = db.prepare(`
+        SELECT
+          COALESCE(SUM(prompt_tokens + completion_tokens), 0) as tokens,
+          COALESCE(SUM(cost), 0) as cost
+        FROM messages m
+        JOIN chats c ON m.chat_id = c.id
+        WHERE c.user_id = ? AND m.role = 'assistant' AND m.used_default_key = 1
+      `).get(user.id);
+
+      const personalKeyStats = db.prepare(`
+        SELECT
+          COALESCE(SUM(prompt_tokens + completion_tokens), 0) as tokens,
+          COALESCE(SUM(cost), 0) as cost
+        FROM messages m
+        JOIN chats c ON m.chat_id = c.id
+        WHERE c.user_id = ? AND m.role = 'assistant' AND (m.used_default_key = 0 OR m.used_default_key IS NULL)
+      `).get(user.id);
+
+      return {
+        ...user,
+        default_key_tokens: defaultKeyStats?.tokens || 0,
+        default_key_cost: defaultKeyStats?.cost || 0,
+        personal_key_tokens: personalKeyStats?.tokens || 0,
+        personal_key_cost: personalKeyStats?.cost || 0
+      };
+    });
+
+    res.json(usersWithStats);
   } catch (error) {
     console.error('Get users error:', error);
     res.status(500).json({ error: 'Failed to fetch users' });

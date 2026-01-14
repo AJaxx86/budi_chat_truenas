@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  ArrowLeft, Users, Settings, Plus, Trash2, Edit2, 
-  Save, X, Shield, Key, Eye, EyeOff, CheckCircle, XCircle 
+import {
+  ArrowLeft, Users, Settings, Plus, Trash2, Edit2,
+  Save, X, Shield, Key, Eye, EyeOff, CheckCircle, XCircle,
+  Zap, Coins
 } from 'lucide-react';
 
 function Admin() {
@@ -375,8 +376,9 @@ function Admin() {
                   key={user.id}
                   className="p-5 glass rounded-xl hover:border-primary-500/30 transition-all"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
+                  <div className="flex items-center justify-between gap-4">
+                    {/* User Info */}
+                    <div className="flex-shrink-0 min-w-0">
                       <div className="flex items-center gap-3 mb-2">
                         <h3 className="font-semibold text-lg text-dark-100">{user.name}</h3>
                         {user.is_admin === 1 && (
@@ -417,7 +419,55 @@ function Admin() {
                       </div>
                     </div>
 
-                    <div className="flex gap-2">
+                    {/* Usage Stats Grid */}
+                    <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {/* Default Key Tokens */}
+                      <div className="flex items-center gap-2 px-3 py-2 bg-primary-500/10 rounded-lg border border-primary-500/20">
+                        <Key className="w-4 h-4 text-primary-400" />
+                        <div className="min-w-0">
+                          <div className="text-xs text-dark-500">Default Tokens</div>
+                          <div className="text-sm font-semibold text-dark-200 truncate">
+                            {user.default_key_tokens?.toLocaleString() || 0}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Default Key Cost */}
+                      <div className="flex items-center gap-2 px-3 py-2 bg-primary-500/10 rounded-lg border border-primary-500/20">
+                        <Coins className="w-4 h-4 text-primary-400" />
+                        <div className="min-w-0">
+                          <div className="text-xs text-dark-500">Default Cost</div>
+                          <div className="text-sm font-semibold text-dark-200 truncate">
+                            ${(user.default_key_cost || 0).toFixed(4)}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Personal Key Tokens */}
+                      <div className="flex items-center gap-2 px-3 py-2 bg-accent-500/10 rounded-lg border border-accent-500/20">
+                        <Zap className="w-4 h-4 text-accent-400" />
+                        <div className="min-w-0">
+                          <div className="text-xs text-dark-500">Personal Tokens</div>
+                          <div className="text-sm font-semibold text-dark-200 truncate">
+                            {user.personal_key_tokens?.toLocaleString() || 0}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Personal Key Cost */}
+                      <div className="flex items-center gap-2 px-3 py-2 bg-accent-500/10 rounded-lg border border-accent-500/20">
+                        <Coins className="w-4 h-4 text-accent-400" />
+                        <div className="min-w-0">
+                          <div className="text-xs text-dark-500">Personal Cost</div>
+                          <div className="text-sm font-semibold text-dark-200 truncate">
+                            ${(user.personal_key_cost || 0).toFixed(4)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2 flex-shrink-0">
                       <button
                         onClick={() => handleEditUser(user)}
                         className="p-2 hover:bg-primary-500/20 rounded-lg transition-colors"
