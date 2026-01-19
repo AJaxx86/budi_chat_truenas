@@ -134,6 +134,147 @@ function initDatabase() {
     )
   `);
 
+  // File uploads table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS file_uploads (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      chat_id TEXT,
+      message_id TEXT,
+      filename TEXT NOT NULL,
+      original_name TEXT NOT NULL,
+      mimetype TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      storage_path TEXT NOT NULL,
+      extracted_text TEXT,
+      extraction_status TEXT DEFAULT 'pending',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE SET NULL,
+      FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE SET NULL
+    )
+  `);
+
+  // Migration: Add extracted_text columns if they don't exist
+  try {
+    const fileUploadsInfo = db.prepare("PRAGMA table_info(file_uploads)").all();
+    const hasExtractedText = fileUploadsInfo.some(col => col.name === "extracted_text");
+    if (!hasExtractedText) {
+      db.exec("ALTER TABLE file_uploads ADD COLUMN extracted_text TEXT");
+      db.exec("ALTER TABLE file_uploads ADD COLUMN extraction_status TEXT DEFAULT 'pending'");
+      console.log("✅ Migration: Added extracted_text columns to file_uploads");
+    }
+  } catch (e) {
+    // Table might not exist yet
+  }
+
+  // Generated images table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS generated_images (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      chat_id TEXT,
+      message_id TEXT,
+      prompt TEXT NOT NULL,
+      revised_prompt TEXT,
+      model TEXT NOT NULL,
+      size TEXT,
+      quality TEXT,
+      storage_path TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE SET NULL
+    )
+  `);
+
+  // Migration: Add default_image_model to users table
+  try {
+    const usersInfo = db.prepare("PRAGMA table_info(users)").all();
+    const hasImageModel = usersInfo.some(col => col.name === "default_image_model");
+    if (!hasImageModel) {
+      db.exec("ALTER TABLE users ADD COLUMN default_image_model TEXT");
+      console.log("✅ Migration: Added default_image_model to users table");
+    }
+  } catch (e) {
+    // Ignore
+  }
+
+  // Add default_image_model setting if not exists
+  const imageModelSetting = db.prepare("SELECT * FROM settings WHERE key = 'default_image_model'").get();
+  if (!imageModelSetting) {
+    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run('default_image_model', 'stabilityai/stable-diffusion-3.5-large');
+    console.log("✅ Added default_image_model setting");
+  }
+
+  // FTS5 virtual table for full-text search on messages
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+      content,
+      chat_id UNINDEXED,
+      message_id UNINDEXED,
+      content='messages',
+      content_rowid='rowid'
+    )
+  `);
+
+  // FTS5 virtual table for full-text search on chat titles
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS chats_fts USING fts5(
+      title,
+      chat_id UNINDEXED,
+      content='chats',
+      content_rowid='rowid'
+    )
+  `);
+
+  // Create triggers to keep FTS index synchronized with messages table
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
+      INSERT INTO messages_fts(rowid, content, chat_id, message_id)
+      VALUES (NEW.rowid, NEW.content, NEW.chat_id, NEW.id);
+    END
+  `);
+
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS messages_fts_delete AFTER DELETE ON messages BEGIN
+      INSERT INTO messages_fts(messages_fts, rowid, content, chat_id, message_id)
+      VALUES ('delete', OLD.rowid, OLD.content, OLD.chat_id, OLD.id);
+    END
+  `);
+
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS messages_fts_update AFTER UPDATE ON messages BEGIN
+      INSERT INTO messages_fts(messages_fts, rowid, content, chat_id, message_id)
+      VALUES ('delete', OLD.rowid, OLD.content, OLD.chat_id, OLD.id);
+      INSERT INTO messages_fts(rowid, content, chat_id, message_id)
+      VALUES (NEW.rowid, NEW.content, NEW.chat_id, NEW.id);
+    END
+  `);
+
+  // Create triggers to keep FTS index synchronized with chats table
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS chats_fts_insert AFTER INSERT ON chats BEGIN
+      INSERT INTO chats_fts(rowid, title, chat_id)
+      VALUES (NEW.rowid, NEW.title, NEW.id);
+    END
+  `);
+
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS chats_fts_delete AFTER DELETE ON chats BEGIN
+      INSERT INTO chats_fts(chats_fts, rowid, title, chat_id)
+      VALUES ('delete', OLD.rowid, OLD.title, OLD.id);
+    END
+  `);
+
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS chats_fts_update AFTER UPDATE OF title ON chats BEGIN
+      INSERT INTO chats_fts(chats_fts, rowid, title, chat_id)
+      VALUES ('delete', OLD.rowid, OLD.title, OLD.id);
+      INSERT INTO chats_fts(rowid, title, chat_id)
+      VALUES (NEW.rowid, NEW.title, NEW.id);
+    END
+  `);
+
   // Migration: Add reasoning_content to messages if it doesn't exist
   const tableInfo = db.prepare("PRAGMA table_info(messages)").all();
   const hasReasoning = tableInfo.some(
@@ -190,6 +331,34 @@ function initDatabase() {
     } catch (e) {
       console.error("Migration error:", e);
     }
+  }
+
+  // Migration: Populate FTS indexes for existing data
+  try {
+    const messagesFtsCount = db.prepare("SELECT COUNT(*) as count FROM messages_fts").get();
+    const messagesCount = db.prepare("SELECT COUNT(*) as count FROM messages").get();
+
+    if (messagesFtsCount.count === 0 && messagesCount.count > 0) {
+      db.exec(`
+        INSERT INTO messages_fts(rowid, content, chat_id, message_id)
+        SELECT rowid, content, chat_id, id FROM messages
+      `);
+      console.log("✅ Migration: Populated messages_fts with existing data");
+    }
+
+    const chatsFtsCount = db.prepare("SELECT COUNT(*) as count FROM chats_fts").get();
+    const chatsCount = db.prepare("SELECT COUNT(*) as count FROM chats").get();
+
+    if (chatsFtsCount.count === 0 && chatsCount.count > 0) {
+      db.exec(`
+        INSERT INTO chats_fts(rowid, title, chat_id)
+        SELECT rowid, title, id FROM chats
+      `);
+      console.log("✅ Migration: Populated chats_fts with existing data");
+    }
+  } catch (e) {
+    // FTS tables might not exist yet on first run, ignore
+    console.log("FTS migration note:", e.message);
   }
 
   // Create default admin user if not exists

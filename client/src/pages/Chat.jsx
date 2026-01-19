@@ -4,8 +4,12 @@ import {
   MessageSquare, Plus, Settings as SettingsIcon, LogOut, Brain,
   Send, Trash2, GitBranch, Bot, User as UserIcon,
   Sparkles, Zap, Menu, X, ChevronDown, ChevronRight, Square,
-  Check, Trash, Copy, Pencil, Info, DollarSign, Hash
+  Check, Trash, Copy, Pencil, Info, DollarSign, Hash, Search
 } from 'lucide-react';
+import SearchModal from '../components/SearchModal';
+import ExportMenu from '../components/ExportMenu';
+import ImageUpload from '../components/ImageUpload';
+import ImageGeneration from '../components/ImageGeneration';
 import { AuthContext } from '../contexts/AuthContext';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -195,6 +199,9 @@ function Chat() {
   const [thinkingStartTime, setThinkingStartTime] = useState(null);
   const [thinkingElapsedTime, setThinkingElapsedTime] = useState(0);
   const [lastThinkingStats, setLastThinkingStats] = useState(null);
+  const [showSearch, setShowSearch] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
+  const targetMessageRef = useRef(null);
 
   const [chatSettings, setChatSettings] = useState(() => ({
     model: localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL,
@@ -286,6 +293,33 @@ function Chat() {
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showInfoModal]);
+
+  // Keyboard shortcut for search (Cmd/Ctrl + K)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowSearch(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Scroll to target message when navigating from search
+  useEffect(() => {
+    if (targetMessageRef.current && messages.length > 0) {
+      const messageElement = document.getElementById(`message-${targetMessageRef.current}`);
+      if (messageElement) {
+        messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        messageElement.classList.add('highlight-message');
+        setTimeout(() => {
+          messageElement.classList.remove('highlight-message');
+        }, 2000);
+        targetMessageRef.current = null;
+      }
+    }
+  }, [messages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -477,7 +511,11 @@ function Chat() {
     if (!inputMessage.trim() || !currentChat || streaming) return;
 
     const userMessage = inputMessage.trim();
+    const attachmentIds = pendingAttachments.map(a => a.id);
+    const attachmentPreviews = [...pendingAttachments];
+
     setInputMessage('');
+    setPendingAttachments([]);
     // Reset textarea height
     if (textareaRef.current) {
       textareaRef.current.style.height = '52px';
@@ -488,12 +526,13 @@ function Chat() {
 
     abortControllerRef.current = new AbortController();
 
-    // Add user message to UI immediately
+    // Add user message to UI immediately (with attachment previews)
     const tempUserMessage = {
       id: Date.now(),
       role: 'user',
       content: userMessage,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      attachments: attachmentPreviews
     };
     setMessages(prev => [...prev, tempUserMessage]);
 
@@ -528,7 +567,10 @@ function Chat() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ content: userMessage }),
+        body: JSON.stringify({
+          content: userMessage,
+          attachment_ids: attachmentIds
+        }),
         signal: abortControllerRef.current.signal
       });
 
@@ -656,6 +698,30 @@ function Chat() {
   const handleEditCancel = () => {
     setEditingMessageId(null);
     setEditContent('');
+  };
+
+  const handleSearchSelectChat = (chatId) => {
+    const chat = chats.find(c => c.id === chatId);
+    if (chat) {
+      setCurrentChat(chat);
+    } else {
+      // Chat not in current list, fetch it
+      fetch(`/api/chats/${chatId}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          const { messages: _, ...chatData } = data;
+          setCurrentChat(chatData);
+          loadChats();
+        })
+        .catch(console.error);
+    }
+  };
+
+  const handleSearchSelectMessage = (chatId, messageId) => {
+    targetMessageRef.current = messageId;
+    handleSearchSelectChat(chatId);
   };
 
   const handleEditSave = async (messageId) => {
@@ -820,14 +886,23 @@ function Chat() {
             )}
           </div>
 
-          <button
-            onClick={createNewChat}
-            className={`${showSidebar ? 'w-full py-3 gap-2' : 'w-10 h-10 mx-auto'} gradient-primary text-white rounded-xl font-semibold hover:shadow-glow transition-all duration-200 flex items-center justify-center shine active:scale-[0.98]`}
-            title={showSidebar ? undefined : "New Chat"}
-          >
-            <Plus className="w-4 h-4" />
-            {showSidebar && "New Chat"}
-          </button>
+          <div className={`flex ${showSidebar ? 'gap-2' : 'flex-col gap-2'}`}>
+            <button
+              onClick={createNewChat}
+              className={`${showSidebar ? 'flex-1 py-3 gap-2' : 'w-10 h-10 mx-auto'} gradient-primary text-white rounded-xl font-semibold hover:shadow-glow transition-all duration-200 flex items-center justify-center shine active:scale-[0.98]`}
+              title={showSidebar ? undefined : "New Chat"}
+            >
+              <Plus className="w-4 h-4" />
+              {showSidebar && "New Chat"}
+            </button>
+            <button
+              onClick={() => setShowSearch(true)}
+              className={`${showSidebar ? 'px-3 py-3' : 'w-10 h-10 mx-auto'} glass-button text-dark-400 hover:text-dark-200 rounded-xl transition-all duration-200 flex items-center justify-center`}
+              title={showSidebar ? "Search (Cmd+K)" : "Search"}
+            >
+              <Search className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className={`flex-1 overflow-y-auto ${showSidebar ? 'p-3 space-y-1.5' : 'p-2 space-y-1'}`}>
@@ -1098,6 +1173,11 @@ function Chat() {
                   </div>
                 )}
               </div>
+              <ExportMenu
+                chatId={currentChat?.id}
+                chatTitle={currentChat?.title}
+                messages={messages}
+              />
               <button
                 onClick={() => setShowSettings(!showSettings)}
                 className={`px-4 py-2 flex items-center gap-2 rounded-xl transition-all duration-200 text-sm font-medium ${showSettings
@@ -1218,7 +1298,8 @@ function Chat() {
               {messages.map((message, index) => (
                 <div
                   key={message.id}
-                  className={`flex gap-4 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}
+                  id={`message-${message.id}`}
+                  className={`flex gap-4 ${message.role === 'user' ? 'flex-row-reverse' : ''} transition-colors duration-500`}
                 >
                   <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${message.role === 'user'
                     ? 'gradient-primary shadow-glow'
@@ -1274,7 +1355,50 @@ function Chat() {
                             </div>
                           </div>
                         ) : (
-                          renderMessage(message.content)
+                          <>
+                            {renderMessage(message.content)}
+                            {/* Display attachments */}
+                            {message.attachments && message.attachments.length > 0 && (
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {message.attachments.map((att) => {
+                                  const isImage = att.mimetype?.startsWith('image/');
+                                  const getIcon = () => {
+                                    if (att.mimetype === 'application/pdf') return '📄';
+                                    if (att.mimetype === 'text/csv') return '📊';
+                                    if (att.mimetype === 'application/json') return '{ }';
+                                    if (att.mimetype?.includes('markdown') || att.original_name?.endsWith('.md')) return '📝';
+                                    if (att.mimetype === 'text/plain') return '📃';
+                                    return '📎';
+                                  };
+
+                                  if (isImage) {
+                                    return (
+                                      <img
+                                        key={att.id}
+                                        src={att.preview || `/api/uploads/${att.id}`}
+                                        alt={att.original_name}
+                                        className="max-w-[200px] max-h-[150px] rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                        onClick={() => window.open(att.preview || `/api/uploads/${att.id}`, '_blank')}
+                                      />
+                                    );
+                                  }
+
+                                  return (
+                                    <div
+                                      key={att.id}
+                                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-dark-800/50 border border-white/[0.08]"
+                                    >
+                                      <span className="text-lg">{getIcon()}</span>
+                                      <span className="text-xs text-dark-300 max-w-[150px] truncate">{att.original_name}</span>
+                                      {att.has_text && (
+                                        <span className="text-[10px] text-green-400">✓</span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </>
                         )
                       ) : (
                         renderMessage(message.content)
@@ -1421,7 +1545,74 @@ function Chat() {
                   </button>
                 </div>
               )}
-              <form onSubmit={sendMessage} className="flex gap-3">
+              {/* Pending Attachments Preview */}
+              {pendingAttachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3 p-2 rounded-xl bg-dark-800/50 border border-white/[0.06]">
+                  {pendingAttachments.map((file) => {
+                    const isImage = file.mimetype?.startsWith('image/');
+                    const getIcon = () => {
+                      if (file.mimetype === 'application/pdf') return '📄';
+                      if (file.mimetype === 'text/csv') return '📊';
+                      if (file.mimetype === 'application/json') return '{ }';
+                      if (file.mimetype?.includes('markdown') || file.original_name?.endsWith('.md')) return '📝';
+                      if (file.mimetype === 'text/plain') return '📃';
+                      return '📎';
+                    };
+
+                    return (
+                      <div
+                        key={file.id}
+                        className="relative group w-16 h-16 rounded-lg overflow-hidden border border-white/[0.1] bg-dark-800"
+                      >
+                        {isImage && file.preview ? (
+                          <img
+                            src={file.preview}
+                            alt={file.original_name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center">
+                            <span className="text-2xl">{getIcon()}</span>
+                            {file.has_text && (
+                              <span className="text-[8px] text-green-400 mt-0.5">✓ parsed</span>
+                            )}
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (file.preview) URL.revokeObjectURL(file.preview);
+                            fetch(`/api/uploads/${file.id}`, {
+                              method: 'DELETE',
+                              headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                            }).catch(console.error);
+                            setPendingAttachments(prev => prev.filter(f => f.id !== file.id));
+                          }}
+                          className="absolute top-0.5 right-0.5 p-1 bg-dark-900/80 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-3 h-3 text-dark-300" />
+                        </button>
+                        <div className="absolute inset-x-0 bottom-0 bg-dark-900/80 px-1 py-0.5">
+                          <p className="text-[8px] text-dark-300 truncate">{file.original_name}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <form onSubmit={sendMessage} className="flex gap-3 items-end">
+                <ImageUpload
+                  onFilesSelected={setPendingAttachments}
+                  disabled={streaming}
+                />
+                <ImageGeneration
+                  chatId={currentChat?.id}
+                  onImageGenerated={(result) => {
+                    // Add the generated image info to the chat
+                    console.log('Image generated:', result);
+                  }}
+                />
                 <div className="flex-1 relative">
                   <textarea
                     ref={textareaRef}
@@ -1512,6 +1703,14 @@ function Chat() {
           </div>
         </div>
       )}
+
+      {/* Search Modal */}
+      <SearchModal
+        isOpen={showSearch}
+        onClose={() => setShowSearch(false)}
+        onSelectChat={handleSearchSelectChat}
+        onSelectMessage={handleSearchSelectMessage}
+      />
 
     </div>
   );
