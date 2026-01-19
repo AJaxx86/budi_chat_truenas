@@ -93,7 +93,7 @@ function ImageGeneration({ chatId, onImageGenerated }) {
       {/* Trigger Button */}
       <button
         onClick={() => setIsOpen(true)}
-        className="p-2 rounded-xl glass-button text-dark-400 hover:text-accent-400 transition-all duration-200"
+        className="p-3.5 rounded-xl glass-button text-dark-400 hover:text-accent-400 transition-all duration-200"
         title="Generate Image"
       >
         <Wand2 className="w-5 h-5" />
@@ -117,9 +117,8 @@ function ImageGeneration({ chatId, onImageGenerated }) {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowSettings(!showSettings)}
-                  className={`p-2 rounded-lg transition-all ${
-                    showSettings ? 'bg-primary-500/10 text-primary-400' : 'text-dark-400 hover:text-dark-200'
-                  }`}
+                  className={`p-2 rounded-lg transition-all ${showSettings ? 'bg-primary-500/10 text-primary-400' : 'text-dark-400 hover:text-dark-200'
+                    }`}
                 >
                   <Settings2 className="w-4 h-4" />
                 </button>

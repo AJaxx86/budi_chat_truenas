@@ -112,9 +112,9 @@ function VoiceInput({ onTranscript, disabled = false }) {
                 type="button"
                 onClick={toggleListening}
                 disabled={disabled}
-                className={`p-2.5 rounded-xl transition-all duration-200 ${isListening
-                        ? 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse'
-                        : 'glass-button text-dark-400 hover:text-primary-400'
+                className={`p-3.5 rounded-xl transition-all duration-200 ${isListening
+                    ? 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse'
+                    : 'glass-button text-dark-400 hover:text-primary-400'
                     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                 title={isListening ? 'Stop listening' : 'Start voice input'}
             >

@@ -462,10 +462,15 @@ function Chat() {
 
   const deleteChat = async (chatId) => {
     try {
-      await fetch(`/api/chats/${chatId}`, {
+      const res = await fetch(`/api/chats/${chatId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
+
+      if (!res.ok) {
+        throw new Error('Failed to delete chat');
+      }
+
       setChats(chats.filter(c => c.id !== chatId));
       if (currentChat?.id === chatId) {
         // Automatically open a new chat instead of leaving blank
@@ -475,6 +480,7 @@ function Chat() {
       setDeletingChatId(null);
     } catch (error) {
       console.error('Failed to delete chat:', error);
+      alert('Failed to delete chat. Please try again.');
     }
   };
 

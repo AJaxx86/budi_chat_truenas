@@ -224,11 +224,10 @@ function ImageUpload({ onFilesSelected, disabled = false }) {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`relative flex items-center gap-2 ${
-          isDragging
+        className={`relative flex items-center gap-2 ${isDragging
             ? 'ring-2 ring-primary-500/50 bg-primary-500/5'
             : ''
-        }`}
+          }`}
       >
         <input
           ref={fileInputRef}
@@ -243,11 +242,10 @@ function ImageUpload({ onFilesSelected, disabled = false }) {
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled || uploading}
-          className={`p-2 rounded-xl transition-all duration-200 ${
-            uploading
+          className={`p-3.5 rounded-xl transition-all duration-200 ${uploading
               ? 'bg-primary-500/10 text-primary-400'
               : 'glass-button text-dark-400 hover:text-primary-400'
-          } disabled:opacity-50`}
+            } disabled:opacity-50`}
           title="Attach files (images, PDF, TXT, CSV, JSON, Markdown)"
         >
           {uploading ? (
