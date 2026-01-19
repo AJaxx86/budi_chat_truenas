@@ -13,6 +13,7 @@ import searchRoutes from './routes/search.js';
 import exportRoutes from './routes/export.js';
 import uploadsRoutes from './routes/uploads.js';
 import imagesRoutes from './routes/images.js';
+import shareRoutes from './routes/share.js';
 
 dotenv.config();
 
@@ -37,6 +38,7 @@ app.use('/api/search', searchRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/uploads', uploadsRoutes);
 app.use('/api/images', imagesRoutes);
+app.use('/api/share', shareRoutes);
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {

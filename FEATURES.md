@@ -165,6 +165,60 @@ AI responds with complete answer combining all information
 - Control when AI can use external tools
 - Customize behavior based on use case
 
+### 7. 🔍 Chat Search
+
+**Find Anything Instantly**
+- Full-text search across all chats and messages
+- Keyboard shortcut (Cmd/Ctrl + K)
+- Jump directly to specific messages
+- Search by content or chat title
+
+### 8. 📥 Export & Download
+
+**Save Your Conversations**
+- **Markdown**: Formatted export with metadata
+- **JSON**: Full data export with all details
+- **Plain Text**: Simple text format
+- One-click download
+
+### 9. 🔗 Chat Sharing
+
+**Share Conversations Publicly**
+- Generate unique shareable URLs
+- Read-only public view
+- View count tracking
+- Revoke access anytime
+- Clean, branded share page
+
+### 10. 🎙️ Voice Mode
+
+**Hands-Free Interaction**
+- **Voice Input**: Click microphone to speak your messages
+- **Text-to-Speech**: Listen to AI responses
+- Customizable voice, speed, and pitch
+- Browser-native Web Speech API
+- Settings persist across sessions
+
+### 11. 📝 Canvas Editor
+
+**Dedicated Code Workspace**
+- Split-pane editor with live preview
+- Syntax highlighting for JavaScript, Python, TypeScript
+- Markdown and HTML preview modes
+- Undo/redo with keyboard shortcuts
+- Copy to clipboard, download as file
+- Fullscreen mode
+- Opens automatically from code blocks
+
+### 12. 🖼️ Image Features
+
+**Vision & Generation**
+- **Image Upload**: Attach images for AI analysis
+- **Image Generation**: Create images from prompts
+- Drag-and-drop support
+- Multiple image model options
+- Document text extraction (PDF, Word, etc.)
+
 ## 🔑 API Key Management
 
 ### User-Level API Keys
@@ -507,11 +561,6 @@ Chat 3: "Help me build a form"
 ## 📈 Roadmap
 
 ### Planned Features
-- Voice input/output
-- Image generation integration
-- Document upload and analysis
-- Conversation search
-- Export conversations (PDF, Markdown)
 - Mobile app
 - More AI providers (Claude, Gemini)
 - Plugin system

@@ -4,12 +4,16 @@ import {
   MessageSquare, Plus, Settings as SettingsIcon, LogOut, Brain,
   Send, Trash2, GitBranch, Bot, User as UserIcon,
   Sparkles, Zap, Menu, X, ChevronDown, ChevronRight, Square,
-  Check, Trash, Copy, Pencil, Info, DollarSign, Hash, Search
+  Check, Trash, Copy, Pencil, Info, DollarSign, Hash, Search, Share2, Code
 } from 'lucide-react';
 import SearchModal from '../components/SearchModal';
 import ExportMenu from '../components/ExportMenu';
+import ShareDialog from '../components/ShareDialog';
 import ImageUpload from '../components/ImageUpload';
 import ImageGeneration from '../components/ImageGeneration';
+import VoiceInput from '../components/VoiceInput';
+import TextToSpeech from '../components/TextToSpeech';
+import Canvas from '../components/Canvas';
 import { AuthContext } from '../contexts/AuthContext';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -200,7 +204,9 @@ function Chat() {
   const [thinkingElapsedTime, setThinkingElapsedTime] = useState(0);
   const [lastThinkingStats, setLastThinkingStats] = useState(null);
   const [showSearch, setShowSearch] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [canvasState, setCanvasState] = useState({ isOpen: false, content: '', language: 'javascript', title: 'Canvas' });
   const targetMessageRef = useRef(null);
 
   const [chatSettings, setChatSettings] = useState(() => ({
@@ -724,6 +730,33 @@ function Chat() {
     handleSearchSelectChat(chatId);
   };
 
+  const openInCanvas = (content, title = 'Canvas') => {
+    // Try to detect language from code blocks
+    const codeBlockMatch = content.match(/```(\w+)?/);
+    let language = 'markdown';
+    let cleanContent = content;
+
+    if (codeBlockMatch) {
+      // Extract code from code block
+      const fullMatch = content.match(/```(\w+)?\n?([\s\S]*?)```/);
+      if (fullMatch) {
+        language = fullMatch[1] || 'javascript';
+        cleanContent = fullMatch[2].trim();
+      }
+    } else if (content.includes('function ') || content.includes('const ') || content.includes('let ')) {
+      language = 'javascript';
+    } else if (content.includes('def ') || content.includes('import ')) {
+      language = 'python';
+    }
+
+    setCanvasState({
+      isOpen: true,
+      content: cleanContent,
+      language,
+      title
+    });
+  };
+
   const handleEditSave = async (messageId) => {
     if (!editContent.trim() || !currentChat) return;
 
@@ -1178,6 +1211,16 @@ function Chat() {
                 chatTitle={currentChat?.title}
                 messages={messages}
               />
+              {currentChat?.id && (
+                <button
+                  onClick={() => setShowShareDialog(true)}
+                  className="px-3 py-2 flex items-center gap-2 rounded-xl transition-all duration-200 text-sm font-medium glass-button text-dark-300 hover:text-dark-100"
+                  title="Share chat"
+                >
+                  <Share2 className="w-4 h-4" />
+                  <span className="hidden sm:inline">Share</span>
+                </button>
+              )}
               <button
                 onClick={() => setShowSettings(!showSettings)}
                 className={`px-4 py-2 flex items-center gap-2 rounded-xl transition-all duration-200 text-sm font-medium ${showSettings
@@ -1447,8 +1490,18 @@ function Chat() {
                           <GitBranch className="w-3 h-3" />
                           Fork from here
                         </button>
+                        <TextToSpeech text={message.content} messageId={message.id} />
+                        {message.content.includes('```') && (
+                          <button
+                            onClick={() => openInCanvas(message.content, 'Edit Code')}
+                            className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors"
+                            title="Open in Canvas editor"
+                          >
+                            <Code className="w-3 h-3" />
+                            Canvas
+                          </button>
+                        )}
 
-                        {/* Details hover - show if message has stats */}
                         {(message.prompt_tokens || message.response_time_ms || message.cost > 0) && (
                           <div className="group relative">
                             <button className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors">
@@ -1637,6 +1690,10 @@ function Chat() {
                     }}
                   />
                 </div>
+                <VoiceInput
+                  onTranscript={(text) => setInputMessage(prev => prev + (prev ? ' ' : '') + text)}
+                  disabled={streaming}
+                />
                 <button
                   type="submit"
                   disabled={!inputMessage.trim() || streaming}
@@ -1710,6 +1767,23 @@ function Chat() {
         onClose={() => setShowSearch(false)}
         onSelectChat={handleSearchSelectChat}
         onSelectMessage={handleSearchSelectMessage}
+      />
+
+      {/* Share Dialog */}
+      <ShareDialog
+        chatId={currentChat?.id}
+        chatTitle={currentChat?.title}
+        isOpen={showShareDialog}
+        onClose={() => setShowShareDialog(false)}
+      />
+
+      {/* Canvas Editor */}
+      <Canvas
+        isOpen={canvasState.isOpen}
+        onClose={() => setCanvasState({ ...canvasState, isOpen: false })}
+        initialContent={canvasState.content}
+        initialLanguage={canvasState.language}
+        title={canvasState.title}
       />
 
     </div>

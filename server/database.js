@@ -187,6 +187,21 @@ function initDatabase() {
     )
   `);
 
+  // Shared chats table (for public chat links)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS shared_chats (
+      id TEXT PRIMARY KEY,
+      chat_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
+      share_token TEXT UNIQUE NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      expires_at TEXT,
+      view_count INTEGER DEFAULT 0,
+      FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
   // Migration: Add default_image_model to users table
   try {
     const usersInfo = db.prepare("PRAGMA table_info(users)").all();
