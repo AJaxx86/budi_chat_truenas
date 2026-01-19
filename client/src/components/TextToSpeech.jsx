@@ -5,6 +5,7 @@ function TextToSpeech({ text, messageId }) {
     const [isPlaying, setIsPlaying] = useState(false);
     const [isPaused, setIsPaused] = useState(false);
     const [isSupported, setIsSupported] = useState(true);
+    const [isLoadingVoices, setIsLoadingVoices] = useState(true);
     const [showSettings, setShowSettings] = useState(false);
     const [voices, setVoices] = useState([]);
     const [selectedVoice, setSelectedVoice] = useState(null);
@@ -28,29 +29,54 @@ function TextToSpeech({ text, messageId }) {
 
         const loadVoices = () => {
             const availableVoices = window.speechSynthesis.getVoices();
-            setVoices(availableVoices);
 
-            // Try to restore saved voice or pick a default
-            const savedVoiceName = localStorage.getItem('tts_voice');
-            if (savedVoiceName) {
-                const saved = availableVoices.find(v => v.name === savedVoiceName);
-                if (saved) {
-                    setSelectedVoice(saved);
-                    return;
+            if (availableVoices.length > 0) {
+                setVoices(availableVoices);
+                setIsLoadingVoices(false);
+
+                // Try to restore saved voice or pick a default
+                const savedVoiceName = localStorage.getItem('tts_voice');
+                if (savedVoiceName) {
+                    const saved = availableVoices.find(v => v.name === savedVoiceName);
+                    if (saved) {
+                        setSelectedVoice(saved);
+                        return;
+                    }
                 }
-            }
 
-            // Default to first English voice
-            const englishVoice = availableVoices.find(v => v.lang.startsWith('en'));
-            if (englishVoice) {
-                setSelectedVoice(englishVoice);
+                // Default to first English voice, or first available voice
+                const englishVoice = availableVoices.find(v => v.lang.startsWith('en'));
+                setSelectedVoice(englishVoice || availableVoices[0] || null);
             }
         };
 
+        // Load voices immediately (may work on some browsers)
         loadVoices();
-        window.speechSynthesis.onvoiceschanged = loadVoices;
+
+        // Also listen for voiceschanged event (required for Chrome and others)
+        window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
+
+        // Fallback: retry loading after delays for browsers with slow voice init (like Vivaldi)
+        const retryTimeouts = [100, 500, 1000, 2000].map(delay =>
+            setTimeout(() => {
+                if (window.speechSynthesis.getVoices().length === 0) {
+                    // Try to trigger voice loading
+                    window.speechSynthesis.getVoices();
+                } else {
+                    loadVoices();
+                }
+            }, delay)
+        );
+
+        // Final timeout: stop loading state after 3 seconds if no voices found
+        const loadingTimeout = setTimeout(() => {
+            setIsLoadingVoices(false);
+        }, 3000);
 
         return () => {
+            retryTimeouts.forEach(t => clearTimeout(t));
+            clearTimeout(loadingTimeout);
+            window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
             window.speechSynthesis.cancel();
         };
     }, []);
@@ -215,8 +241,8 @@ function TextToSpeech({ text, messageId }) {
                 type="button"
                 onClick={() => setShowSettings(!showSettings)}
                 className={`p-1.5 rounded-lg transition-colors ${showSettings
-                        ? 'text-primary-400 bg-white/[0.03]'
-                        : 'text-dark-500 hover:text-dark-400 hover:bg-white/[0.03]'
+                    ? 'text-primary-400 bg-white/[0.03]'
+                    : 'text-dark-500 hover:text-dark-400 hover:bg-white/[0.03]'
                     }`}
                 title="Voice settings"
             >
@@ -234,17 +260,23 @@ function TextToSpeech({ text, messageId }) {
                     {/* Voice selection */}
                     <div className="mb-3">
                         <label className="block text-xs text-dark-500 mb-1">Voice</label>
-                        <select
-                            value={selectedVoice?.name || ''}
-                            onChange={handleVoiceChange}
-                            className="w-full px-2 py-1.5 text-sm rounded-lg bg-dark-800 border border-dark-600 text-dark-200 focus:border-primary-500/50 focus:outline-none"
-                        >
-                            {voices.map((voice) => (
-                                <option key={voice.name} value={voice.name}>
-                                    {voice.name} ({voice.lang})
-                                </option>
-                            ))}
-                        </select>
+                        {voices.length === 0 ? (
+                            <div className="w-full px-2 py-1.5 text-sm rounded-lg bg-dark-800 border border-dark-600 text-dark-400 italic">
+                                {isLoadingVoices ? 'Loading voices...' : 'No voices available'}
+                            </div>
+                        ) : (
+                            <select
+                                value={selectedVoice?.name || ''}
+                                onChange={handleVoiceChange}
+                                className="w-full px-2 py-1.5 text-sm rounded-lg bg-dark-800 border border-dark-600 text-dark-200 focus:border-primary-500/50 focus:outline-none"
+                            >
+                                {voices.map((voice) => (
+                                    <option key={voice.name} value={voice.name}>
+                                        {voice.name} ({voice.lang})
+                                    </option>
+                                ))}
+                            </select>
+                        )}
                     </div>
 
                     {/* Speed */}

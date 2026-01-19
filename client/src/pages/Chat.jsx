@@ -4,7 +4,7 @@ import {
   MessageSquare, Plus, Settings as SettingsIcon, LogOut, Brain,
   Send, Trash2, GitBranch, Bot, User as UserIcon,
   Sparkles, Zap, Menu, X, ChevronDown, ChevronRight, Square,
-  Check, Trash, Copy, Pencil, Info, DollarSign, Hash, Search, Share2, Code
+  Check, Trash, Copy, Pencil, Info, DollarSign, Hash, Search, Share2, Code, FileText
 } from 'lucide-react';
 import SearchModal from '../components/SearchModal';
 import ExportMenu from '../components/ExportMenu';
@@ -394,6 +394,13 @@ function Chat() {
       system_prompt: '',
       agent_mode: false
     });
+    setMessages([]);
+    setStreamingMessage('');
+    setStreamingReasoning('');
+    setUsageStats(null);
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
     setChatSettings({
       model: modelToUse,
       temperature: 0.7,
@@ -1468,44 +1475,46 @@ function Chat() {
                     )}
 
                     {message.role === 'assistant' && (
-                      <div className="mt-2 flex gap-2 items-center">
+                      <div className="mt-2 flex gap-1 items-center">
                         <button
                           onClick={() => handleCopy(message.id, message.content, 'raw')}
-                          className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors"
+                          className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-white/[0.03] transition-colors"
+                          title={copiedMessageId === `${message.id}-raw` ? 'Copied!' : 'Copy Raw'}
                         >
-                          {copiedMessageId === `${message.id}-raw` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                          {copiedMessageId === `${message.id}-raw` ? 'Copied!' : 'Copy Raw'}
+                          {copiedMessageId === `${message.id}-raw` ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                         </button>
                         <button
                           onClick={() => handleCopy(message.id, message.content, 'markdown')}
-                          className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors"
+                          className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-white/[0.03] transition-colors"
+                          title={copiedMessageId === `${message.id}-markdown` ? 'Copied!' : 'Copy Markdown'}
                         >
-                          {copiedMessageId === `${message.id}-markdown` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                          {copiedMessageId === `${message.id}-markdown` ? 'Copied!' : 'Copy Markdown'}
+                          {copiedMessageId === `${message.id}-markdown` ? <Check className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                         </button>
                         <button
                           onClick={() => openForkModal(message.id)}
-                          className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors"
+                          className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-white/[0.03] transition-colors"
+                          title="Fork from here"
                         >
-                          <GitBranch className="w-3 h-3" />
-                          Fork from here
+                          <GitBranch className="w-4 h-4" />
                         </button>
                         <TextToSpeech text={message.content} messageId={message.id} />
                         {message.content.includes('```') && (
                           <button
                             onClick={() => openInCanvas(message.content, 'Edit Code')}
-                            className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors"
-                            title="Open in Canvas editor"
+                            className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-white/[0.03] transition-colors"
+                            title="Open in Canvas"
                           >
-                            <Code className="w-3 h-3" />
-                            Canvas
+                            <Code className="w-4 h-4" />
                           </button>
                         )}
 
                         {(message.prompt_tokens || message.response_time_ms || message.cost > 0) && (
                           <div className="group relative">
-                            <button className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors">
-                              <Info className="w-3 h-3" />
+                            <button
+                              className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-white/[0.03] transition-colors"
+                              title="Message details"
+                            >
+                              <Info className="w-4 h-4" />
                             </button>
                             <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10">
                               <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
