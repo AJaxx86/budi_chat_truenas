@@ -25,10 +25,7 @@ router.use(authMiddleware);
 router.post("/:chatId", async (req, res) => {
   try {
     const { chatId } = req.params;
-<<<<<<< HEAD
-    const { content, thinking } = req.body;
-=======
-    const { content, attachment_ids = [] } = req.body;
+    const { content, thinking, attachment_ids = [] } = req.body;
 
     // Fetch attachments if provided
     let attachments = [];
@@ -39,7 +36,6 @@ router.post("/:chatId", async (req, res) => {
         )
         .all(...attachment_ids, req.user.id);
     }
->>>>>>> 44479451eaa4db5ff6ebcbf18375f307e12258f0
 
     // Verify chat ownership and get message count
     const chat = db
