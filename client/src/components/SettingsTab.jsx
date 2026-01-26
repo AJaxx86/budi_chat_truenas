@@ -1,6 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Key, Eye, EyeOff, Trash2, AlertTriangle, Shield, Save, ExternalLink } from 'lucide-react';
+import { Key, Eye, EyeOff, Trash2, AlertTriangle, Shield, Save, ExternalLink, Palette } from 'lucide-react';
+
+const ACCENT_PRESETS = [
+  { id: 'amber', name: 'Amber', color: 'hsl(38, 92%, 50%)' },
+  { id: 'blue', name: 'Blue', color: 'hsl(217, 91%, 60%)' },
+  { id: 'green', name: 'Green', color: 'hsl(142, 71%, 45%)' },
+  { id: 'purple', name: 'Purple', color: 'hsl(262, 83%, 58%)' },
+  { id: 'rose', name: 'Rose', color: 'hsl(350, 89%, 60%)' },
+  { id: 'cyan', name: 'Cyan', color: 'hsl(186, 94%, 42%)' },
+];
+
+const ACCENT_STORAGE_KEY = 'budi_accent_color';
 
 function SettingsTab({ user, logout }) {
   const navigate = useNavigate();
@@ -14,9 +25,14 @@ function SettingsTab({ user, logout }) {
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [accentColor, setAccentColor] = useState(() => {
+    return localStorage.getItem(ACCENT_STORAGE_KEY) || 'amber';
+  });
 
   useEffect(() => {
     loadUserData();
+    // Apply accent color on mount
+    document.documentElement.setAttribute('data-accent', accentColor);
   }, []);
 
   const loadUserData = async () => {
@@ -29,6 +45,12 @@ function SettingsTab({ user, logout }) {
     } catch (error) {
       console.error('Failed to load user data:', error);
     }
+  };
+
+  const handleAccentChange = (presetId) => {
+    setAccentColor(presetId);
+    localStorage.setItem(ACCENT_STORAGE_KEY, presetId);
+    document.documentElement.setAttribute('data-accent', presetId);
   };
 
   const handleSaveApiKey = async (e) => {
@@ -119,48 +141,87 @@ function SettingsTab({ user, logout }) {
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-2xl font-bold text-dark-100 mb-2">Settings</h2>
-        <p className="text-dark-400 mb-6">Manage your API key and account</p>
+        <h2 className="text-2xl font-bold text-dark-100 mb-2 tracking-tight">Settings</h2>
+        <p className="text-dark-400 mb-6">Manage your preferences and account</p>
       </div>
 
       {error && (
-        <div className="bg-red-500/20 border border-red-500/30 text-red-300 px-4 py-3 rounded-lg">
+        <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-xl text-sm">
           {error}
         </div>
       )}
 
       {success && (
-        <div className="bg-green-500/20 border border-green-500/30 text-green-300 px-4 py-3 rounded-lg">
+        <div className="bg-green-500/10 border border-green-500/20 text-green-400 px-4 py-3 rounded-xl text-sm">
           {success}
         </div>
       )}
 
+      {/* Visuals Section */}
+      <section className="border-b border-dark-700/50 pb-8">
+        <h3 className="text-xl font-semibold mb-4 flex items-center gap-2 text-dark-100">
+          <Palette className="w-5 h-5 text-dark-400" />
+          Visuals
+        </h3>
+
+        <div>
+          <label className="block text-sm font-medium text-dark-300 mb-3">
+            Accent Color
+          </label>
+          <div className="flex flex-wrap gap-3">
+            {ACCENT_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                onClick={() => handleAccentChange(preset.id)}
+                className={`group relative flex flex-col items-center gap-2 p-3 rounded-lg transition-all duration-200 ${accentColor === preset.id
+                    ? 'bg-dark-700/60 ring-1 ring-dark-600'
+                    : 'hover:bg-dark-800/40'
+                  }`}
+              >
+                <div
+                  className={`w-8 h-8 rounded-full transition-transform duration-200 ${accentColor === preset.id ? 'scale-110' : 'group-hover:scale-105'
+                    }`}
+                  style={{ backgroundColor: preset.color }}
+                />
+                <span className={`text-xs font-medium ${accentColor === preset.id ? 'text-dark-200' : 'text-dark-500'
+                  }`}>
+                  {preset.name}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-dark-600 mt-3">
+            Changes the accent color used for buttons and highlights
+          </p>
+        </div>
+      </section>
+
       {/* API Key Section */}
       <section className="border-b border-dark-700/50 pb-8">
         <h3 className="text-xl font-semibold mb-4 flex items-center gap-2 text-dark-100">
-          <Key className="w-5 h-5 text-accent-400" />
+          <Key className="w-5 h-5 text-dark-400" />
           OpenRouter API Key
         </h3>
 
         {user?.use_default_key ? (
-          <div className="bg-primary-500/20 border border-primary-500/30 rounded-lg p-4 mb-4">
-            <p className="text-primary-300 text-sm">
+          <div className="bg-dark-800/40 border border-dark-700/40 rounded-xl p-4 mb-4">
+            <p className="text-dark-400 text-sm">
               You are currently using the default API key set by the administrator.
               You can still set your own API key to override this.
             </p>
           </div>
         ) : (
-          <div className="bg-amber-500/20 border border-amber-500/30 rounded-lg p-4 mb-4">
-            <p className="text-amber-300 text-sm">
+          <div className="bg-dark-800/40 border border-dark-700/40 rounded-xl p-4 mb-4">
+            <p className="text-dark-400 text-sm">
               You need to set your own API key or ask an administrator to enable the default key for you.
             </p>
           </div>
         )}
 
         {hasApiKey && (
-          <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-4 mb-4">
+          <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 mb-4">
             <div className="flex items-center justify-between">
-              <p className="text-green-300 text-sm">
+              <p className="text-green-400 text-sm">
                 You have configured your personal API key
               </p>
               <button
@@ -176,7 +237,7 @@ function SettingsTab({ user, logout }) {
 
         <form onSubmit={handleSaveApiKey} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-dark-200 mb-2">
+            <label className="block text-sm font-medium text-dark-300 mb-2">
               {hasApiKey ? 'Update API Key' : 'Set API Key'}
             </label>
             <div className="relative">
@@ -184,7 +245,7 @@ function SettingsTab({ user, logout }) {
                 type={showApiKey ? 'text' : 'password'}
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                className="w-full px-4 py-3 pr-12 rounded-lg glass-input outline-none font-mono text-sm text-dark-100 bg-dark-800/50"
+                className="w-full px-4 py-3 pr-12 rounded-xl glass-input outline-none font-mono text-sm text-dark-100"
                 placeholder="sk-..."
               />
               <button
@@ -201,7 +262,7 @@ function SettingsTab({ user, logout }) {
                 href="https://openrouter.ai/keys"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary-400 hover:underline inline-flex items-center gap-1"
+                className="text-dark-400 hover:text-dark-300 underline inline-flex items-center gap-1"
               >
                 OpenRouter
                 <ExternalLink className="w-3 h-3" />
@@ -212,11 +273,11 @@ function SettingsTab({ user, logout }) {
           <button
             type="submit"
             disabled={loading || !apiKey.trim()}
-            className="gradient-primary text-white px-6 py-3 rounded-lg font-medium hover:shadow-glow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            className="btn-primary px-6 py-3 rounded-xl font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
             {loading ? (
               <>
-                <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                <div className="animate-spin rounded-full h-5 w-5 border-2 border-current border-t-transparent"></div>
                 Saving...
               </>
             ) : (
@@ -236,8 +297,8 @@ function SettingsTab({ user, logout }) {
           Danger Zone
         </h3>
 
-        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-6">
-          <h4 className="font-semibold text-red-300 mb-2">Delete Account</h4>
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-6">
+          <h4 className="font-semibold text-red-400 mb-2">Delete Account</h4>
           <p className="text-sm text-dark-400 mb-4">
             This action cannot be undone. All your chats, messages, and memories will be permanently deleted.
           </p>
@@ -250,7 +311,7 @@ function SettingsTab({ user, logout }) {
           ) : (
             <button
               onClick={() => setShowDeleteConfirm(true)}
-              className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg font-medium transition-colors flex items-center gap-2"
+              className="px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl font-medium transition-colors flex items-center gap-2"
             >
               <Trash2 className="w-4 h-4" />
               Delete Account
@@ -262,17 +323,17 @@ function SettingsTab({ user, logout }) {
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-dark-950/80 backdrop-blur-md flex items-center justify-center z-50 scale-in">
-          <div className="glass-card rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
+          <div className="glass-modal rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
             <h3 className="text-xl font-bold text-red-400 mb-2 flex items-center gap-2">
               <AlertTriangle className="w-6 h-6" />
               Confirm Account Deletion
             </h3>
-            <p className="text-dark-300 mb-6">
+            <p className="text-dark-400 mb-6">
               Please enter your password to confirm. This action is irreversible and will delete all your data.
             </p>
 
             {deleteError && (
-              <div className="bg-red-500/20 border border-red-500/30 text-red-300 px-4 py-3 rounded-lg mb-4 text-sm">
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-xl mb-4 text-sm">
                 {deleteError}
               </div>
             )}
@@ -282,7 +343,7 @@ function SettingsTab({ user, logout }) {
               value={deletePassword}
               onChange={(e) => setDeletePassword(e.target.value)}
               placeholder="Enter your password"
-              className="w-full px-4 py-3 rounded-lg glass-input outline-none text-dark-100 bg-dark-800/50 mb-4"
+              className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-100 mb-4"
               autoFocus
             />
 
@@ -293,14 +354,14 @@ function SettingsTab({ user, logout }) {
                   setDeletePassword('');
                   setDeleteError('');
                 }}
-                className="flex-1 px-4 py-3 glass-button rounded-lg text-dark-300 hover:text-dark-100 font-medium transition-colors"
+                className="flex-1 px-4 py-3 glass-button rounded-xl text-dark-300 hover:text-dark-100 font-semibold transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteAccount}
                 disabled={!deletePassword || deleteLoading}
-                className="flex-1 px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {deleteLoading ? (
                   <>
@@ -323,3 +384,4 @@ function SettingsTab({ user, logout }) {
 }
 
 export default SettingsTab;
+

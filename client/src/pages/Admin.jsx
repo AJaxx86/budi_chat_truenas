@@ -177,7 +177,7 @@ function Admin() {
         <div className="space-y-6">
           {/* System Settings */}
           <div className="glass-card rounded-2xl p-8">
-            <h2 className="text-2xl font-bold gradient-text mb-6 flex items-center gap-3">
+            <h2 className="text-2xl font-bold text-accent mb-6 flex items-center gap-3 tracking-tight">
               <Settings className="w-7 h-7" />
               System Settings
             </h2>
@@ -195,7 +195,7 @@ function Admin() {
                     type={showDefaultKey ? 'text' : 'password'}
                     value={defaultApiKey}
                     onChange={(e) => setDefaultApiKey(e.target.value)}
-                    className="w-full px-4 py-3 pr-12 rounded-lg glass-input outline-none font-mono text-sm text-dark-100 bg-dark-800/50"
+                    className="w-full px-4 py-3 pr-12 rounded-xl glass-input outline-none font-mono text-sm text-dark-100"
                     placeholder="sk-..."
                   />
                   <button
@@ -219,7 +219,7 @@ function Admin() {
                   type="text"
                   value={titleGenerationModel}
                   onChange={(e) => setTitleGenerationModel(e.target.value)}
-                  className="w-full px-4 py-3 rounded-lg glass-input outline-none text-sm text-dark-100 bg-dark-800/50"
+                  className="w-full px-4 py-3 rounded-xl glass-input outline-none text-sm text-dark-100"
                   placeholder="google/gemini-2.5-flash-lite"
                 />
               </div>
@@ -227,7 +227,7 @@ function Admin() {
               <button
                 onClick={handleSaveSettings}
                 disabled={loading}
-                className="gradient-primary text-white px-6 py-3 rounded-lg font-medium hover:shadow-glow transition-all disabled:opacity-50 flex items-center gap-2"
+                className="btn-primary px-6 py-3 rounded-xl font-semibold transition-all duration-200 disabled:opacity-50 flex items-center gap-2"
               >
                 {loading ? (
                   <>
@@ -247,7 +247,7 @@ function Admin() {
           {/* User Management */}
           <div className="glass-card rounded-2xl p-8">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold gradient-text flex items-center gap-3">
+              <h2 className="text-2xl font-bold text-accent flex items-center gap-3 tracking-tight">
                 <Users className="w-7 h-7" />
                 User Management
               </h2>
@@ -255,7 +255,7 @@ function Admin() {
               {!showNewUser && (
                 <button
                   onClick={() => setShowNewUser(true)}
-                  className="px-4 py-2 gradient-primary text-white rounded-lg font-medium hover:shadow-glow transition-all flex items-center gap-2"
+                  className="btn-primary px-4 py-2.5 rounded-xl font-semibold transition-all duration-200 flex items-center gap-2"
                 >
                   <Plus className="w-4 h-4" />
                   Add User
@@ -265,7 +265,7 @@ function Admin() {
 
             {/* New/Edit User Form */}
             {showNewUser && (
-              <form onSubmit={handleUserSubmit} className="mb-8 p-6 glass rounded-xl border border-primary-500/30">
+              <form onSubmit={handleUserSubmit} className="mb-8 p-6 bg-dark-800/50 rounded-xl border border-dark-700/40">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-semibold text-lg text-dark-100">
                     {editingUser ? 'Edit User' : 'New User'}
@@ -273,7 +273,7 @@ function Admin() {
                   <button
                     type="button"
                     onClick={cancelUserForm}
-                    className="p-1 hover:bg-dark-700/50 rounded transition-colors"
+                    className="p-1.5 hover:bg-dark-700/50 rounded-lg transition-colors"
                   >
                     <X className="w-5 h-5 text-dark-400" />
                   </button>
@@ -288,7 +288,7 @@ function Admin() {
                       type="text"
                       value={userForm.name}
                       onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
-                      className="w-full px-4 py-3 rounded-lg glass-input outline-none text-dark-100 bg-dark-800/50"
+                      className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-100"
                       required
                     />
                   </div>
@@ -301,7 +301,7 @@ function Admin() {
                       type="email"
                       value={userForm.email}
                       onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
-                      className="w-full px-4 py-3 rounded-lg glass-input outline-none text-dark-100 bg-dark-800/50"
+                      className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-100"
                       required
                       disabled={!!editingUser}
                     />
@@ -316,13 +316,13 @@ function Admin() {
                     type="password"
                     value={userForm.password}
                     onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-                    className="w-full px-4 py-3 rounded-lg glass-input outline-none text-dark-100 bg-dark-800/50"
+                    className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-100"
                     required={!editingUser}
                   />
                 </div>
 
                 <div className="space-y-3 mb-4">
-                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-dark-700/30 transition-colors">
+                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl hover:bg-dark-700/30 transition-colors">
                     <input
                       type="checkbox"
                       checked={userForm.is_admin}
@@ -335,7 +335,7 @@ function Admin() {
                     </div>
                   </label>
 
-                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-dark-700/30 transition-colors">
+                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl hover:bg-dark-700/30 transition-colors">
                     <input
                       type="checkbox"
                       checked={userForm.use_default_key}
@@ -343,7 +343,7 @@ function Admin() {
                       className="w-4 h-4 rounded"
                     />
                     <div className="flex items-center gap-2">
-                      <Key className="w-4 h-4 text-primary-400" />
+                      <Key className="w-4 h-4 text-dark-400" />
                       <span className="text-sm font-medium text-dark-200">Can Use Default API Key</span>
                     </div>
                   </label>
@@ -352,7 +352,7 @@ function Admin() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full gradient-primary text-white py-3 rounded-lg font-medium hover:shadow-glow transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="btn-primary w-full py-3 rounded-xl font-semibold transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {loading ? (
                     <>
@@ -374,7 +374,7 @@ function Admin() {
               {users.map(user => (
                 <div
                   key={user.id}
-                  className="p-5 glass rounded-xl hover:border-primary-500/30 transition-all"
+                  className="p-5 bg-dark-800/50 border border-dark-700/50 rounded-xl hover:border-dark-600 transition-all duration-200"
                 >
                   <div className="flex items-center justify-between gap-4">
                     {/* User Info */}
@@ -382,7 +382,7 @@ function Admin() {
                       <div className="flex items-center gap-3 mb-2">
                         <h3 className="font-semibold text-lg text-dark-100">{user.name}</h3>
                         {user.is_admin === 1 && (
-                          <span className="flex items-center gap-1 px-2.5 py-1 bg-accent-500/20 text-accent-300 rounded-full text-xs font-medium border border-accent-500/30">
+                          <span className="flex items-center gap-1 px-2.5 py-1 bg-accent-500/10 text-accent-400 rounded-full text-xs font-medium border border-accent-500/20">
                             <Shield className="w-3 h-3" />
                             Admin
                           </span>
@@ -406,7 +406,7 @@ function Admin() {
                         <span className="flex items-center gap-1">
                           {user.use_default_key ? (
                             <>
-                              <CheckCircle className="w-3 h-3 text-primary-400" />
+                              <CheckCircle className="w-3 h-3 text-accent" />
                               <span className="text-dark-300">Can use default key</span>
                             </>
                           ) : (
@@ -422,8 +422,8 @@ function Admin() {
                     {/* Usage Stats Grid */}
                     <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-3">
                       {/* Default Key Tokens */}
-                      <div className="flex items-center gap-2 px-3 py-2 bg-primary-500/10 rounded-lg border border-primary-500/20">
-                        <Key className="w-4 h-4 text-primary-400" />
+                      <div className="flex items-center gap-2 px-3 py-2 bg-accent/10 rounded-xl border border-accent/20">
+                        <Key className="w-4 h-4 text-accent" />
                         <div className="min-w-0">
                           <div className="text-xs text-dark-500">Default Tokens</div>
                           <div className="text-sm font-semibold text-dark-200 truncate">
@@ -433,8 +433,8 @@ function Admin() {
                       </div>
 
                       {/* Default Key Cost */}
-                      <div className="flex items-center gap-2 px-3 py-2 bg-primary-500/10 rounded-lg border border-primary-500/20">
-                        <Coins className="w-4 h-4 text-primary-400" />
+                      <div className="flex items-center gap-2 px-3 py-2 bg-accent/10 rounded-xl border border-accent/20">
+                        <Coins className="w-4 h-4 text-accent" />
                         <div className="min-w-0">
                           <div className="text-xs text-dark-500">Default Cost</div>
                           <div className="text-sm font-semibold text-dark-200 truncate">
@@ -444,7 +444,7 @@ function Admin() {
                       </div>
 
                       {/* Personal Key Tokens */}
-                      <div className="flex items-center gap-2 px-3 py-2 bg-accent-500/10 rounded-lg border border-accent-500/20">
+                      <div className="flex items-center gap-2 px-3 py-2 bg-accent-500/10 rounded-xl border border-accent-500/20">
                         <Zap className="w-4 h-4 text-accent-400" />
                         <div className="min-w-0">
                           <div className="text-xs text-dark-500">Personal Tokens</div>
@@ -455,7 +455,7 @@ function Admin() {
                       </div>
 
                       {/* Personal Key Cost */}
-                      <div className="flex items-center gap-2 px-3 py-2 bg-accent-500/10 rounded-lg border border-accent-500/20">
+                      <div className="flex items-center gap-2 px-3 py-2 bg-accent-500/10 rounded-xl border border-accent-500/20">
                         <Coins className="w-4 h-4 text-accent-400" />
                         <div className="min-w-0">
                           <div className="text-xs text-dark-500">Personal Cost</div>
@@ -470,14 +470,14 @@ function Admin() {
                     <div className="flex gap-2 flex-shrink-0">
                       <button
                         onClick={() => handleEditUser(user)}
-                        className="p-2 hover:bg-primary-500/20 rounded-lg transition-colors"
+                        className="p-2 hover:bg-accent/10 rounded-lg transition-colors"
                         title="Edit"
                       >
-                        <Edit2 className="w-4 h-4 text-primary-400" />
+                        <Edit2 className="w-4 h-4 text-accent" />
                       </button>
                       <button
                         onClick={() => handleDeleteUser(user.id)}
-                        className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
+                        className="p-2 hover:bg-red-500/10 rounded-lg transition-colors"
                         title="Delete"
                       >
                         <Trash2 className="w-4 h-4 text-red-400" />

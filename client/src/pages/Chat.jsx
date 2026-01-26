@@ -4,19 +4,21 @@ import {
   MessageSquare, Plus, Settings as SettingsIcon, LogOut, Brain,
   Send, Trash2, GitBranch, Bot, User as UserIcon,
   Sparkles, Zap, Menu, X, ChevronDown, ChevronRight, Square,
-  Check, Trash, Copy, Pencil, Info, DollarSign, Hash
+  Check, Trash, Copy, Pencil, Info, DollarSign, Hash, Lightbulb
 } from 'lucide-react';
 import { AuthContext } from '../contexts/AuthContext';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import ModelSelector, { DEFAULT_MODEL, RECENT_MODELS_KEY, MODELS_CACHE_KEY } from '../components/ModelSelector';
+import ModelSelector, { DEFAULT_MODEL, RECENT_MODELS_KEY, MODELS_CACHE_KEY, modelSupportsReasoning } from '../components/ModelSelector';
 
 marked.setOptions({
   breaks: true,
   gfm: true
 });
 
+
 const LAST_MODEL_KEY = 'budi_chat_last_model';
+
 
 // Format time as seconds or minutes:seconds (integer display)
 const formatThinkingTime = (seconds) => {
@@ -61,6 +63,28 @@ const calculateCost = (promptTokens, completionTokens, modelId) => {
   return (promptTokens + completionTokens) * 0.000001;
 };
 
+// Format model ID into a readable name
+const formatModelName = (modelId) => {
+  if (!modelId) return 'Assistant';
+
+  // Try to find in cache first for proper official name
+  const model = getModelFromCache(modelId);
+  if (model?.name) {
+    // Strip provider prefix if present (e.g. "Google: Gemini 2.5 Flash" -> "Gemini 2.5 Flash")
+    if (model.name.includes(': ')) {
+      return model.name.split(': ')[1];
+    }
+    return model.name;
+  }
+
+  // Fallback: clean up the ID (e.g. "google/gemini-2.5-pro" -> "Gemini 2.5 Pro")
+  const parts = modelId.split('/');
+  const name = parts[parts.length - 1];
+  return name
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, l => l.toUpperCase());
+};
+
 // Memoized ThinkingSection component to prevent re-renders during streaming
 const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming, elapsedTime, stats }) => {
   const contentRef = useRef(null);
@@ -98,14 +122,14 @@ const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming, el
             e.preventDefault();
             onToggle();
           }}
-          className="flex items-center gap-2 text-sm font-medium text-dark-400 hover:text-dark-300 transition-colors px-3 py-1.5 rounded-lg hover:bg-white/[0.03] select-none"
+          className="flex items-center gap-2 text-sm font-medium text-dark-500 hover:text-dark-400 transition-colors px-3 py-1.5 rounded-lg hover:bg-dark-800/40 select-none"
         >
-          <Brain className="w-4 h-4 text-accent-400" />
+          <Brain className="w-4 h-4" />
           <span>
             {isStreaming ? (
-              <>Thinking... <span className="text-accent-400 font-mono text-xs ml-1">{formatThinkingTime(elapsedTime || 0)}</span></>
+              <>Thinking... <span className="text-dark-500 font-mono text-xs ml-1">{formatThinkingTime(elapsedTime || 0)}</span></>
             ) : (
-              'Thought Process'
+              'Reasoning'
             )}
           </span>
           <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
@@ -114,26 +138,26 @@ const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming, el
         {/* Details on hover - bottom right */}
         {!isStreaming && hasStats && (
           <div className="group relative">
-            <span className="text-[10px] text-dark-500 cursor-default">details</span>
+            <span className="text-[10px] text-dark-600 cursor-default">details</span>
             <div className="absolute bottom-full right-0 mb-1 hidden group-hover:block z-10">
-              <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
+              <div className="bg-dark-800/95 border border-dark-700/40 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
                 <div className="space-y-1">
                   {stats.duration > 0 && (
                     <div className="flex justify-between gap-4">
-                      <span className="text-dark-400">Time:</span>
-                      <span className="text-dark-200 font-mono">{formatThinkingTime(stats.duration)}</span>
+                      <span className="text-dark-500">Time:</span>
+                      <span className="text-dark-300 font-mono">{formatThinkingTime(stats.duration)}</span>
                     </div>
                   )}
                   {stats.totalTokens > 0 && (
                     <div className="flex justify-between gap-4">
-                      <span className="text-dark-400">Tokens:</span>
-                      <span className="text-dark-200 font-mono">{stats.totalTokens.toLocaleString()} tks</span>
+                      <span className="text-dark-500">Tokens:</span>
+                      <span className="text-dark-300 font-mono">{stats.totalTokens.toLocaleString()}</span>
                     </div>
                   )}
                   {cost > 0 && (
                     <div className="flex justify-between gap-4">
-                      <span className="text-dark-400">Cost:</span>
-                      <span className="text-accent-400 font-mono">${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}</span>
+                      <span className="text-dark-500">Cost:</span>
+                      <span className="text-dark-400 font-mono">${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}</span>
                     </div>
                   )}
                 </div>
@@ -146,7 +170,7 @@ const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming, el
         <div
           ref={contentRef}
           onScroll={handleScroll}
-          className="mt-2 px-4 py-3 text-sm text-dark-300 rounded-xl border border-white/[0.06] italic bg-dark-900/40 text-left max-h-[300px] overflow-y-auto prose prose-invert prose-sm max-w-none"
+          className="mt-2 px-4 py-3 text-sm rounded-lg border border-dark-700/30 bg-dark-800/40 text-left max-h-[300px] overflow-y-auto markdown-content"
           dangerouslySetInnerHTML={{
             __html: DOMPurify.sanitize(marked.parse(reasoning || 'Thinking...'))
           }}
@@ -165,7 +189,8 @@ function Chat() {
     model: localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL,
     temperature: 0.7,
     system_prompt: '',
-    agent_mode: false
+    agent_mode: false,
+    thinking_mode: 'auto'
   }));
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -195,6 +220,28 @@ function Chat() {
   const [thinkingStartTime, setThinkingStartTime] = useState(null);
   const [thinkingElapsedTime, setThinkingElapsedTime] = useState(0);
   const [lastThinkingStats, setLastThinkingStats] = useState(null);
+  const [thinkingComplete, setThinkingComplete] = useState(false);
+  const currentChatIdRef = useRef(null);
+
+  // Update ref whenever currentChat changes to prevent ghosting
+  useEffect(() => {
+    currentChatIdRef.current = currentChat?.id;
+  }, [currentChat?.id]);
+
+  // Thinking mode state for reasoning models
+  const [thinkingMode, setThinkingMode] = useState('auto');
+  const [showThinkingDropdown, setShowThinkingDropdown] = useState(false);
+  const thinkingDropdownRef = useRef(null);
+
+  // Thinking mode options
+  const THINKING_MODES = [
+    { id: 'off', label: 'Off', description: 'No extended thinking', budgetTokens: 0 },
+    { id: 'auto', label: 'Auto', description: 'Model default', budgetTokens: 16384 },
+    { id: 'low', label: 'Low', description: 'Quick reasoning', budgetTokens: 1024 },
+    { id: 'medium', label: 'Medium', description: 'Balanced thinking', budgetTokens: 4096 },
+    { id: 'high', label: 'High', description: 'Deep reasoning', budgetTokens: 16384 },
+    { id: 'max', label: 'Max', description: 'Maximum reasoning', budgetTokens: 32768 },
+  ];
 
   const [chatSettings, setChatSettings] = useState(() => ({
     model: localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL,
@@ -202,6 +249,18 @@ function Chat() {
     system_prompt: '',
     agent_mode: false
   }));
+
+  // Check if current model supports reasoning
+  const isReasoningSupported = useMemo(() => {
+    return modelSupportsReasoning(chatSettings.model);
+  }, [chatSettings.model]);
+
+  // Reset thinking mode if model changes to one that doesn't support it
+  useEffect(() => {
+    if (!isReasoningSupported && thinkingMode !== 'off') {
+      setThinkingMode('off');
+    }
+  }, [isReasoningSupported, thinkingMode]);
 
   // Calculate chat totals from persisted message data
   const chatTotals = useMemo(() => {
@@ -231,9 +290,8 @@ function Chat() {
     setStreaming(false);
     setUsageStats(null);
 
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    // We do NOT abort the controller here anymore. 
+    // This allows the previous message to continue generating in the background.
 
     if (currentChat?.id) {
       loadMessages(currentChat.id);
@@ -254,16 +312,16 @@ function Chat() {
     }
   }, [streaming]);
 
-  // Timer for thinking section
+  // Timer for thinking section - stops when thinking is complete
   useEffect(() => {
     let interval;
-    if (streaming && thinkingStartTime) {
+    if (streaming && thinkingStartTime && !thinkingComplete) {
       interval = setInterval(() => {
         setThinkingElapsedTime((Date.now() - thinkingStartTime) / 1000);
       }, 100);
     }
     return () => clearInterval(interval);
-  }, [streaming, thinkingStartTime]);
+  }, [streaming, thinkingStartTime, thinkingComplete]);
 
   // Reset thinking timer when streaming starts
   useEffect(() => {
@@ -286,6 +344,19 @@ function Chat() {
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showInfoModal]);
+
+  // Close thinking dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (thinkingDropdownRef.current && !thinkingDropdownRef.current.contains(event.target)) {
+        setShowThinkingDropdown(false);
+      }
+    };
+    if (showThinkingDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showThinkingDropdown]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -335,6 +406,7 @@ function Chat() {
         system_prompt: data.system_prompt || '',
         agent_mode: !!data.agent_mode
       });
+      setThinkingMode(data.thinking_mode || 'auto');
       // Update currentChat with latest data (including updated title)
       const { messages: _, ...chatData } = data;
       setCurrentChat(prev => ({ ...prev, ...chatData }));
@@ -345,6 +417,16 @@ function Chat() {
 
   const createNewChat = () => {
     const modelToUse = localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL;
+    // Clear all existing state
+    setMessages([]);
+    setStreamingMessage('');
+    setStreamingMessage('');
+    setStreamingReasoning('');
+    setThinkingComplete(false);
+    setExpandedThinkingSections(new Set());
+    setLastThinkingStats(null);
+    setThinkingElapsedTime(0);
+    setShowSettings(false);
     // Create a temporary chat object without an ID
     // The actual chat will be created when the first message is sent
     setCurrentChat({
@@ -352,7 +434,8 @@ function Chat() {
       model: modelToUse,
       temperature: 0.7,
       system_prompt: '',
-      agent_mode: false
+      agent_mode: false,
+      thinking_mode: 'auto'
     });
     setChatSettings({
       model: modelToUse,
@@ -360,6 +443,7 @@ function Chat() {
       system_prompt: '',
       agent_mode: false
     });
+    setThinkingMode('auto');
   };
 
   const updateChatSettings = async () => {
@@ -513,13 +597,21 @@ function Chat() {
             model: chatSettings.model,
             temperature: chatSettings.temperature,
             system_prompt: chatSettings.system_prompt,
-            agent_mode: chatSettings.agent_mode
+            agent_mode: chatSettings.agent_mode,
+            thinking_mode: thinkingMode || 'auto'
           })
         });
         const newChat = await createRes.json();
         chatId = newChat.id;
+        // Don't update currentChat here yet as it might race, but we need the ID
         setCurrentChat(newChat);
         setChats(prev => [newChat, ...prev]);
+        currentChatIdRef.current = chatId; // Manually update ref for immediate use
+      }
+
+      // Final check before starting stream
+      if (currentChatIdRef.current && currentChatIdRef.current !== chatId) {
+        throw new Error('Chat changed before sending message');
       }
 
       const res = await fetch(`/api/messages/${chatId}`, {
@@ -528,7 +620,13 @@ function Chat() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ content: userMessage }),
+        body: JSON.stringify({
+          content: userMessage,
+          thinking: thinkingMode !== 'off' ? {
+            type: 'enabled',
+            budget_tokens: THINKING_MODES.find(m => m.id === thinkingMode)?.budgetTokens || 16384
+          } : undefined
+        }),
         signal: abortControllerRef.current.signal
       });
 
@@ -541,9 +639,22 @@ function Chat() {
       const decoder = new TextDecoder();
       let buffer = '';
 
+      // Capture critical references for the loop
+      const currentStreamController = abortControllerRef.current;
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
+
+        // Check for abort on THIS specific controller (user interactions)
+        if (currentStreamController?.signal.aborted) {
+          try { reader.cancel(); } catch (e) { }
+          break;
+        }
+
+        // Check if this is the active chat for UI updates
+        // We do NOT break here if it's not active - we keep the stream alive for the server
+        const isActiveChat = currentChatIdRef.current === chatId;
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
@@ -555,10 +666,27 @@ function Chat() {
               const data = JSON.parse(line.slice(6));
 
               if (data.type === 'reasoning') {
-                setStreamingReasoning(prev => prev + data.content);
+                if (isActiveChat) {
+                  setStreamingReasoning(prev => prev + data.content);
+                }
               } else if (data.type === 'content') {
-                setStreamingMessage(prev => prev + data.content);
+                if (isActiveChat) {
+                  setThinkingComplete(true); // Stop thinking timer
+                  setStreamingMessage(prev => prev + data.content);
+                }
+              } else if (data.type === 'title') {
+                // Handle concurrent title update
+                const newTitle = data.content;
+                // Always update the chat list item
+                setChats(prev => prev.map(c => c.id === chatId ? { ...c, title: newTitle } : c));
+                // Update currentChat only if it matches
+                if (isActiveChat) {
+                  setCurrentChat(prev => (prev.id === chatId ? { ...prev, title: newTitle } : prev));
+                }
               } else if (data.type === 'done') {
+                // If we are not on the active chat, just ignore UI updates
+                if (!isActiveChat) return;
+
                 // Calculate thinking duration
                 const thinkingDuration = thinkingStartTime ? (Date.now() - thinkingStartTime) / 1000 : 0;
 
@@ -595,7 +723,9 @@ function Chat() {
                   setStreamingReasoning('');
                 }, 100);
               } else if (data.type === 'error') {
-                alert('Error: ' + data.error);
+                if (isActiveChat) {
+                  alert('Error: ' + data.error);
+                }
               }
             } catch (e) {
               console.error('Failed to parse SSE data:', e);
@@ -604,16 +734,20 @@ function Chat() {
         }
       }
     } catch (error) {
-      if (error.name === 'AbortError') {
+      if (error.name === 'AbortError' || error.message === 'Chat changed before sending message') {
         console.log('Generation aborted');
       } else {
         console.error('Failed to send message:', error);
         alert(error.message || 'Failed to send message. Please check your API key configuration.');
       }
     } finally {
-      setStreaming(false);
-      abortControllerRef.current = null;
-      isCreatingChatRef.current = false;
+      // Only clear streaming state if we are still on the same chat
+      // If we switched, the checking in useEffect would have already cleared it
+      if (currentChatIdRef.current === chatId) {
+        setStreaming(false);
+        abortControllerRef.current = null;
+        isCreatingChatRef.current = false;
+      }
     }
   };
 
@@ -784,45 +918,44 @@ function Chat() {
   return (
     <div className="flex h-screen bg-dark-950 bg-mesh">
       {/* Sidebar */}
-      <div className={`${showSidebar ? 'w-80' : 'w-16'} transition-all duration-300 ease-out glass-sidebar flex flex-col overflow-hidden`}>
-        <div className={`${showSidebar ? 'p-5' : 'p-2'} border-b border-white/[0.06]`}>
+      <div className={`${showSidebar ? 'w-72' : 'w-16'} transition-all duration-300 ease-out glass-sidebar flex flex-col overflow-hidden`}>
+        <div className={`${showSidebar ? 'p-5' : 'p-2'} border-b border-dark-700/30`}>
           <div className={`flex items-center ${showSidebar ? 'justify-between mb-5' : 'justify-center mb-2'}`}>
             {showSidebar ? (
               <>
                 <div className="flex items-center gap-3">
                   <div className="relative">
-                    <div className="w-11 h-11 rounded-2xl gradient-primary flex items-center justify-center shadow-lg glow">
-                      <MessageSquare className="w-5 h-5 text-white" />
+                    <div className="w-9 h-9 rounded-lg bg-dark-700/60 flex items-center justify-center border border-dark-600/40">
+                      <MessageSquare className="w-4 h-4 text-dark-300" />
                     </div>
-                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-dark-900"></div>
                   </div>
                   <div>
-                    <h1 className="font-bold text-lg gradient-text tracking-tight">Budi Chat</h1>
-                    <p className="text-xs text-dark-400 font-medium">{user?.name}</p>
+                    <h1 className="font-semibold text-base text-dark-100 tracking-tight font-mono">Budi Chat</h1>
+                    <p className="text-xs text-dark-500">{user?.name}</p>
                   </div>
                 </div>
                 <button
                   onClick={() => setShowSidebar(false)}
-                  className="p-2 hover:bg-white/[0.05] rounded-xl transition-all duration-200"
+                  className="p-2 hover:bg-dark-700/30 rounded-lg transition-all duration-200"
                   title="Collapse sidebar"
                 >
-                  <ChevronRight className="w-5 h-5 text-dark-400" />
+                  <ChevronRight className="w-4 h-4 text-dark-500" />
                 </button>
               </>
             ) : (
               <button
                 onClick={() => setShowSidebar(true)}
-                className="p-2 hover:bg-white/[0.05] rounded-xl transition-all duration-200"
+                className="p-2 hover:bg-dark-700/30 rounded-lg transition-all duration-200"
                 title="Expand sidebar"
               >
-                <Menu className="w-5 h-5 text-dark-400" />
+                <Menu className="w-4 h-4 text-dark-500" />
               </button>
             )}
           </div>
 
           <button
             onClick={createNewChat}
-            className={`${showSidebar ? 'w-full py-3 gap-2' : 'w-10 h-10 mx-auto'} gradient-primary text-white rounded-xl font-semibold hover:shadow-glow transition-all duration-200 flex items-center justify-center shine active:scale-[0.98]`}
+            className={`${showSidebar ? 'w-full py-2.5 gap-2' : 'w-9 h-9 mx-auto'} btn-primary text-dark-900 rounded-lg font-medium text-sm flex items-center justify-center`}
             title={showSidebar ? undefined : "New Chat"}
           >
             <Plus className="w-4 h-4" />
@@ -830,10 +963,10 @@ function Chat() {
           </button>
         </div>
 
-        <div className={`flex-1 overflow-y-auto ${showSidebar ? 'p-3 space-y-1.5' : 'p-2 space-y-1'}`}>
+        <div className={`flex-1 overflow-y-auto ${showSidebar ? 'p-3 space-y-1' : 'p-2 space-y-1'}`}>
           {chats.length === 0 && showSidebar && (
             <div className="text-center py-8 px-4">
-              <div className="w-12 h-12 rounded-xl bg-dark-800/50 flex items-center justify-center mx-auto mb-3">
+              <div className="w-12 h-12 rounded-xl bg-dark-800 flex items-center justify-center mx-auto mb-3">
                 <MessageSquare className="w-6 h-6 text-dark-500" />
               </div>
               <p className="text-sm text-dark-400">No chats yet</p>
@@ -843,9 +976,9 @@ function Chat() {
           {chats.map(chat => (
             <div
               key={chat.id}
-              className={`group ${showSidebar ? 'p-3' : 'p-2'} rounded-xl cursor-pointer transition-all duration-200 ${currentChat?.id === chat.id
-                ? 'glass-card border-primary-500/20 shadow-lg'
-                : 'hover:bg-white/[0.03] border border-transparent hover:border-white/[0.06]'
+              className={`group ${showSidebar ? 'p-3' : 'p-2'} rounded-lg cursor-pointer transition-all duration-200 ${currentChat?.id === chat.id
+                ? 'bg-dark-800/80 border-l-2 border-accent/60'
+                : 'hover:bg-dark-800/40 border-l-2 border-transparent'
                 }`}
               onClick={() => setCurrentChat(chat)}
               title={showSidebar ? undefined : chat.title}
@@ -855,9 +988,11 @@ function Chat() {
                   <div className="flex-1 min-w-0">
                     <p className={`font-medium text-sm truncate ${currentChat?.id === chat.id ? 'text-dark-50' : 'text-dark-200'}`}>{chat.title}</p>
                     <div className="flex items-center gap-2 mt-1.5">
-                      <span className="text-xs text-dark-500">{chat.message_count} messages</span>
+                      <span className="text-xs text-dark-500">
+                        {chat.message_count === 1 ? '1 message' : `${chat.message_count || 0} messages`}
+                      </span>
                       {chat.agent_mode === 1 && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-accent-500/10 text-accent-400 text-[10px] font-medium">
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-accent/10 text-accent text-[10px] font-medium">
                           <Zap className="w-2.5 h-2.5" />
                           Agent
                         </span>
@@ -905,44 +1040,44 @@ function Chat() {
                 </div>
               ) : (
                 <div className="flex justify-center">
-                  <MessageSquare className={`w-5 h-5 ${currentChat?.id === chat.id ? 'text-primary-400' : 'text-dark-400'}`} />
+                  <MessageSquare className={`w-5 h-5 ${currentChat?.id === chat.id ? 'text-accent' : 'text-dark-400'}`} />
                 </div>
               )}
             </div>
           ))}
         </div>
 
-        <div className={`${showSidebar ? 'p-3' : 'p-2'} border-t border-white/[0.06] space-y-1`}>
+        <div className={`${showSidebar ? 'p-3' : 'p-2'} border-t border-dark-700/30 space-y-1`}>
           <button
             onClick={() => navigate('/memories')}
-            className={`${showSidebar ? 'w-full px-4 gap-3' : 'w-10 h-10 mx-auto'} flex items-center justify-center py-2.5 rounded-xl glass-button transition-all text-sm font-medium text-dark-300 hover:text-dark-100`}
+            className={`${showSidebar ? 'w-full px-4 gap-3' : 'w-9 h-9 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-400 hover:text-dark-300`}
             title={showSidebar ? undefined : "Memories"}
           >
-            <Brain className="w-4 h-4 text-accent-400" />
+            <Brain className="w-4 h-4" />
             {showSidebar && "Memories"}
           </button>
           <button
             onClick={() => navigate('/settings')}
-            className={`${showSidebar ? 'w-full px-4 gap-3' : 'w-10 h-10 mx-auto'} flex items-center justify-center py-2.5 rounded-xl glass-button transition-all text-sm font-medium text-dark-300 hover:text-dark-100`}
+            className={`${showSidebar ? 'w-full px-4 gap-3' : 'w-9 h-9 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-400 hover:text-dark-300`}
             title={showSidebar ? undefined : "Settings"}
           >
-            <SettingsIcon className="w-4 h-4 text-dark-400" />
+            <SettingsIcon className="w-4 h-4" />
             {showSidebar && "Settings"}
           </button>
           {user?.is_admin && (
             <button
               onClick={() => navigate('/admin')}
-              className={`${showSidebar ? 'w-full px-4 gap-3' : 'w-10 h-10 mx-auto'} flex items-center justify-center py-2.5 rounded-xl glass-button transition-all text-sm font-medium text-accent-400 hover:text-accent-300`}
-              title={showSidebar ? undefined : "Admin Panel"}
+              className={`${showSidebar ? 'w-full px-4 gap-3' : 'w-9 h-9 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-400 hover:text-dark-300`}
+              title={showSidebar ? undefined : "Admin"}
             >
               <Sparkles className="w-4 h-4" />
-              {showSidebar && "Admin Panel"}
+              {showSidebar && "Admin"}
             </button>
           )}
           {showSidebar && <div className="divider-gradient my-2"></div>}
           <button
             onClick={logout}
-            className={`${showSidebar ? 'w-full px-4 gap-3' : 'w-10 h-10 mx-auto'} flex items-center justify-center py-2.5 rounded-xl hover:bg-red-500/10 transition-all text-sm font-medium text-dark-400 hover:text-red-400`}
+            className={`${showSidebar ? 'w-full px-4 gap-3' : 'w-9 h-9 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-500 hover:text-dark-400`}
             title={showSidebar ? undefined : "Logout"}
           >
             <LogOut className="w-4 h-4" />
@@ -954,22 +1089,24 @@ function Chat() {
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="glass border-b border-white/[0.06] px-4 py-3 flex items-center justify-between relative z-50 overflow-visible">
+        <div className="bg-dark-900/50 border-b border-dark-700/30 px-4 py-3 flex items-center justify-between relative z-50 overflow-visible">
           <div className="flex items-center gap-3">
             {/* Chat Title and Model Selector */}
             {currentChat ? (
               <>
-                <h2 className="text-base font-semibold text-dark-100">{currentChat.title}</h2>
-                <div className="h-4 w-px bg-white/[0.06]"></div>
-                <ModelSelector
-                  selectedModel={chatSettings.model}
-                  onModelChange={handleModelChange}
-                  isDropdown={true}
-                />
+                <h2 className="text-sm font-medium text-dark-200">{currentChat.title}</h2>
+                <div className="h-3 w-px bg-dark-700/50"></div>
+                <div className="flex items-center">
+                  <ModelSelector
+                    selectedModel={chatSettings.model}
+                    onModelChange={handleModelChange}
+                    isDropdown={true}
+                  />
+                </div>
                 {chatSettings.agent_mode && (
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 bg-accent-500/10 text-accent-400 rounded-lg text-xs font-semibold border border-accent-500/20">
+                  <span className="flex items-center gap-1.5 px-2.5 py-1 bg-dark-800/60 text-dark-400 rounded text-xs font-medium border border-dark-700/40">
                     <Zap className="w-3 h-3" />
-                    Agent Mode
+                    Agent
                   </span>
                 )}
               </>
@@ -983,9 +1120,9 @@ function Chat() {
               <div className="relative overflow-visible" ref={statsPopupRef}>
                 <button
                   onClick={() => setShowInfoModal(!showInfoModal)}
-                  className={`p-2 rounded-xl transition-all duration-200 ${showInfoModal
-                    ? 'bg-accent-500/10 text-accent-400 border border-accent-500/20'
-                    : 'glass-button text-dark-400 hover:text-dark-200'
+                  className={`p-2 rounded-lg transition-all duration-200 ${showInfoModal
+                    ? 'bg-dark-800 text-dark-300 border border-dark-700/50'
+                    : 'hover:bg-dark-800/40 text-dark-500 hover:text-dark-400'
                     }`}
                   title="Usage Stats"
                 >
@@ -994,10 +1131,10 @@ function Chat() {
 
                 {/* Usage Stats Panel */}
                 {showInfoModal && (
-                  <div className="fixed top-14 right-4 w-80 bg-dark-900 border border-dark-700 rounded-xl z-[100] shadow-2xl scale-in">
-                    <div className="p-3 border-b border-dark-700">
-                      <h4 className="text-sm font-semibold text-dark-200 flex items-center gap-2">
-                        <Hash className="w-3.5 h-3.5 text-accent-400" />
+                  <div className="fixed top-14 right-4 w-80 glass-dropdown rounded-lg z-[100] scale-in">
+                    <div className="p-3 border-b border-dark-700/30">
+                      <h4 className="text-sm font-medium text-dark-300 flex items-center gap-2">
+                        <Hash className="w-3.5 h-3.5 text-dark-500" />
                         Chat Stats
                       </h4>
                     </div>
@@ -1017,7 +1154,7 @@ function Chat() {
                         </div>
                         <div className="p-2 rounded-lg bg-dark-800">
                           <p className="text-dark-500">AI Responses</p>
-                          <p className="text-sm font-semibold text-accent-400">{messages.filter(m => m.role === 'assistant').length}</p>
+                          <p className="text-sm font-semibold text-accent">{messages.filter(m => m.role === 'assistant').length}</p>
                         </div>
                       </div>
 
@@ -1028,7 +1165,7 @@ function Chat() {
                           <div className="space-y-1.5 text-xs">
                             <div className="flex justify-between">
                               <span className="text-dark-400">Total Cost</span>
-                              <span className="font-semibold text-accent-400">
+                              <span className="font-semibold text-accent">
                                 ${chatTotals.totalCost.toFixed(2)}
                               </span>
                             </div>
@@ -1049,9 +1186,9 @@ function Chat() {
                                     <span className="text-dark-500"> / {contextLimit.toLocaleString()}</span>
                                   </span>
                                 </div>
-                                <div className="h-2 bg-dark-600 rounded-full overflow-hidden flex">
+                                <div className="h-2 bg-dark-700 rounded-full overflow-hidden flex">
                                   <div
-                                    className="h-full bg-cyan-500"
+                                    className="h-full bg-accent"
                                     style={{ width: `${inputPercent}%` }}
                                     title={`Input: ${chatTotals.totalPromptTokens.toLocaleString()}`}
                                   />
@@ -1061,7 +1198,7 @@ function Chat() {
                                     title={`Output: ${chatTotals.totalCompletionTokens.toLocaleString()}`}
                                   />
                                   <div
-                                    className="h-full bg-dark-700"
+                                    className="h-full bg-dark-600"
                                     style={{ width: `${freePercent}%` }}
                                     title={`Free: ${(contextLimit - chatTotals.totalTokens).toLocaleString()}`}
                                   />
@@ -1069,7 +1206,7 @@ function Chat() {
                                 <div className="flex justify-between mt-1 text-[10px] text-dark-500">
                                   <div className="flex items-center gap-2">
                                     <span className="flex items-center gap-1">
-                                      <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
+                                      <span className="w-2 h-2 rounded-full bg-accent"></span>
                                       Input ({chatTotals.totalPromptTokens.toLocaleString()})
                                     </span>
                                     <span className="flex items-center gap-1">
@@ -1078,7 +1215,7 @@ function Chat() {
                                     </span>
                                   </div>
                                   <span className="flex items-center gap-1">
-                                    <span className="w-2 h-2 rounded-full bg-dark-700"></span>
+                                    <span className="w-2 h-2 rounded-full bg-dark-600"></span>
                                     Free
                                   </span>
                                 </div>
@@ -1100,9 +1237,9 @@ function Chat() {
               </div>
               <button
                 onClick={() => setShowSettings(!showSettings)}
-                className={`px-4 py-2 flex items-center gap-2 rounded-xl transition-all duration-200 text-sm font-medium ${showSettings
-                  ? 'bg-primary-500/10 text-primary-400 border border-primary-500/20'
-                  : 'glass-button text-dark-300 hover:text-dark-100'
+                className={`px-3 py-1.5 flex items-center gap-2 rounded-lg transition-all duration-200 text-sm font-medium ${showSettings
+                  ? 'bg-dark-800 text-dark-300 border border-dark-700/50'
+                  : 'hover:bg-dark-800/40 text-dark-500 hover:text-dark-400'
                   }`}
               >
                 <SettingsIcon className="w-4 h-4" />
@@ -1114,8 +1251,8 @@ function Chat() {
 
         {/* Settings Panel */}
         {showSettings && currentChat && (
-          <div className="glass border-b border-white/[0.06] p-6 scale-in">
-            <div className="max-w-4xl mx-auto space-y-5">
+          <div className="bg-dark-900/50 border-b border-dark-700/30 p-5 scale-in">
+            <div className="max-w-2xl mx-auto space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
                   <label className="block text-sm font-medium text-dark-300 mb-2">
@@ -1131,7 +1268,7 @@ function Chat() {
                 <div>
                   <label className="block text-sm font-medium text-dark-300 mb-2">
                     Temperature
-                    <span className="ml-2 px-2 py-0.5 bg-dark-800/50 rounded-md text-xs text-primary-400 font-mono">
+                    <span className="ml-2 px-2 py-0.5 bg-dark-800 rounded-md text-xs text-accent font-mono">
                       {chatSettings.temperature}
                     </span>
                   </label>
@@ -1160,7 +1297,7 @@ function Chat() {
                 <textarea
                   value={chatSettings.system_prompt}
                   onChange={(e) => setChatSettings({ ...chatSettings, system_prompt: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl glass-input outline-none resize-none text-dark-100 placeholder-dark-500 text-sm"
+                  className="w-full px-4 py-3 rounded-xl glass-input outline-none resize-none text-dark-100 placeholder-dark-500 text-sm font-mono"
                   rows="3"
                   placeholder="Set a custom system prompt for this chat..."
                 />
@@ -1183,7 +1320,7 @@ function Chat() {
 
                 <button
                   onClick={updateChatSettings}
-                  className="px-5 py-2.5 gradient-primary text-white rounded-xl font-semibold hover:shadow-glow transition-all duration-200 active:scale-[0.98]"
+                  className="btn-primary px-5 py-2.5 rounded-xl font-semibold transition-all duration-200"
                 >
                   Save Settings
                 </button>
@@ -1199,205 +1336,202 @@ function Chat() {
           className="flex-1 overflow-y-auto p-6 relative z-0"
         >
           {currentChat && (
-            <div className="max-w-4xl mx-auto space-y-6">
+            <div className="max-w-2xl mx-auto space-y-6">
               {messages.length === 0 && !streaming && (
-                <div className="text-center py-16 fade-in">
-                  <div className="relative inline-block mb-6">
-                    <div className="w-20 h-20 rounded-2xl gradient-primary flex items-center justify-center shadow-lg glow-lg">
-                      <Bot className="w-10 h-10 text-white" />
-                    </div>
-                    <div className="absolute -top-1 -right-1 w-6 h-6 rounded-full gradient-primary flex items-center justify-center shadow-lg">
-                      <Sparkles className="w-3 h-3 text-white" />
+                <div className="text-center py-20 fade-in">
+                  <div className="relative inline-block mb-5">
+                    <div className="w-12 h-12 rounded-lg bg-dark-800/80 border border-dark-700/40 flex items-center justify-center">
+                      <Bot className="w-6 h-6 text-dark-500" />
                     </div>
                   </div>
-                  <h3 className="text-2xl font-bold text-dark-100 mb-3 tracking-tight">Start a conversation</h3>
-                  <p className="text-dark-400 max-w-sm mx-auto">Type a message below to begin chatting with AI. I'm here to help with anything you need.</p>
+                  <h3 className="text-lg font-medium text-dark-200 mb-2">Start a conversation</h3>
+                  <p className="text-dark-500 text-sm max-w-xs mx-auto">Type a message below to begin chatting with AI.</p>
                 </div>
               )}
 
               {messages.map((message, index) => (
                 <div
                   key={message.id}
-                  className={`flex gap-4 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}
+                  className={`${message.role === 'user' ? 'pl-8' : 'pr-8'}`}
                 >
-                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${message.role === 'user'
-                    ? 'gradient-primary shadow-glow'
-                    : 'glass-card'
+                  {message.role === 'assistant' && message.reasoning_content && (
+                    <ThinkingSection
+                      reasoning={message.reasoning_content}
+                      isExpanded={expandedThinkingSections.has(message.id)}
+                      onToggle={() => toggleThinkingSection(message.id)}
+                      isStreaming={false}
+                      elapsedTime={0}
+                      stats={null}
+                    />
+                  )}
+                  <div className={`${message.role === 'user'
+                    ? 'border-l-2 border-dark-600 rounded-lg px-4 py-3'
+                    : 'rounded-lg px-4 py-3'
                     }`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      {message.role === 'user' ? (
+                        <>
+                          <UserIcon className="w-3.5 h-3.5 text-dark-500" />
+                          <span className="text-xs font-medium text-dark-500">You</span>
+                        </>
+                      ) : (
+                        <>
+                          <Bot className="w-3.5 h-3.5 text-dark-500" />
+                          <span className="text-xs font-medium text-dark-500">{formatModelName(message.model)}</span>
+                        </>
+                      )}
+                    </div>
                     {message.role === 'user' ? (
-                      <UserIcon className="w-4 h-4 text-white" />
+                      editingMessageId === message.id ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={editContent}
+                            onChange={(e) => setEditContent(e.target.value)}
+                            className="w-full bg-dark-900 border border-dark-700 rounded-lg p-2 text-white resize-none focus:outline-none focus:border-accent/50"
+                            rows={3}
+                            autoFocus
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={handleEditCancel}
+                              className="px-3 py-1 text-xs rounded-lg bg-dark-700 hover:bg-dark-600 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => handleEditSave(message.id)}
+                              className="px-3 py-1 text-xs rounded-lg bg-accent hover:bg-accent transition-colors"
+                            >
+                              Save & Regenerate
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        renderMessage(message.content)
+                      )
                     ) : (
-                      <Bot className="w-4 h-4 text-primary-400" />
+                      renderMessage(message.content)
                     )}
                   </div>
 
-                  <div className={`flex-1 ${message.role === 'user' ? 'text-right' : ''}`}>
-                    {message.role === 'assistant' && message.reasoning_content && (
-                      <div className="text-left">
-                        <ThinkingSection
-                          reasoning={message.reasoning_content}
-                          isExpanded={expandedThinkingSections.has(message.id)}
-                          onToggle={() => toggleThinkingSection(message.id)}
-                          isStreaming={false}
-                          elapsedTime={0}
-                          stats={null}
-                        />
-                      </div>
-                    )}
-                    <div className={`inline-block max-w-[80%] ${message.role === 'user'
-                      ? 'bg-dark-700/80 border border-dark-600 text-dark-100 rounded-2xl rounded-tr-sm px-4 py-3'
-                      : 'bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 text-left shadow-lg'
-                      }`}>
-                      {message.role === 'user' ? (
-                        editingMessageId === message.id ? (
-                          <div className="space-y-2 text-left">
-                            <textarea
-                              value={editContent}
-                              onChange={(e) => setEditContent(e.target.value)}
-                              className="w-full min-w-[300px] bg-dark-800/50 border border-dark-600 rounded-lg p-2 text-white resize-none focus:outline-none focus:border-primary-400"
-                              rows={3}
-                              autoFocus
-                            />
-                            <div className="flex gap-2 justify-end">
-                              <button
-                                onClick={handleEditCancel}
-                                className="px-3 py-1 text-xs rounded-lg bg-dark-700 hover:bg-dark-600 transition-colors"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                onClick={() => handleEditSave(message.id)}
-                                className="px-3 py-1 text-xs rounded-lg bg-primary-500 hover:bg-primary-400 transition-colors"
-                              >
-                                Save & Regenerate
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          renderMessage(message.content)
-                        )
-                      ) : (
-                        renderMessage(message.content)
-                      )}
+                  {message.role === 'user' && editingMessageId !== message.id && (
+                    <div className="mt-2 flex gap-3 pl-4">
+                      <button
+                        onClick={() => handleCopy(message.id, message.content, 'raw')}
+                        className="text-xs text-dark-500 hover:text-accent flex items-center gap-1 transition-colors"
+                      >
+                        {copiedMessageId === `${message.id}-raw` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                        {copiedMessageId === `${message.id}-raw` ? 'Copied' : 'Copy'}
+                      </button>
+                      <button
+                        onClick={() => handleEditStart(message)}
+                        className="text-xs text-dark-500 hover:text-accent flex items-center gap-1 transition-colors"
+                      >
+                        <Pencil className="w-3 h-3" />
+                        Edit
+                      </button>
                     </div>
+                  )}
 
-                    {message.role === 'user' && editingMessageId !== message.id && (
-                      <div className="mt-2 flex gap-2 justify-end">
-                        <button
-                          onClick={() => handleCopy(message.id, message.content, 'raw')}
-                          className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors"
-                        >
-                          {copiedMessageId === `${message.id}-raw` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                          {copiedMessageId === `${message.id}-raw` ? 'Copied!' : 'Copy'}
-                        </button>
-                        <button
-                          onClick={() => handleEditStart(message)}
-                          className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors"
-                        >
-                          <Pencil className="w-3 h-3" />
-                          Edit
-                        </button>
-                      </div>
-                    )}
+                  {message.role === 'assistant' && (
+                    <div className="mt-2 flex gap-3 pl-4 items-center">
+                      <button
+                        onClick={() => handleCopy(message.id, message.content, 'raw')}
+                        className="text-xs text-dark-500 hover:text-accent flex items-center gap-1 transition-colors"
+                      >
+                        {copiedMessageId === `${message.id}-raw` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                        {copiedMessageId === `${message.id}-raw` ? 'Copied' : 'Copy Raw'}
+                      </button>
+                      <button
+                        onClick={() => handleCopy(message.id, message.content, 'markdown')}
+                        className="text-xs text-dark-500 hover:text-accent flex items-center gap-1 transition-colors"
+                      >
+                        {copiedMessageId === `${message.id}-markdown` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                        {copiedMessageId === `${message.id}-markdown` ? 'Copied' : 'Copy MD'}
+                      </button>
+                      <button
+                        onClick={() => openForkModal(message.id)}
+                        className="text-xs text-dark-500 hover:text-accent flex items-center gap-1 transition-colors"
+                      >
+                        <GitBranch className="w-3 h-3" />
+                        Fork
+                      </button>
 
-                    {message.role === 'assistant' && (
-                      <div className="mt-2 flex gap-2 items-center">
-                        <button
-                          onClick={() => handleCopy(message.id, message.content, 'raw')}
-                          className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors"
-                        >
-                          {copiedMessageId === `${message.id}-raw` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                          {copiedMessageId === `${message.id}-raw` ? 'Copied!' : 'Copy Raw'}
-                        </button>
-                        <button
-                          onClick={() => handleCopy(message.id, message.content, 'markdown')}
-                          className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors"
-                        >
-                          {copiedMessageId === `${message.id}-markdown` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                          {copiedMessageId === `${message.id}-markdown` ? 'Copied!' : 'Copy Markdown'}
-                        </button>
-                        <button
-                          onClick={() => openForkModal(message.id)}
-                          className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors"
-                        >
-                          <GitBranch className="w-3 h-3" />
-                          Fork from here
-                        </button>
-
-                        {/* Details hover - show if message has stats */}
-                        {(message.prompt_tokens || message.response_time_ms || message.cost > 0) && (
-                          <div className="group relative">
-                            <button className="text-xs text-dark-400 hover:text-primary-400 flex items-center gap-1 transition-colors">
-                              <Info className="w-3 h-3" />
-                            </button>
-                            <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10">
-                              <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
-                                <div className="space-y-1">
-                                  {message.response_time_ms > 0 && (
-                                    <div className="flex justify-between gap-4">
-                                      <span className="text-dark-400">Time:</span>
-                                      <span className="text-dark-200 font-mono">{formatThinkingTime(message.response_time_ms / 1000)}</span>
-                                    </div>
-                                  )}
-                                  {(message.prompt_tokens || message.completion_tokens) && (
-                                    <div className="flex justify-between gap-4">
-                                      <span className="text-dark-400">Tokens:</span>
-                                      <span className="text-dark-200 font-mono">{((message.prompt_tokens || 0) + (message.completion_tokens || 0)).toLocaleString()} tks</span>
-                                    </div>
-                                  )}
-                                  {message.cost > 0 && (
-                                    <div className="flex justify-between gap-4">
-                                      <span className="text-dark-400">Cost:</span>
-                                      <span className="text-accent-400 font-mono">
-                                        ${message.cost.toFixed(2)}
-                                      </span>
-                                    </div>
-                                  )}
-                                </div>
+                      {/* Details hover - show if message has stats */}
+                      {(message.prompt_tokens || message.response_time_ms || message.cost > 0) && (
+                        <div className="group relative">
+                          <button className="text-xs text-dark-500 hover:text-accent flex items-center gap-1 transition-colors">
+                            <Info className="w-3 h-3" />
+                          </button>
+                          <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10">
+                            <div className="bg-dark-800 border border-dark-700 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
+                              <div className="space-y-1">
+                                {message.response_time_ms > 0 && (
+                                  <div className="flex justify-between gap-4">
+                                    <span className="text-dark-400">Time:</span>
+                                    <span className="text-dark-200 font-mono">{formatThinkingTime(message.response_time_ms / 1000)}</span>
+                                  </div>
+                                )}
+                                {(message.prompt_tokens || message.completion_tokens) && (
+                                  <div className="flex justify-between gap-4">
+                                    <span className="text-dark-400">Tokens:</span>
+                                    <span className="text-dark-200 font-mono">{((message.prompt_tokens || 0) + (message.completion_tokens || 0)).toLocaleString()} tks</span>
+                                  </div>
+                                )}
+                                {message.cost > 0 && (
+                                  <div className="flex justify-between gap-4">
+                                    <span className="text-dark-400">Cost:</span>
+                                    <span className="text-accent font-mono">
+                                      ${message.cost.toFixed(2)}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
-                        )}
-                      </div>
-                    )}
-
-                  </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
 
               {(streaming || streamingMessage || streamingReasoning) && (
-                <div className="flex gap-4">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full glass-card flex items-center justify-center">
-                    <Bot className="w-4 h-4 text-primary-400" />
-                  </div>
-                  <div className="flex-1">
-                    {(streamingReasoning || (streaming && !streamingMessage)) && (
-                      <ThinkingSection
-                        reasoning={streamingReasoning}
-                        isExpanded={expandedThinkingSections.has('streaming')}
-                        onToggle={() => toggleThinkingSection('streaming')}
-                        isStreaming={!streamingMessage || (streamingReasoning && streaming)}
-                        elapsedTime={thinkingElapsedTime}
-                        stats={lastThinkingStats}
-                      />
-                    )}
+                <div className="pr-8">
+                  {(streamingReasoning || (streaming && !streamingMessage)) && (
+                    <ThinkingSection
+                      reasoning={streamingReasoning}
+                      isExpanded={expandedThinkingSections.has('streaming')}
+                      onToggle={() => toggleThinkingSection('streaming')}
+                      isStreaming={!streamingMessage || (streamingReasoning && streaming)}
+                      elapsedTime={thinkingElapsedTime}
+                      stats={lastThinkingStats}
+                    />
+                  )}
 
-                    {streamingMessage && (
-                      <div className="inline-block max-w-[80%] glass-card rounded-2xl rounded-tl-sm px-4 py-3">
-                        {renderMessage(streamingMessage)}
+                  {streamingMessage && (
+                    <div className="rounded-lg px-4 py-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Bot className="w-3.5 h-3.5 text-dark-500" />
+                        <span className="text-xs font-medium text-dark-500">{formatModelName(chatSettings.model)}</span>
                       </div>
-                    )}
+                      {renderMessage(streamingMessage)}
+                    </div>
+                  )}
 
-                    {streaming && !streamingMessage && !streamingReasoning && (
-                      <div className="inline-block glass-card rounded-2xl rounded-tl-sm px-4 py-3">
-                        <div className="flex gap-1">
-                          <div className="w-2 h-2 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                          <div className="w-2 h-2 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                          <div className="w-2 h-2 bg-primary-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                        </div>
+                  {streaming && !streamingMessage && !streamingReasoning && (
+                    <div className="rounded-lg px-4 py-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Bot className="w-3.5 h-3.5 text-dark-500" />
+                        <span className="text-xs font-medium text-dark-500">{formatModelName(chatSettings.model)}</span>
                       </div>
-                    )}
-                  </div>
+                      <div className="flex gap-1">
+                        <div className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                        <div className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                        <div className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1408,16 +1542,113 @@ function Chat() {
 
         {/* Input */}
         {currentChat && (
-          <div className="border-t border-white/[0.06] glass p-4">
-            <div className="max-w-4xl mx-auto">
+          <div className="border-t border-dark-700/30 bg-dark-900/50 p-4">
+            <div className="max-w-2xl mx-auto">
+              {/* Tools Toolbar */}
+              <div className="flex items-center gap-3 mb-3">
+                {/* Thinking Mode Dropdown */}
+                <div className="relative" ref={thinkingDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => isReasoningSupported && setShowThinkingDropdown(!showThinkingDropdown)}
+                    disabled={!isReasoningSupported}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${!isReasoningSupported
+                      ? 'bg-dark-800/40 text-dark-600 border border-dark-700/30 cursor-not-allowed opacity-70'
+                      : thinkingMode === 'auto'
+                        ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500/20'
+                        : thinkingMode === 'low'
+                          ? 'bg-green-500/10 text-green-400 border border-green-500/30 hover:bg-green-500/20'
+                          : thinkingMode === 'medium'
+                            ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/20'
+                            : thinkingMode === 'high'
+                              ? 'bg-orange-500/10 text-orange-400 border border-orange-500/30 hover:bg-orange-500/20'
+                              : thinkingMode === 'max'
+                                ? 'bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20'
+                                : 'bg-dark-800/60 text-dark-400 border border-dark-700/40 hover:bg-dark-800 hover:text-dark-300'
+                      }`}
+                    title={!isReasoningSupported ? "Model doesn't support extended thinking" : "Thinking Mode"}
+                  >
+                    <Lightbulb className={`w-3.5 h-3.5 ${!isReasoningSupported ? 'text-dark-600' :
+                      thinkingMode === 'low' ? 'text-green-400' :
+                        thinkingMode === 'medium' ? 'text-yellow-400' :
+                          thinkingMode === 'high' ? 'text-orange-400' :
+                            thinkingMode === 'max' ? 'text-red-400' :
+                              ''
+                      }`} />
+                    <span>Thinking: {THINKING_MODES.find(m => m.id === thinkingMode)?.label}</span>
+                    <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${showThinkingDropdown ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {/* Dropdown Menu - Opens Upward */}
+                  {showThinkingDropdown && (
+                    <div className="absolute bottom-full left-0 mb-2 w-56 glass-dropdown rounded-lg shadow-xl border border-dark-700/50 overflow-hidden scale-in z-50">
+                      <div className="p-2 border-b border-dark-700/30">
+                        <p className="text-xs font-medium text-dark-400 px-2">Thinking Mode</p>
+                        <p className="text-[10px] text-dark-500 px-2 mt-0.5">Controls reasoning depth for supported models</p>
+                      </div>
+                      <div className="p-1">
+                        {THINKING_MODES.map((mode) => (
+                          <button
+                            key={mode.id}
+                            type="button"
+                            onClick={async () => {
+                              setThinkingMode(mode.id);
+                              setShowThinkingDropdown(false);
+                              if (currentChat && currentChat.id) {
+                                try {
+                                  await fetch(`/api/chats/${currentChat.id}`, {
+                                    method: 'PUT',
+                                    headers: {
+                                      'Content-Type': 'application/json',
+                                      'Authorization': `Bearer ${localStorage.getItem('token')}`
+                                    },
+                                    body: JSON.stringify({ thinking_mode: mode.id })
+                                  });
+                                } catch (error) {
+                                  console.error('Failed to update thinking mode:', error);
+                                }
+                              }
+                            }}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-left transition-all duration-150 ${thinkingMode === mode.id
+                              ? 'bg-accent/10 text-accent'
+                              : 'hover:bg-dark-700/50 text-dark-300 hover:text-dark-100'
+                              }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className={`w-1.5 h-1.5 rounded-full ${mode.id === 'off' ? 'bg-dark-500' :
+                                mode.id === 'auto' ? 'bg-blue-400' :
+                                  mode.id === 'low' ? 'bg-green-400' :
+                                    mode.id === 'medium' ? 'bg-yellow-400' :
+                                      mode.id === 'high' ? 'bg-orange-400' :
+                                        'bg-red-400'
+                                }`} />
+                              <div>
+                                <p className="text-xs font-medium">{mode.label}</p>
+                                <p className="text-[10px] text-dark-500">{mode.description}</p>
+                              </div>
+                            </div>
+                            {thinkingMode === mode.id && (
+                              <Check className="w-3.5 h-3.5 text-accent" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Placeholder for future tools */}
+                {/* Add more tool toggles here */}
+              </div>
+
               {streaming && (
                 <div className="flex justify-center mb-4">
                   <button
                     onClick={stopGeneration}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl text-sm font-semibold hover:bg-red-500/20 transition-all duration-200 active:scale-[0.98]"
+                    className="flex items-center gap-2 px-4 py-2 bg-dark-800/60 text-dark-400 border border-dark-700/40 rounded-lg text-sm font-medium hover:bg-dark-800 hover:text-dark-300 transition-all duration-200"
                   >
                     <Square className="w-3 h-3 fill-current" />
-                    Stop Generating
+                    Stop
                   </button>
                 </div>
               )}
@@ -1435,9 +1666,9 @@ function Chat() {
                         }
                       }
                     }}
-                    placeholder={streaming ? "AI is responding..." : "Type your message... (Shift+Enter for new line)"}
-                    className="w-full px-5 py-3.5 rounded-2xl glass-input outline-none text-dark-100 placeholder-dark-500 text-sm pr-4 resize-none overflow-y-auto"
-                    style={{ minHeight: '52px', maxHeight: '140px' }}
+                    placeholder={streaming ? "AI is responding..." : "Type a message..."}
+                    className="w-full px-4 py-3 rounded-lg glass-input outline-none text-dark-200 placeholder-dark-600 text-sm resize-none overflow-y-auto"
+                    style={{ minHeight: '48px', maxHeight: '140px' }}
                     rows={1}
                     disabled={streaming}
                     onInput={(e) => {
@@ -1449,7 +1680,7 @@ function Chat() {
                 <button
                   type="submit"
                   disabled={!inputMessage.trim() || streaming}
-                  className="px-6 py-3.5 gradient-primary text-white rounded-2xl font-semibold hover:shadow-glow transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none flex items-center gap-2 active:scale-[0.98] shine"
+                  className="px-5 py-3 btn-primary text-dark-900 rounded-lg font-medium text-sm transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   <Send className="w-4 h-4" />
                   <span className="hidden sm:inline">Send</span>
@@ -1463,17 +1694,17 @@ function Chat() {
       {/* Fork Modal */}
       {showForkModal && (
         <div className="fixed inset-0 bg-dark-950/80 backdrop-blur-md flex items-center justify-center z-50 scale-in">
-          <div className="glass-card rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
+          <div className="glass-modal rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-lg font-bold text-dark-100 flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center shadow-lg">
+                <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
                   <GitBranch className="w-4 h-4 text-white" />
                 </div>
                 Fork Chat
               </h3>
               <button
                 onClick={() => setShowForkModal(false)}
-                className="p-2 hover:bg-white/[0.05] rounded-xl transition-all duration-200"
+                className="p-2 hover:bg-dark-700/50 rounded-xl transition-all duration-200"
               >
                 <X className="w-5 h-5 text-dark-400" />
               </button>
@@ -1503,7 +1734,7 @@ function Chat() {
               </button>
               <button
                 onClick={forkChat}
-                className="flex-1 px-4 py-3 rounded-xl gradient-primary text-white font-semibold hover:shadow-glow transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98] shine"
+                className="btn-primary flex-1 px-4 py-3 rounded-xl font-semibold transition-all duration-200 flex items-center justify-center gap-2"
               >
                 <GitBranch className="w-4 h-4" />
                 Fork Chat

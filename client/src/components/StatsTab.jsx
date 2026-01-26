@@ -69,7 +69,7 @@ function StatsTab() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-accent border-t-transparent"></div>
       </div>
     );
   }
@@ -80,7 +80,7 @@ function StatsTab() {
         <div className="text-red-400 mb-2">Failed to load statistics</div>
         <button
           onClick={loadStats}
-          className="text-primary-400 hover:text-primary-300 text-sm"
+          className="text-accent hover:text-accent-light text-sm"
         >
           Try again
         </button>
@@ -159,16 +159,15 @@ function StatsTab() {
                   className={`
                     relative w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm
                     transition-all duration-300 cursor-default
-                    ${
-                      day.hasActivity
-                        ? "bg-gradient-to-br from-primary-500 to-accent-500 text-white shadow-lg shadow-primary-500/30"
-                        : day.isToday
-                          ? "bg-dark-700 border-2 border-primary-500/50 text-dark-300"
-                          : day.isFuture
-                            ? "bg-dark-800/50 border border-dark-700 text-dark-600"
-                            : "bg-dark-700 border border-dark-600 text-dark-400"
+                    ${day.hasActivity
+                      ? "bg-gradient-to-br from-accent to-accent-light text-white shadow-lg shadow-accent/30"
+                      : day.isToday
+                        ? "bg-dark-700 border-2 border-accent/50 text-dark-300"
+                        : day.isFuture
+                          ? "bg-dark-800/50 border border-dark-700 text-dark-600"
+                          : "bg-dark-700 border border-dark-600 text-dark-400"
                     }
-                    ${day.isAnimating ? "animate-pulse ring-4 ring-primary-400/50 scale-110" : ""}
+                    ${day.isAnimating ? "animate-pulse ring-4 ring-accent/50 scale-110" : ""}
                   `}
                 >
                   {day.hasActivity ? (
@@ -179,19 +178,18 @@ function StatsTab() {
 
                   {/* Today indicator dot */}
                   {day.isToday && !day.hasActivity && (
-                    <div className="absolute -bottom-1 w-2 h-2 bg-primary-400 rounded-full animate-pulse" />
+                    <div className="absolute -bottom-1 w-2 h-2 bg-accent rounded-full animate-pulse" />
                   )}
                 </div>
 
                 {/* Day label below */}
                 <span
-                  className={`mt-2 text-xs font-medium ${
-                    day.hasActivity
-                      ? "text-primary-400"
+                  className={`mt-2 text-xs font-medium ${day.hasActivity
+                      ? "text-accent"
                       : day.isToday
                         ? "text-dark-300"
                         : "text-dark-600"
-                  }`}
+                    }`}
                 >
                   {day.label}
                 </span>
@@ -207,7 +205,7 @@ function StatsTab() {
                       })}
                     </div>
                     <div
-                      className={`font-semibold ${day.hasActivity ? "text-primary-400" : "text-dark-500"}`}
+                      className={`font-semibold ${day.hasActivity ? "text-accent" : "text-dark-500"}`}
                     >
                       {day.messageCount} message
                       {day.messageCount !== 1 ? "s" : ""}
@@ -221,13 +219,12 @@ function StatsTab() {
               {/* Connecting bar (except after last circle) */}
               {index < weekData.length - 1 && (
                 <div
-                  className={`flex-1 h-1 mx-1 rounded-full self-start mt-[22px] min-w-[40px] ${
-                    day.hasActivity && weekData[index + 1].hasActivity
-                      ? "bg-gradient-to-r from-primary-500 to-accent-500"
+                  className={`flex-1 h-1 mx-1 rounded-full self-start mt-[22px] min-w-[40px] ${day.hasActivity && weekData[index + 1].hasActivity
+                      ? "bg-gradient-to-r from-accent to-accent-light"
                       : day.hasActivity || weekData[index + 1].hasActivity
-                        ? "bg-gradient-to-r from-primary-500/30 to-accent-500/30"
+                        ? "bg-gradient-to-r from-accent/30 to-accent-light/30"
                         : "bg-dark-700"
-                  }`}
+                    }`}
                 />
               )}
             </React.Fragment>
@@ -237,7 +234,7 @@ function StatsTab() {
         {/* Streak message */}
         <div className="mt-6 text-center">
           {activeDays === 5 ? (
-            <span className="text-primary-400 font-medium">
+            <span className="text-accent font-medium">
               Perfect week! Keep it up!
             </span>
           ) : activeDays > 0 ? (
@@ -284,7 +281,7 @@ function StatsTab() {
       {/* Top 3 Models */}
       <div className="bg-dark-800/30 rounded-xl p-6 border border-dark-700/30">
         <h3 className="text-lg font-semibold text-dark-100 mb-4 flex items-center gap-2">
-          <BarChart2 className="w-5 h-5 text-primary-400" />
+          <BarChart2 className="w-5 h-5 text-accent" />
           Top 3 Models by Token Usage
         </h3>
 
@@ -298,13 +295,12 @@ function StatsTab() {
               <div key={model.model} className="group">
                 <div className="flex items-start gap-4">
                   <div
-                    className={`text-2xl font-bold w-8 shrink-0 ${
-                      idx === 0
+                    className={`text-2xl font-bold w-8 shrink-0 ${idx === 0
                         ? "text-yellow-400"
                         : idx === 1
                           ? "text-dark-400"
                           : "text-amber-700"
-                    }`}
+                      }`}
                   >
                     {idx + 1}
                   </div>
@@ -313,7 +309,7 @@ function StatsTab() {
                       <div className="truncate text-dark-100 font-medium pr-4">
                         {model.model}
                       </div>
-                      <div className="text-primary-400 font-semibold whitespace-nowrap">
+                      <div className="text-accent font-semibold whitespace-nowrap">
                         {model.total_tokens.toLocaleString()} tokens
                       </div>
                     </div>
@@ -333,7 +329,7 @@ function StatsTab() {
 
                     <div className="h-2 bg-dark-700 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-gradient-to-r from-primary-500 to-accent-500 rounded-full transition-all duration-500"
+                        className="h-full bg-gradient-to-r from-accent to-accent-light rounded-full transition-all duration-500"
                         style={{
                           width: `${(model.total_tokens / maxTokens) * 100}%`,
                         }}

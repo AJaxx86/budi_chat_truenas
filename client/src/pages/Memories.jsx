@@ -99,10 +99,10 @@ function Memories() {
 
   const getCategoryColor = (category) => {
     const colors = {
-      general: 'bg-dark-600/50 text-dark-200 border-dark-500/50',
-      personal: 'bg-primary-500/20 text-primary-300 border-primary-500/30',
-      work: 'bg-accent-500/20 text-accent-300 border-accent-500/30',
-      preferences: 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+      general: 'bg-dark-700/50 text-dark-300 border-dark-600',
+      personal: 'bg-accent/10 text-accent border-accent/20',
+      work: 'bg-accent-500/10 text-accent-400 border-accent-500/20',
+      preferences: 'bg-purple-500/10 text-purple-400 border-purple-500/20'
     };
     return colors[category] || colors.general;
   };
@@ -121,7 +121,7 @@ function Memories() {
         <div className="glass-card rounded-2xl p-8">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h1 className="text-3xl font-bold gradient-text mb-2 flex items-center gap-3">
+              <h1 className="text-3xl font-bold text-accent mb-2 flex items-center gap-3 tracking-tight">
                 <Brain className="w-8 h-8" />
                 Memories
               </h1>
@@ -133,7 +133,7 @@ function Memories() {
             {!showNewMemory && (
               <button
                 onClick={() => setShowNewMemory(true)}
-                className="px-4 py-2 gradient-primary text-white rounded-lg font-medium hover:shadow-glow transition-all flex items-center gap-2"
+                className="btn-primary px-4 py-2.5 rounded-xl font-semibold transition-all duration-200 flex items-center gap-2"
               >
                 <Plus className="w-4 h-4" />
                 Add Memory
@@ -143,7 +143,7 @@ function Memories() {
 
           {/* New/Edit Memory Form */}
           {showNewMemory && (
-            <form onSubmit={handleSubmit} className="mb-8 p-6 glass rounded-xl border border-primary-500/30">
+            <form onSubmit={handleSubmit} className="mb-8 p-6 bg-dark-800/50 rounded-xl border border-dark-700/40">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-lg text-dark-100">
                   {editingId ? 'Edit Memory' : 'New Memory'}
@@ -151,7 +151,7 @@ function Memories() {
                 <button
                   type="button"
                   onClick={cancelEdit}
-                  className="p-1 hover:bg-dark-700/50 rounded transition-colors"
+                  className="p-1.5 hover:bg-dark-700/50 rounded-lg transition-colors"
                 >
                   <X className="w-5 h-5 text-dark-400" />
                 </button>
@@ -159,13 +159,13 @@ function Memories() {
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-dark-200 mb-2">
+                  <label className="block text-sm font-medium text-dark-300 mb-2">
                     Content
                   </label>
                   <textarea
                     value={formData.content}
                     onChange={(e) => setFormData({ ...formData, content: e.target.value })}
-                    className="w-full px-4 py-3 rounded-lg glass-input outline-none resize-none text-dark-100 bg-dark-800/50"
+                    className="w-full px-4 py-3 rounded-xl glass-input outline-none resize-none text-dark-100 text-sm"
                     rows="4"
                     placeholder="What should the AI remember about you?"
                     required
@@ -174,13 +174,13 @@ function Memories() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-dark-200 mb-2">
+                    <label className="block text-sm font-medium text-dark-300 mb-2">
                       Category
                     </label>
                     <select
                       value={formData.category}
                       onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                      className="w-full px-4 py-3 rounded-lg glass-input outline-none text-dark-100 bg-dark-800"
+                      className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-100 bg-dark-800 text-sm"
                     >
                       <option value="general">General</option>
                       <option value="personal">Personal</option>
@@ -190,7 +190,7 @@ function Memories() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-dark-200 mb-2">
+                    <label className="block text-sm font-medium text-dark-300 mb-2">
                       Importance: {formData.importance}
                     </label>
                     <input
@@ -199,7 +199,7 @@ function Memories() {
                       max="5"
                       value={formData.importance}
                       onChange={(e) => setFormData({ ...formData, importance: parseInt(e.target.value) })}
-                      className="w-full"
+                      className="w-full mt-2"
                     />
                     <div className="flex justify-between text-xs text-dark-500 mt-1">
                       <span>Low</span>
@@ -211,7 +211,7 @@ function Memories() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full gradient-primary text-white py-3 rounded-lg font-medium hover:shadow-glow transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="btn-primary w-full py-3 rounded-xl font-semibold transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {loading ? (
                     <>
@@ -233,35 +233,36 @@ function Memories() {
           <div className="space-y-4">
             {memories.length === 0 ? (
               <div className="text-center py-12">
-                <Brain className="w-16 h-16 text-dark-600 mx-auto mb-4" />
+                <div className="w-16 h-16 rounded-2xl bg-dark-800 flex items-center justify-center mx-auto mb-4">
+                  <Brain className="w-8 h-8 text-dark-500" />
+                </div>
                 <p className="text-dark-400">No memories yet. Add your first memory to help the AI remember important context.</p>
               </div>
             ) : (
               memories.map(memory => (
                 <div
                   key={memory.id}
-                  className="p-5 glass rounded-xl hover:border-primary-500/30 transition-all"
+                  className="p-5 bg-dark-800/50 border border-dark-700/50 rounded-xl hover:border-dark-600 transition-all duration-200"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${getCategoryColor(memory.category)}`}>
+                        <span className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${getCategoryColor(memory.category)}`}>
                           {memory.category}
                         </span>
                         <div className="flex items-center gap-0.5">
                           {[...Array(5)].map((_, i) => (
                             <Star
                               key={i}
-                              className={`w-3 h-3 ${
-                                i < memory.importance
-                                  ? 'text-yellow-400 fill-yellow-400'
+                              className={`w-3 h-3 ${i < memory.importance
+                                  ? 'text-accent fill-accent'
                                   : 'text-dark-600'
-                              }`}
+                                }`}
                             />
                           ))}
                         </div>
                       </div>
-                      <p className="text-dark-200 whitespace-pre-wrap">{memory.content}</p>
+                      <p className="text-dark-200 whitespace-pre-wrap text-sm">{memory.content}</p>
                       <p className="text-xs text-dark-500 mt-2">
                         Created {new Date(memory.created_at).toLocaleDateString()}
                       </p>
@@ -270,14 +271,14 @@ function Memories() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleEdit(memory)}
-                        className="p-2 hover:bg-primary-500/20 rounded-lg transition-colors"
+                        className="p-2 hover:bg-accent/10 rounded-lg transition-colors"
                         title="Edit"
                       >
-                        <Edit2 className="w-4 h-4 text-primary-400" />
+                        <Edit2 className="w-4 h-4 text-accent" />
                       </button>
                       <button
                         onClick={() => handleDelete(memory.id)}
-                        className="p-2 hover:bg-red-500/20 rounded-lg transition-colors"
+                        className="p-2 hover:bg-red-500/10 rounded-lg transition-colors"
                         title="Delete"
                       >
                         <Trash2 className="w-4 h-4 text-red-400" />

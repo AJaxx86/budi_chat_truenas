@@ -13,6 +13,12 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Apply saved accent color on app load
+    const savedAccent = localStorage.getItem('budi_accent_color');
+    if (savedAccent) {
+      document.documentElement.setAttribute('data-accent', savedAccent);
+    }
+
     const token = localStorage.getItem('token');
     if (token) {
       fetch('/api/auth/me', {
@@ -51,10 +57,10 @@ function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 via-white to-accent-50">
+      <div className="min-h-screen flex items-center justify-center bg-dark-950 bg-mesh">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-primary-500 border-t-transparent"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-accent border-t-transparent"></div>
+          <p className="mt-4 text-dark-400">Loading...</p>
         </div>
       </div>
     );

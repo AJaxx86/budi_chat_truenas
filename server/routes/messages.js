@@ -16,7 +16,7 @@ router.use(authMiddleware);
 router.post("/:chatId", async (req, res) => {
   try {
     const { chatId } = req.params;
-    const { content } = req.body;
+    const { content, thinking } = req.body;
 
     // Verify chat ownership and get message count
     const chat = db
@@ -45,18 +45,33 @@ router.post("/:chatId", async (req, res) => {
     }
     const { key: apiKey, isDefault: usedDefaultKey } = apiKeyInfo;
 
-    // Generate title if chat still has default name and this is the first message
-    // Do this BEFORE saving the user message so message_count is still 0
+    // Generate title concurrently if chat has default name and this is the first message
+    // Fire and forget - but we want to send the result down the stream
     if (chat.title === "New Chat" && chat.message_count === 0) {
-      const generatedTitle = await generateChatTitle(content, req.user.id);
-      if (generatedTitle) {
-        db.prepare(
-          `
-          UPDATE chats SET title = ? WHERE id = ?
-        `,
-        ).run(generatedTitle, chatId);
-        chat.title = generatedTitle; // Update local reference
-      }
+      generateChatTitle(content, req.user.id)
+        .then((generatedTitle) => {
+          if (generatedTitle) {
+            try {
+              db.prepare(
+                `
+              UPDATE chats SET title = ? WHERE id = ?
+            `,
+              ).run(generatedTitle, chatId);
+
+              // Send title update event if stream is still open
+              if (!res.writableEnded) {
+                res.write(
+                  `data: ${JSON.stringify({ type: "title", content: generatedTitle })}\n\n`,
+                );
+              }
+            } catch (err) {
+              console.error("Failed to update chat title:", err);
+            }
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to generate chat title:", err);
+        });
     }
 
     // Save user message
@@ -149,6 +164,20 @@ router.post("/:chatId", async (req, res) => {
       stream: true,
       usage: { include: true },
     };
+
+    // Add thinking configuration if enabled
+    if (thinking) {
+      requestOptions.extra_body = {
+        include_reasoning: true,
+        thinking,
+      };
+
+      // Some models (like newer Claude) require max_tokens to be set when using thinking
+      // OpenRouter usually handles defaults, but we might want to ensure a high limit
+      if (!requestOptions.max_tokens) {
+        // Optionally set max_tokens based on budget if needed, but let's leave it to server default for now or add if strictly required
+      }
+    }
 
     // Add tools if agent mode is enabled
     if (chat.agent_mode) {

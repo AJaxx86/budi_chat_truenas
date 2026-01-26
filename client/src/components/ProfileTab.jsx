@@ -74,48 +74,48 @@ function ProfileTab({ user }) {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-dark-100 mb-2">Profile Information</h2>
+      <h2 className="text-2xl font-bold text-dark-100 mb-2 tracking-tight">Profile Information</h2>
       <p className="text-dark-400 mb-6">Update your personal information and password</p>
 
       {error && (
-        <div className="bg-red-500/20 border border-red-500/30 text-red-300 px-4 py-3 rounded-lg mb-6">
+        <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-xl mb-6 text-sm">
           {error}
         </div>
       )}
 
       {success && (
-        <div className="bg-green-500/20 border border-green-500/30 text-green-300 px-4 py-3 rounded-lg mb-6">
+        <div className="bg-green-500/10 border border-green-500/20 text-green-400 px-4 py-3 rounded-xl mb-6 text-sm">
           {success}
         </div>
       )}
 
       <form onSubmit={handleSave} className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-dark-200 mb-2 flex items-center gap-2">
-            <User className="w-4 h-4 text-primary-400" />
+          <label className="block text-sm font-medium text-dark-300 mb-2 flex items-center gap-2">
+            <User className="w-4 h-4 text-accent" />
             Name
           </label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg glass-input outline-none text-dark-100 bg-dark-800/50"
+            className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-100"
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-dark-200 mb-2 flex items-center gap-2">
-            <Mail className="w-4 h-4 text-primary-400" />
+          <label className="block text-sm font-medium text-dark-300 mb-2 flex items-center gap-2">
+            <Mail className="w-4 h-4 text-accent" />
             Email
           </label>
           <input
             type="email"
             value={user?.email || ''}
             disabled
-            className="w-full px-4 py-3 rounded-lg bg-dark-800/30 border border-dark-700/50 text-dark-500"
+            className="w-full px-4 py-3 rounded-xl bg-dark-800/30 border border-dark-700/50 text-dark-500"
           />
-          <p className="mt-1 text-xs text-dark-500">Email cannot be changed</p>
+          <p className="mt-1.5 text-xs text-dark-500">Email cannot be changed</p>
         </div>
 
         <div className="border-t border-dark-700/50 pt-6">
@@ -126,27 +126,27 @@ function ProfileTab({ user }) {
 
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-dark-200 mb-2">
+              <label className="block text-sm font-medium text-dark-300 mb-2">
                 New Password
               </label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg glass-input outline-none text-dark-100 bg-dark-800/50"
+                className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-100"
                 placeholder="Leave blank to keep current password"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-dark-200 mb-2">
+              <label className="block text-sm font-medium text-dark-300 mb-2">
                 Confirm New Password
               </label>
               <input
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg glass-input outline-none text-dark-100 bg-dark-800/50"
+                className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-100"
                 placeholder="Confirm new password"
               />
             </div>
@@ -156,7 +156,7 @@ function ProfileTab({ user }) {
         <button
           type="submit"
           disabled={loading}
-          className="w-full gradient-primary text-white py-3 rounded-lg font-medium hover:shadow-glow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="btn-primary w-full py-3 rounded-xl font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {loading ? (
             <>

@@ -3,7 +3,7 @@ import { Bot, ChevronDown, Check, Search, Clock, Loader2, X } from 'lucide-react
 
 const DEFAULT_MODEL = 'moonshotai/kimi-k2-thinking';
 const RECENT_MODELS_KEY = 'budi_chat_recent_models';
-const MODELS_CACHE_KEY = 'budi_chat_models_cache';
+const MODELS_CACHE_KEY = 'budi_chat_models_cache_v2';
 const MODELS_CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_RECENT_MODELS = 5;
 
@@ -76,6 +76,7 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
             description: model.description || '',
             contextLength: model.context_length,
             pricing: model.pricing,
+            supportedParameters: model.supported_parameters || [],
           }))
           .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -175,7 +176,13 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
   // Get the display name for current model
   const getModelDisplayName = (modelId) => {
     const model = models.find(m => m.id === modelId);
-    if (model) return model.name;
+    if (model) {
+      // Strip provider prefix if present (e.g. "Google: Gemini 2.5 Flash" -> "Gemini 2.5 Flash")
+      if (model.name.includes(': ')) {
+        return model.name.split(': ')[1];
+      }
+      return model.name;
+    }
     // Extract a readable name from the ID
     const parts = modelId.split('/');
     return parts[parts.length - 1].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -233,11 +240,11 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl transition-all duration-200 text-sm ${isOpen
-          ? 'bg-primary-500/10 border border-primary-500/20 shadow-lg'
+          ? 'bg-accent/10 border border-accent/20'
           : 'glass-button'
           }`}
       >
-        <div className="w-6 h-6 rounded-lg gradient-primary flex items-center justify-center flex-shrink-0">
+        <div className="w-6 h-6 rounded-lg bg-accent flex items-center justify-center flex-shrink-0">
           <Bot className="w-3.5 h-3.5 text-white" />
         </div>
         <span className="text-dark-200 font-medium max-w-[180px] truncate">
@@ -247,9 +254,9 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 w-[420px] bg-dark-900 border border-dark-700 rounded-2xl z-[100] overflow-hidden shadow-2xl scale-in">
+        <div className="absolute top-full left-0 mt-2 w-[380px] glass-dropdown rounded-2xl z-[100] overflow-hidden shadow-2xl scale-in">
           {/* Search Bar */}
-          <div className="p-3 border-b border-dark-700 bg-dark-800">
+          <div className="p-3 border-b border-dark-700/50 bg-dark-850">
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-400" />
               <input
@@ -258,12 +265,12 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search models..."
-                className="w-full pl-10 pr-9 py-2.5 rounded-xl bg-dark-800 border border-dark-600 outline-none text-dark-100 placeholder-dark-500 text-sm focus:border-primary-500/50"
+                className="w-full pl-10 pr-9 py-2.5 rounded-xl bg-dark-800 border border-dark-700 outline-none text-dark-100 placeholder-dark-500 text-sm focus:border-accent/50"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 hover:bg-white/[0.05] rounded-lg transition-colors"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 hover:bg-dark-700/50 rounded-lg transition-colors"
                 >
                   <X className="w-3.5 h-3.5 text-dark-400" />
                 </button>
@@ -271,17 +278,17 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
             </div>
           </div>
 
-          <div className="max-h-[400px] overflow-y-auto bg-dark-900">
+          <div className="max-h-[400px] overflow-y-auto">
             {loading ? (
               <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-6 h-6 text-primary-400 animate-spin" />
+                <Loader2 className="w-6 h-6 text-accent animate-spin" />
                 <span className="ml-3 text-dark-400 text-sm">Loading models...</span>
               </div>
             ) : (
               <>
                 {/* Recently Used Section */}
                 {!searchQuery && recentModelsData.length > 0 && (
-                  <div className="p-2 border-b border-dark-700 bg-dark-900">
+                  <div className="p-2 border-b border-dark-700/50">
                     <div className="flex items-center gap-2 px-3 py-2 text-[11px] font-semibold text-dark-500 uppercase tracking-wider">
                       <Clock className="w-3 h-3" />
                       Recently Used
@@ -291,8 +298,8 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
                         key={`recent-${model.id}`}
                         onClick={() => handleSelect(model.id)}
                         className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-150 text-left group ${selectedModel === model.id
-                          ? 'bg-primary-500/15 border border-primary-500/25'
-                          : 'hover:bg-white/[0.03] border border-transparent'
+                          ? 'bg-accent/10 border border-accent/20'
+                          : 'hover:bg-dark-700/50 border border-transparent'
                           }`}
                       >
                         <div className="flex-1 min-w-0">
@@ -310,7 +317,7 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
                           </p>
                         </div>
                         {selectedModel === model.id && (
-                          <div className="w-5 h-5 rounded-md gradient-primary flex items-center justify-center flex-shrink-0 ml-2">
+                          <div className="w-5 h-5 rounded-md bg-accent flex items-center justify-center flex-shrink-0 ml-2">
                             <Check className="w-3 h-3 text-white" />
                           </div>
                         )}
@@ -320,7 +327,7 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
                 )}
 
                 {/* All Models Section */}
-                <div className="p-2 bg-dark-900">
+                <div className="p-2">
                   {!searchQuery && (
                     <div className="px-3 py-2 text-[11px] font-semibold text-dark-500 uppercase tracking-wider">
                       All Models <span className="text-dark-600">({filteredModels.length})</span>
@@ -328,13 +335,13 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
                   )}
                   {searchQuery && (
                     <div className="px-3 py-2 text-xs text-dark-400">
-                      {filteredModels.length} result{filteredModels.length !== 1 ? 's' : ''} for "<span className="text-primary-400">{searchQuery}</span>"
+                      {filteredModels.length} result{filteredModels.length !== 1 ? 's' : ''} for "<span className="text-accent">{searchQuery}</span>"
                     </div>
                   )}
 
                   {filteredModels.length === 0 ? (
                     <div className="py-12 text-center">
-                      <div className="w-12 h-12 rounded-xl bg-dark-800/50 flex items-center justify-center mx-auto mb-3">
+                      <div className="w-12 h-12 rounded-xl bg-dark-800 flex items-center justify-center mx-auto mb-3">
                         <Search className="w-6 h-6 text-dark-500" />
                       </div>
                       <p className="text-dark-400 font-medium">No models found</p>
@@ -347,8 +354,8 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
                           key={model.id}
                           onClick={() => handleSelect(model.id)}
                           className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-150 text-left group ${selectedModel === model.id
-                            ? 'bg-primary-500/15 border border-primary-500/25'
-                            : 'hover:bg-white/[0.03] border border-transparent'
+                            ? 'bg-accent/10 border border-accent/20'
+                            : 'hover:bg-dark-700/50 border border-transparent'
                             }`}
                         >
                           <div className="flex-1 min-w-0">
@@ -366,7 +373,7 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
                             </p>
                           </div>
                           {selectedModel === model.id && (
-                            <div className="w-5 h-5 rounded-md gradient-primary flex items-center justify-center flex-shrink-0 ml-2">
+                            <div className="w-5 h-5 rounded-md bg-accent flex items-center justify-center flex-shrink-0 ml-2">
                               <Check className="w-3 h-3 text-white" />
                             </div>
                           )}
@@ -383,6 +390,21 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
     </div>
   );
 }
+
+// Helper to check if a model supports reasoning/thinking mode
+export const modelSupportsReasoning = (modelId) => {
+  try {
+    const cached = localStorage.getItem(MODELS_CACHE_KEY);
+    if (cached) {
+      const { models } = JSON.parse(cached);
+      const model = models.find(m => m.id === modelId);
+      return model?.supportedParameters?.includes('reasoning') ?? false;
+    }
+  } catch (e) {
+    console.error('Failed to check model reasoning support:', e);
+  }
+  return false;
+};
 
 export default ModelSelector;
 export { DEFAULT_MODEL, RECENT_MODELS_KEY, MODELS_CACHE_KEY };

@@ -32,7 +32,7 @@ function Profile() {
           {/* Sidebar */}
           <div className="w-56 shrink-0">
             <div className="glass-card rounded-2xl p-4 sticky top-6">
-              <h1 className="text-xl font-bold gradient-text mb-4 px-2">Account</h1>
+              <h1 className="text-xl font-bold text-accent mb-4 px-2 tracking-tight">Account</h1>
               <nav className="space-y-1">
                 {tabs.map((tab) => {
                   const Icon = tab.icon;
@@ -40,11 +40,10 @@ function Profile() {
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                        activeTab === tab.id
-                          ? 'gradient-primary text-white shadow-glow'
-                          : 'text-dark-300 hover:text-dark-100 hover:bg-dark-800/50'
-                      }`}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${activeTab === tab.id
+                          ? 'bg-accent text-white'
+                          : 'text-dark-300 hover:text-dark-100 hover:bg-dark-700/50'
+                        }`}
                     >
                       <Icon className="w-5 h-5" />
                       <span className="font-medium">{tab.label}</span>

@@ -1,6 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { Link } from 'react-router-dom';
-import { MessageSquare, Lock, Mail, User, Sparkles } from 'lucide-react';
+import { MessageSquare, Lock, Mail, User, ArrowRight } from 'lucide-react';
 import { AuthContext } from '../contexts/AuthContext';
 
 function Register() {
@@ -41,32 +41,32 @@ function Register() {
     <div className="min-h-screen flex items-center justify-center bg-dark-950 bg-mesh p-4">
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl gradient-primary mb-4 shadow-glow">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-accent mb-4">
             <MessageSquare className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-4xl font-bold gradient-text mb-2">Budi Chat</h1>
+          <h1 className="text-4xl font-bold text-accent mb-2 tracking-tight">AI Chat Hub</h1>
           <p className="text-dark-400">Create your account to get started.</p>
         </div>
 
         <div className="glass-card rounded-2xl p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
-              <div className="bg-red-500/20 border border-red-500/30 text-red-300 px-4 py-3 rounded-lg text-sm">
+              <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-xl text-sm">
                 {error}
               </div>
             )}
 
             <div>
-              <label className="block text-sm font-medium text-dark-200 mb-2">
+              <label className="block text-sm font-medium text-dark-300 mb-2">
                 Full Name
               </label>
               <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-dark-400" />
+                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-dark-400" />
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 rounded-lg glass-input outline-none text-dark-100 bg-dark-800/50 transition"
+                  className="w-full pl-11 pr-4 py-3 rounded-xl glass-input outline-none text-dark-100 text-sm"
                   placeholder="John Doe"
                   required
                 />
@@ -74,16 +74,16 @@ function Register() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-dark-200 mb-2">
+              <label className="block text-sm font-medium text-dark-300 mb-2">
                 Email Address
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-dark-400" />
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-dark-400" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 rounded-lg glass-input outline-none text-dark-100 bg-dark-800/50 transition"
+                  className="w-full pl-11 pr-4 py-3 rounded-xl glass-input outline-none text-dark-100 text-sm"
                   placeholder="you@example.com"
                   required
                 />
@@ -91,28 +91,28 @@ function Register() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-dark-200 mb-2">
+              <label className="block text-sm font-medium text-dark-300 mb-2">
                 Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-dark-400" />
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-dark-400" />
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 rounded-lg glass-input outline-none text-dark-100 bg-dark-800/50 transition"
-                  placeholder="••••••••"
+                  className="w-full pl-11 pr-4 py-3 rounded-xl glass-input outline-none text-dark-100 text-sm"
+                  placeholder="Create a password"
                   required
                   minLength={6}
                 />
               </div>
-              <p className="mt-1 text-xs text-dark-500">At least 6 characters</p>
+              <p className="mt-1.5 text-xs text-dark-500">At least 6 characters</p>
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full gradient-primary text-white py-3 rounded-lg font-medium hover:shadow-glow transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="btn-primary w-full py-3 rounded-xl font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
@@ -121,8 +121,8 @@ function Register() {
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-5 h-5" />
                   Create Account
+                  <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
@@ -131,7 +131,7 @@ function Register() {
           <div className="mt-6 text-center">
             <p className="text-sm text-dark-400">
               Already have an account?{' '}
-              <Link to="/login" className="text-primary-400 hover:text-primary-300 font-medium">
+              <Link to="/login" className="text-accent hover:text-accent-light font-medium transition-colors">
                 Sign in
               </Link>
             </p>

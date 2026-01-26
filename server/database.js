@@ -192,6 +192,20 @@ function initDatabase() {
     }
   }
 
+  // Migration: Add thinking_mode to chats
+  const chatTableInfo = db.prepare("PRAGMA table_info(chats)").all();
+  const hasThinkingMode = chatTableInfo.some(
+    (col) => col.name === "thinking_mode",
+  );
+  if (!hasThinkingMode) {
+    try {
+      db.exec("ALTER TABLE chats ADD COLUMN thinking_mode TEXT DEFAULT 'auto'");
+      console.log("✅ Migration: Added thinking_mode to chats table");
+    } catch (e) {
+      console.error("Migration error:", e);
+    }
+  }
+
   // Create default admin user if not exists
   const adminExists = db
     .prepare("SELECT id FROM users WHERE is_admin = 1")
