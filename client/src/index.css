@@ -548,5 +548,39 @@ input[type="checkbox"]:focus {
 }
 
 .badge-accent {
+<<<<<<< HEAD
   @apply bg-accent-500/10 text-accent-400/80 border border-accent-500/15;
 }
+=======
+  @apply bg-accent-500/20 text-accent-300 border border-accent-500/30;
+}
+
+/* Search highlight styles */
+.search-highlight mark {
+  @apply bg-primary-500/30 text-primary-200 rounded px-0.5;
+}
+
+/* Message highlight animation for search navigation */
+.highlight-message {
+  animation: highlightPulse 2s ease-out;
+}
+
+@keyframes highlightPulse {
+  0% {
+    background-color: rgba(6, 182, 212, 0.2);
+    box-shadow: 0 0 0 4px rgba(6, 182, 212, 0.1);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+}
+
+/* Line clamp utility */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+>>>>>>> 44479451eaa4db5ff6ebcbf18375f307e12258f0

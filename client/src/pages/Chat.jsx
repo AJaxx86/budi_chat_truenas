@@ -4,8 +4,17 @@ import {
   MessageSquare, Plus, Settings as SettingsIcon, LogOut, Brain,
   Send, Trash2, GitBranch, Bot, User as UserIcon,
   Sparkles, Zap, Menu, X, ChevronDown, ChevronRight, Square,
-  Check, Trash, Copy, Pencil, Info, DollarSign, Hash, Lightbulb
+  Check, Trash, Copy, Pencil, Info, DollarSign, Hash, Lightbulb, Search, Share2, Code, FileText
+
 } from 'lucide-react';
+import SearchModal from '../components/SearchModal';
+import ExportMenu from '../components/ExportMenu';
+import ShareDialog from '../components/ShareDialog';
+import ImageUpload from '../components/ImageUpload';
+import ImageGeneration from '../components/ImageGeneration';
+import VoiceInput from '../components/VoiceInput';
+import TextToSpeech from '../components/TextToSpeech';
+import Canvas from '../components/Canvas';
 import { AuthContext } from '../contexts/AuthContext';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -243,6 +252,12 @@ function Chat() {
     { id: 'max', label: 'Max', description: 'Maximum reasoning', budgetTokens: 32768 },
   ];
 
+  const [showSearch, setShowSearch] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [canvasState, setCanvasState] = useState({ isOpen: false, content: '', language: 'javascript', title: 'Canvas' });
+  const targetMessageRef = useRef(null);
+
   const [chatSettings, setChatSettings] = useState(() => ({
     model: localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL,
     temperature: 0.7,
@@ -358,6 +373,33 @@ function Chat() {
     }
   }, [showThinkingDropdown]);
 
+  // Keyboard shortcut for search (Cmd/Ctrl + K)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowSearch(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Scroll to target message when navigating from search
+  useEffect(() => {
+    if (targetMessageRef.current && messages.length > 0) {
+      const messageElement = document.getElementById(`message-${targetMessageRef.current}`);
+      if (messageElement) {
+        messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        messageElement.classList.add('highlight-message');
+        setTimeout(() => {
+          messageElement.classList.remove('highlight-message');
+        }, 2000);
+        targetMessageRef.current = null;
+      }
+    }
+  }, [messages]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -437,6 +479,13 @@ function Chat() {
       agent_mode: false,
       thinking_mode: 'auto'
     });
+    setMessages([]);
+    setStreamingMessage('');
+    setStreamingReasoning('');
+    setUsageStats(null);
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
     setChatSettings({
       model: modelToUse,
       temperature: 0.7,
@@ -499,10 +548,15 @@ function Chat() {
 
   const deleteChat = async (chatId) => {
     try {
-      await fetch(`/api/chats/${chatId}`, {
+      const res = await fetch(`/api/chats/${chatId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
+
+      if (!res.ok) {
+        throw new Error('Failed to delete chat');
+      }
+
       setChats(chats.filter(c => c.id !== chatId));
       if (currentChat?.id === chatId) {
         // Automatically open a new chat instead of leaving blank
@@ -512,6 +566,7 @@ function Chat() {
       setDeletingChatId(null);
     } catch (error) {
       console.error('Failed to delete chat:', error);
+      alert('Failed to delete chat. Please try again.');
     }
   };
 
@@ -561,7 +616,11 @@ function Chat() {
     if (!inputMessage.trim() || !currentChat || streaming) return;
 
     const userMessage = inputMessage.trim();
+    const attachmentIds = pendingAttachments.map(a => a.id);
+    const attachmentPreviews = [...pendingAttachments];
+
     setInputMessage('');
+    setPendingAttachments([]);
     // Reset textarea height
     if (textareaRef.current) {
       textareaRef.current.style.height = '52px';
@@ -572,12 +631,13 @@ function Chat() {
 
     abortControllerRef.current = new AbortController();
 
-    // Add user message to UI immediately
+    // Add user message to UI immediately (with attachment previews)
     const tempUserMessage = {
       id: Date.now(),
       role: 'user',
       content: userMessage,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      attachments: attachmentPreviews
     };
     setMessages(prev => [...prev, tempUserMessage]);
 
@@ -625,7 +685,8 @@ function Chat() {
           thinking: thinkingMode !== 'off' ? {
             type: 'enabled',
             budget_tokens: THINKING_MODES.find(m => m.id === thinkingMode)?.budgetTokens || 16384
-          } : undefined
+          } : undefined,
+          attachment_ids: attachmentIds
         }),
         signal: abortControllerRef.current.signal
       });
@@ -792,6 +853,57 @@ function Chat() {
     setEditContent('');
   };
 
+  const handleSearchSelectChat = (chatId) => {
+    const chat = chats.find(c => c.id === chatId);
+    if (chat) {
+      setCurrentChat(chat);
+    } else {
+      // Chat not in current list, fetch it
+      fetch(`/api/chats/${chatId}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          const { messages: _, ...chatData } = data;
+          setCurrentChat(chatData);
+          loadChats();
+        })
+        .catch(console.error);
+    }
+  };
+
+  const handleSearchSelectMessage = (chatId, messageId) => {
+    targetMessageRef.current = messageId;
+    handleSearchSelectChat(chatId);
+  };
+
+  const openInCanvas = (content, title = 'Canvas') => {
+    // Try to detect language from code blocks
+    const codeBlockMatch = content.match(/```(\w+)?/);
+    let language = 'markdown';
+    let cleanContent = content;
+
+    if (codeBlockMatch) {
+      // Extract code from code block
+      const fullMatch = content.match(/```(\w+)?\n?([\s\S]*?)```/);
+      if (fullMatch) {
+        language = fullMatch[1] || 'javascript';
+        cleanContent = fullMatch[2].trim();
+      }
+    } else if (content.includes('function ') || content.includes('const ') || content.includes('let ')) {
+      language = 'javascript';
+    } else if (content.includes('def ') || content.includes('import ')) {
+      language = 'python';
+    }
+
+    setCanvasState({
+      isOpen: true,
+      content: cleanContent,
+      language,
+      title
+    });
+  };
+
   const handleEditSave = async (messageId) => {
     if (!editContent.trim() || !currentChat) return;
 
@@ -953,14 +1065,23 @@ function Chat() {
             )}
           </div>
 
-          <button
-            onClick={createNewChat}
-            className={`${showSidebar ? 'w-full py-2.5 gap-2' : 'w-9 h-9 mx-auto'} btn-primary text-dark-900 rounded-lg font-medium text-sm flex items-center justify-center`}
-            title={showSidebar ? undefined : "New Chat"}
-          >
-            <Plus className="w-4 h-4" />
-            {showSidebar && "New Chat"}
-          </button>
+          <div className={`flex ${showSidebar ? 'gap-2' : 'flex-col gap-2'}`}>
+            <button
+              onClick={createNewChat}
+              className={`${showSidebar ? 'flex-1 py-3 gap-2' : 'w-10 h-10 mx-auto'} gradient-primary text-white rounded-xl font-semibold hover:shadow-glow transition-all duration-200 flex items-center justify-center shine active:scale-[0.98]`}
+              title={showSidebar ? undefined : "New Chat"}
+            >
+              <Plus className="w-4 h-4" />
+              {showSidebar && "New Chat"}
+            </button>
+            <button
+              onClick={() => setShowSearch(true)}
+              className={`${showSidebar ? 'px-3 py-3' : 'w-10 h-10 mx-auto'} glass-button text-dark-400 hover:text-dark-200 rounded-xl transition-all duration-200 flex items-center justify-center`}
+              title={showSidebar ? "Search (Cmd+K)" : "Search"}
+            >
+              <Search className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className={`flex-1 overflow-y-auto ${showSidebar ? 'p-3 space-y-1' : 'p-2 space-y-1'}`}>
@@ -1235,6 +1356,21 @@ function Chat() {
                   </div>
                 )}
               </div>
+              <ExportMenu
+                chatId={currentChat?.id}
+                chatTitle={currentChat?.title}
+                messages={messages}
+              />
+              {currentChat?.id && (
+                <button
+                  onClick={() => setShowShareDialog(true)}
+                  className="px-3 py-2 flex items-center gap-2 rounded-xl transition-all duration-200 text-sm font-medium glass-button text-dark-300 hover:text-dark-100"
+                  title="Share chat"
+                >
+                  <Share2 className="w-4 h-4" />
+                  <span className="hidden sm:inline">Share</span>
+                </button>
+              )}
               <button
                 onClick={() => setShowSettings(!showSettings)}
                 className={`px-3 py-1.5 flex items-center gap-2 rounded-lg transition-all duration-200 text-sm font-medium ${showSettings
@@ -1352,7 +1488,8 @@ function Chat() {
               {messages.map((message, index) => (
                 <div
                   key={message.id}
-                  className={`${message.role === 'user' ? 'pl-8' : 'pr-8'}`}
+                  id={`message-${message.id}`}
+                  className={`flex gap-4 ${message.role === 'user' ? 'flex-row-reverse' : ''} transition-colors duration-500`}
                 >
                   {message.role === 'assistant' && message.reasoning_content && (
                     <ThinkingSection
@@ -1414,57 +1551,131 @@ function Chat() {
                     )}
                   </div>
 
-                  {message.role === 'user' && editingMessageId !== message.id && (
-                    <div className="mt-2 flex gap-3 pl-4">
-                      <button
-                        onClick={() => handleCopy(message.id, message.content, 'raw')}
-                        className="text-xs text-dark-500 hover:text-accent flex items-center gap-1 transition-colors"
-                      >
-                        {copiedMessageId === `${message.id}-raw` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                        {copiedMessageId === `${message.id}-raw` ? 'Copied' : 'Copy'}
-                      </button>
-                      <button
-                        onClick={() => handleEditStart(message)}
-                        className="text-xs text-dark-500 hover:text-accent flex items-center gap-1 transition-colors"
-                      >
-                        <Pencil className="w-3 h-3" />
-                        Edit
-                      </button>
-                    </div>
-                  )}
+                  <div className={`flex-1 ${message.role === 'user' ? 'text-right' : ''}`}>
+                    <div className={`inline-block max-w-[80%] ${message.role === 'user'
+                      ? 'bg-dark-700/80 border border-dark-600 text-dark-100 rounded-2xl rounded-tr-sm px-4 py-3'
+                      : 'bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 text-left shadow-lg'
+                      }`}>
+                      {message.role === 'user' ? (
+                        editingMessageId === message.id ? (
+                          <div className="space-y-2 text-left">
+                            <textarea
+                              value={editContent}
+                              onChange={(e) => setEditContent(e.target.value)}
+                              className="w-full min-w-[300px] bg-dark-800/50 border border-dark-600 rounded-lg p-2 text-white resize-none focus:outline-none focus:border-primary-400"
+                              rows={3}
+                              autoFocus
+                            />
+                            <div className="flex gap-2 justify-end">
+                              <button
+                                onClick={handleEditCancel}
+                                className="px-3 py-1 text-xs rounded-lg bg-dark-700 hover:bg-dark-600 transition-colors"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => handleEditSave(message.id)}
+                                className="px-3 py-1 text-xs rounded-lg bg-primary-500 hover:bg-primary-400 transition-colors"
+                              >
+                                Save & Regenerate
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            {renderMessage(message.content)}
+                            {/* Display attachments */}
+                            {message.attachments && message.attachments.length > 0 && (
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {message.attachments.map((att) => {
+                                  const isImage = att.mimetype?.startsWith('image/');
+                                  const getIcon = () => {
+                                    if (att.mimetype === 'application/pdf') return '📄';
+                                    if (att.mimetype === 'text/csv') return '📊';
+                                    if (att.mimetype === 'application/json') return '{ }';
+                                    if (att.mimetype?.includes('markdown') || att.original_name?.endsWith('.md')) return '📝';
+                                    if (att.mimetype === 'text/plain') return '📃';
+                                    return '📎';
+                                  };
 
+                                  if (isImage) {
+                                    return (
+                                      <img
+                                        key={att.id}
+                                        src={att.preview || `/api/uploads/${att.id}`}
+                                        alt={att.original_name}
+                                        className="max-w-[200px] max-h-[150px] rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                        onClick={() => window.open(att.preview || `/api/uploads/${att.id}`, '_blank')}
+                                      />
+                                    );
+                                  }
+
+                                  return (
+                                    <div
+                                      key={att.id}
+                                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-dark-800/50 border border-white/[0.08]"
+                                    >
+                                      <span className="text-lg">{getIcon()}</span>
+                                      <span className="text-xs text-dark-300 max-w-[150px] truncate">{att.original_name}</span>
+                                      {att.has_text && (
+                                        <span className="text-[10px] text-green-400">✓</span>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </>
+                        )
+                      ) : (
+                        renderMessage(message.content)
+                      )}
+                    </div>
+                  </div>
                   {message.role === 'assistant' && (
-                    <div className="mt-2 flex gap-3 pl-4 items-center">
+                    <div className="mt-2 flex gap-1 items-center">
                       <button
                         onClick={() => handleCopy(message.id, message.content, 'raw')}
-                        className="text-xs text-dark-500 hover:text-accent flex items-center gap-1 transition-colors"
+                        className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-white/[0.03] transition-colors"
+                        title={copiedMessageId === `${message.id}-raw` ? 'Copied!' : 'Copy Raw'}
                       >
-                        {copiedMessageId === `${message.id}-raw` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                        {copiedMessageId === `${message.id}-raw` ? 'Copied' : 'Copy Raw'}
+                        {copiedMessageId === `${message.id}-raw` ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                       </button>
                       <button
                         onClick={() => handleCopy(message.id, message.content, 'markdown')}
-                        className="text-xs text-dark-500 hover:text-accent flex items-center gap-1 transition-colors"
+                        className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-white/[0.03] transition-colors"
+                        title={copiedMessageId === `${message.id}-markdown` ? 'Copied!' : 'Copy Markdown'}
                       >
-                        {copiedMessageId === `${message.id}-markdown` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                        {copiedMessageId === `${message.id}-markdown` ? 'Copied' : 'Copy MD'}
+                        {copiedMessageId === `${message.id}-markdown` ? <Check className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                       </button>
                       <button
                         onClick={() => openForkModal(message.id)}
-                        className="text-xs text-dark-500 hover:text-accent flex items-center gap-1 transition-colors"
+                        className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-white/[0.03] transition-colors"
+                        title="Fork from here"
                       >
-                        <GitBranch className="w-3 h-3" />
-                        Fork
+                        <GitBranch className="w-4 h-4" />
                       </button>
+                      <TextToSpeech text={message.content} messageId={message.id} />
+                      {message.content.includes('```') && (
+                        <button
+                          onClick={() => openInCanvas(message.content, 'Edit Code')}
+                          className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-white/[0.03] transition-colors"
+                          title="Open in Canvas"
+                        >
+                          <Code className="w-4 h-4" />
+                        </button>
+                      )}
 
-                      {/* Details hover - show if message has stats */}
                       {(message.prompt_tokens || message.response_time_ms || message.cost > 0) && (
                         <div className="group relative">
-                          <button className="text-xs text-dark-500 hover:text-accent flex items-center gap-1 transition-colors">
-                            <Info className="w-3 h-3" />
+                          <button
+                            className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-white/[0.03] transition-colors"
+                            title="Message details"
+                          >
+                            <Info className="w-4 h-4" />
                           </button>
                           <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10">
-                            <div className="bg-dark-800 border border-dark-700 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
+                            <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
                               <div className="space-y-1">
                                 {message.response_time_ms > 0 && (
                                   <div className="flex justify-between gap-4">
@@ -1481,7 +1692,7 @@ function Chat() {
                                 {message.cost > 0 && (
                                   <div className="flex justify-between gap-4">
                                     <span className="text-dark-400">Cost:</span>
-                                    <span className="text-accent font-mono">
+                                    <span className="text-accent-400 font-mono">
                                       ${message.cost.toFixed(2)}
                                     </span>
                                   </div>
@@ -1652,7 +1863,74 @@ function Chat() {
                   </button>
                 </div>
               )}
-              <form onSubmit={sendMessage} className="flex gap-3">
+              {/* Pending Attachments Preview */}
+              {pendingAttachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3 p-2 rounded-xl bg-dark-800/50 border border-white/[0.06]">
+                  {pendingAttachments.map((file) => {
+                    const isImage = file.mimetype?.startsWith('image/');
+                    const getIcon = () => {
+                      if (file.mimetype === 'application/pdf') return '📄';
+                      if (file.mimetype === 'text/csv') return '📊';
+                      if (file.mimetype === 'application/json') return '{ }';
+                      if (file.mimetype?.includes('markdown') || file.original_name?.endsWith('.md')) return '📝';
+                      if (file.mimetype === 'text/plain') return '📃';
+                      return '📎';
+                    };
+
+                    return (
+                      <div
+                        key={file.id}
+                        className="relative group w-16 h-16 rounded-lg overflow-hidden border border-white/[0.1] bg-dark-800"
+                      >
+                        {isImage && file.preview ? (
+                          <img
+                            src={file.preview}
+                            alt={file.original_name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center">
+                            <span className="text-2xl">{getIcon()}</span>
+                            {file.has_text && (
+                              <span className="text-[8px] text-green-400 mt-0.5">✓ parsed</span>
+                            )}
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (file.preview) URL.revokeObjectURL(file.preview);
+                            fetch(`/api/uploads/${file.id}`, {
+                              method: 'DELETE',
+                              headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                            }).catch(console.error);
+                            setPendingAttachments(prev => prev.filter(f => f.id !== file.id));
+                          }}
+                          className="absolute top-0.5 right-0.5 p-1 bg-dark-900/80 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-3 h-3 text-dark-300" />
+                        </button>
+                        <div className="absolute inset-x-0 bottom-0 bg-dark-900/80 px-1 py-0.5">
+                          <p className="text-[8px] text-dark-300 truncate">{file.original_name}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <form onSubmit={sendMessage} className="flex gap-3 items-end">
+                <ImageUpload
+                  onFilesSelected={setPendingAttachments}
+                  disabled={streaming}
+                />
+                <ImageGeneration
+                  chatId={currentChat?.id}
+                  onImageGenerated={(result) => {
+                    // Add the generated image info to the chat
+                    console.log('Image generated:', result);
+                  }}
+                />
                 <div className="flex-1 relative">
                   <textarea
                     ref={textareaRef}
@@ -1677,6 +1955,10 @@ function Chat() {
                     }}
                   />
                 </div>
+                <VoiceInput
+                  onTranscript={(text) => setInputMessage(prev => prev + (prev ? ' ' : '') + text)}
+                  disabled={streaming}
+                />
                 <button
                   type="submit"
                   disabled={!inputMessage.trim() || streaming}
@@ -1692,59 +1974,86 @@ function Chat() {
       </div>
 
       {/* Fork Modal */}
-      {showForkModal && (
-        <div className="fixed inset-0 bg-dark-950/80 backdrop-blur-md flex items-center justify-center z-50 scale-in">
-          <div className="glass-modal rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-dark-100 flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
-                  <GitBranch className="w-4 h-4 text-white" />
-                </div>
-                Fork Chat
-              </h3>
-              <button
-                onClick={() => setShowForkModal(false)}
-                className="p-2 hover:bg-dark-700/50 rounded-xl transition-all duration-200"
-              >
-                <X className="w-5 h-5 text-dark-400" />
-              </button>
-            </div>
+      {
+        showForkModal && (
+          <div className="fixed inset-0 bg-dark-950/80 backdrop-blur-md flex items-center justify-center z-50 scale-in">
+            <div className="glass-modal rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-lg font-bold text-dark-100 flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
+                    <GitBranch className="w-4 h-4 text-white" />
+                  </div>
+                  Fork Chat
+                </h3>
+                <button
+                  onClick={() => setShowForkModal(false)}
+                  className="p-2 hover:bg-dark-700/50 rounded-xl transition-all duration-200"
+                >
+                  <X className="w-5 h-5 text-dark-400" />
+                </button>
+              </div>
 
-            <p className="text-dark-400 text-sm mb-5 leading-relaxed">
-              Create a new chat branch from this point. You can choose a different model for the forked chat.
-            </p>
+              <p className="text-dark-400 text-sm mb-5 leading-relaxed">
+                Create a new chat branch from this point. You can choose a different model for the forked chat.
+              </p>
 
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-dark-300 mb-2">
-                Model for forked chat
-              </label>
-              <ModelSelector
-                selectedModel={forkModel}
-                onModelChange={setForkModel}
-                isDropdown={true}
-              />
-            </div>
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-dark-300 mb-2">
+                  Model for forked chat
+                </label>
+                <ModelSelector
+                  selectedModel={forkModel}
+                  onModelChange={setForkModel}
+                  isDropdown={true}
+                />
+              </div>
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowForkModal(false)}
-                className="flex-1 px-4 py-3 rounded-xl glass-button text-dark-300 font-semibold transition-all duration-200 hover:text-dark-100"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={forkChat}
-                className="btn-primary flex-1 px-4 py-3 rounded-xl font-semibold transition-all duration-200 flex items-center justify-center gap-2"
-              >
-                <GitBranch className="w-4 h-4" />
-                Fork Chat
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowForkModal(false)}
+                  className="flex-1 px-4 py-3 rounded-xl glass-button text-dark-300 font-semibold transition-all duration-200 hover:text-dark-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={forkChat}
+                  className="btn-primary flex-1 px-4 py-3 rounded-xl font-semibold transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  <GitBranch className="w-4 h-4" />
+                  Fork Chat
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-    </div>
+      {/* Search Modal */}
+      <SearchModal
+        isOpen={showSearch}
+        onClose={() => setShowSearch(false)}
+        onSelectChat={handleSearchSelectChat}
+        onSelectMessage={handleSearchSelectMessage}
+      />
+
+      {/* Share Dialog */}
+      <ShareDialog
+        chatId={currentChat?.id}
+        chatTitle={currentChat?.title}
+        isOpen={showShareDialog}
+        onClose={() => setShowShareDialog(false)}
+      />
+
+      {/* Canvas Editor */}
+      <Canvas
+        isOpen={canvasState.isOpen}
+        onClose={() => setCanvasState({ ...canvasState, isOpen: false })}
+        initialContent={canvasState.content}
+        initialLanguage={canvasState.language}
+        title={canvasState.title}
+      />
+
+    </div >
   );
 }
 

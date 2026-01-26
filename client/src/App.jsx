@@ -6,6 +6,7 @@ import Chat from './pages/Chat';
 import Admin from './pages/Admin';
 import Profile from './pages/Profile';
 import Memories from './pages/Memories';
+import SharedChat from './pages/SharedChat';
 import { AuthContext } from './contexts/AuthContext';
 
 function App() {
@@ -70,8 +71,14 @@ function App() {
     <AuthContext.Provider value={{ user, login, logout }}>
       <Router>
         <Routes>
+          {/* Public routes */}
+          <Route path="/share/:token" element={<SharedChat />} />
+
+          {/* Auth routes */}
           <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
           <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
+
+          {/* Protected routes */}
           <Route path="/" element={user ? <Chat /> : <Navigate to="/login" />} />
           <Route path="/admin" element={user?.is_admin ? <Admin /> : <Navigate to="/" />} />
           <Route path="/settings" element={user ? <Profile /> : <Navigate to="/login" />} />

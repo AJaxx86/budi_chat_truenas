@@ -9,6 +9,11 @@ import chatsRoutes from './routes/chats.js';
 import messagesRoutes from './routes/messages.js';
 import memoriesRoutes from './routes/memories.js';
 import statsRoutes from './routes/stats.js';
+import searchRoutes from './routes/search.js';
+import exportRoutes from './routes/export.js';
+import uploadsRoutes from './routes/uploads.js';
+import imagesRoutes from './routes/images.js';
+import shareRoutes from './routes/share.js';
 
 dotenv.config();
 
@@ -29,6 +34,11 @@ app.use('/api/chats', chatsRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/memories', memoriesRoutes);
 app.use('/api/stats', statsRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api/export', exportRoutes);
+app.use('/api/uploads', uploadsRoutes);
+app.use('/api/images', imagesRoutes);
+app.use('/api/share', shareRoutes);
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {

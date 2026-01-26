@@ -1,6 +1,7 @@
 import express from "express";
 import { v4 as uuidv4 } from "uuid";
 import OpenAI from "openai";
+import { readFileSync, existsSync } from "fs";
 import db from "../database.js";
 import { authMiddleware } from "../middleware/auth.js";
 import {
@@ -9,6 +10,14 @@ import {
   generateChatTitle,
 } from "../services/ai.js";
 
+// Helper to convert file to base64 data URL
+function getFileAsDataUrl(filePath, mimetype) {
+  if (!existsSync(filePath)) return null;
+  const buffer = readFileSync(filePath);
+  const base64 = buffer.toString("base64");
+  return `data:${mimetype};base64,${base64}`;
+}
+
 const router = express.Router();
 router.use(authMiddleware);
 
@@ -16,7 +25,21 @@ router.use(authMiddleware);
 router.post("/:chatId", async (req, res) => {
   try {
     const { chatId } = req.params;
+<<<<<<< HEAD
     const { content, thinking } = req.body;
+=======
+    const { content, attachment_ids = [] } = req.body;
+
+    // Fetch attachments if provided
+    let attachments = [];
+    if (attachment_ids.length > 0) {
+      attachments = db
+        .prepare(
+          `SELECT * FROM file_uploads WHERE id IN (${attachment_ids.map(() => "?").join(",")}) AND user_id = ?`
+        )
+        .all(...attachment_ids, req.user.id);
+    }
+>>>>>>> 44479451eaa4db5ff6ebcbf18375f307e12258f0
 
     // Verify chat ownership and get message count
     const chat = db
@@ -83,6 +106,16 @@ router.post("/:chatId", async (req, res) => {
     `,
     ).run(userMessageId, chatId, content);
 
+    // Link attachments to the user message
+    if (attachments.length > 0) {
+      const updateStmt = db.prepare(
+        `UPDATE file_uploads SET message_id = ?, chat_id = ? WHERE id = ?`
+      );
+      for (const attachment of attachments) {
+        updateStmt.run(userMessageId, chatId, attachment.id);
+      }
+    }
+
     // Get conversation history
     const messages = db
       .prepare(
@@ -125,10 +158,68 @@ router.post("/:chatId", async (req, res) => {
       });
     }
 
+    // Get all attachments for this chat's messages
+    const chatAttachments = db
+      .prepare(
+        `SELECT * FROM file_uploads WHERE chat_id = ? AND message_id IS NOT NULL`
+      )
+      .all(chatId);
+
+    // Group attachments by message_id
+    const attachmentsByMessage = {};
+    for (const att of chatAttachments) {
+      if (!attachmentsByMessage[att.message_id]) {
+        attachmentsByMessage[att.message_id] = [];
+      }
+      attachmentsByMessage[att.message_id].push(att);
+    }
+
+    // Inject document context from current attachments
+    if (attachments.length > 0) {
+      const documentContextParts = [];
+      for (const att of attachments) {
+        if (att.extracted_text && att.extraction_status === "completed") {
+          documentContextParts.push(
+            `--- Document: ${att.original_name} ---\n${att.extracted_text}\n--- End of ${att.original_name} ---`
+          );
+        }
+      }
+
+      if (documentContextParts.length > 0) {
+        openaiMessages.push({
+          role: "system",
+          content: `The user has attached the following document(s) for analysis:\n\n${documentContextParts.join("\n\n")}`,
+        });
+      }
+    }
+
     for (const msg of messages) {
+      const msgAttachments = attachmentsByMessage[msg.id] || [];
+
+      // Build message content - use multi-modal format if attachments exist
+      let messageContent;
+      if (msgAttachments.length > 0 && msg.role === "user") {
+        // Multi-modal content with images
+        messageContent = [{ type: "text", text: msg.content }];
+
+        for (const att of msgAttachments) {
+          if (att.mimetype.startsWith("image/")) {
+            const dataUrl = getFileAsDataUrl(att.storage_path, att.mimetype);
+            if (dataUrl) {
+              messageContent.push({
+                type: "image_url",
+                image_url: { url: dataUrl },
+              });
+            }
+          }
+        }
+      } else {
+        messageContent = msg.content;
+      }
+
       const openaiMsg = {
         role: msg.role,
-        content: msg.content,
+        content: messageContent,
       };
 
       if (msg.reasoning_content) {
@@ -149,6 +240,29 @@ router.post("/:chatId", async (req, res) => {
       }
 
       openaiMessages.push(openaiMsg);
+    }
+
+    // Add current message attachments to the last message if not already included
+    if (attachments.length > 0) {
+      const lastMsg = openaiMessages[openaiMessages.length - 1];
+      if (lastMsg && lastMsg.role === "user") {
+        // Convert to multi-modal if not already
+        if (typeof lastMsg.content === "string") {
+          lastMsg.content = [{ type: "text", text: lastMsg.content }];
+        }
+
+        for (const att of attachments) {
+          if (att.mimetype.startsWith("image/")) {
+            const dataUrl = getFileAsDataUrl(att.storage_path, att.mimetype);
+            if (dataUrl) {
+              lastMsg.content.push({
+                type: "image_url",
+                image_url: { url: dataUrl },
+              });
+            }
+          }
+        }
+      }
     }
 
     const openai = new OpenAI({
