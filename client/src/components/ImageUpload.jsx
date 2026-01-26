@@ -169,7 +169,7 @@ function ImageUpload({ onFilesSelected, disabled = false }) {
   };
 
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col gap-2">
       {/* Pending Files Preview */}
       {pendingFiles.length > 0 && (
         <div className="flex flex-wrap gap-2 p-2 rounded-xl bg-dark-800/50 border border-white/[0.06]">
@@ -224,9 +224,9 @@ function ImageUpload({ onFilesSelected, disabled = false }) {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`relative flex items-center gap-2 ${isDragging
-            ? 'ring-2 ring-primary-500/50 bg-primary-500/5'
-            : ''
+        className={`relative ${isDragging
+          ? 'ring-2 ring-primary-500/50 bg-primary-500/5'
+          : ''
           }`}
       >
         <input
@@ -242,9 +242,9 @@ function ImageUpload({ onFilesSelected, disabled = false }) {
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled || uploading}
-          className={`p-3.5 rounded-xl transition-all duration-200 ${uploading
-              ? 'bg-primary-500/10 text-primary-400'
-              : 'glass-button text-dark-400 hover:text-primary-400'
+          className={`w-12 h-12 rounded-xl transition-all duration-200 flex items-center justify-center ${uploading
+            ? 'bg-primary-500/10 text-primary-400'
+            : 'glass-button text-dark-400 hover:text-primary-400'
             } disabled:opacity-50`}
           title="Attach files (images, PDF, TXT, CSV, JSON, Markdown)"
         >
@@ -260,7 +260,7 @@ function ImageUpload({ onFilesSelected, disabled = false }) {
           <div className="absolute inset-0 flex items-center justify-center bg-primary-500/10 border-2 border-dashed border-primary-500/50 rounded-xl z-10">
             <div className="flex items-center gap-2 text-primary-400">
               <Upload className="w-5 h-5" />
-              <span className="text-sm font-medium">Drop files here</span>
+              <span className="text-sm font-medium">Drop</span>
             </div>
           </div>
         )}
@@ -268,7 +268,7 @@ function ImageUpload({ onFilesSelected, disabled = false }) {
 
       {/* Error Message */}
       {error && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+        <div className="absolute bottom-full left-0 mb-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs whitespace-nowrap z-50">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           <p>{error}</p>
           <button onClick={() => setError(null)} className="ml-auto">

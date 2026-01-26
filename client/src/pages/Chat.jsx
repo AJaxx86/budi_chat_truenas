@@ -1489,72 +1489,46 @@ function Chat() {
                 <div
                   key={message.id}
                   id={`message-${message.id}`}
-                  className={`flex gap-4 ${message.role === 'user' ? 'flex-row-reverse' : ''} transition-colors duration-500`}
+                  className={`flex gap-4 ${message.role === 'user' ? 'flex-row-reverse' : ''} group`}
                 >
-                  {message.role === 'assistant' && message.reasoning_content && (
-                    <ThinkingSection
-                      reasoning={message.reasoning_content}
-                      isExpanded={expandedThinkingSections.has(message.id)}
-                      onToggle={() => toggleThinkingSection(message.id)}
-                      isStreaming={false}
-                      elapsedTime={0}
-                      stats={null}
-                    />
-                  )}
-                  <div className={`${message.role === 'user'
-                    ? 'border-l-2 border-dark-600 rounded-lg px-4 py-3'
-                    : 'rounded-lg px-4 py-3'
-                    }`}>
-                    <div className="flex items-center gap-2 mb-2">
+                  {/* Avatar Column */}
+                  <div className="flex-shrink-0 flex flex-col items-center pt-1">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${message.role === 'user' ? 'bg-dark-700' : 'bg-dark-800'}`}>
                       {message.role === 'user' ? (
-                        <>
-                          <UserIcon className="w-3.5 h-3.5 text-dark-500" />
-                          <span className="text-xs font-medium text-dark-500">You</span>
-                        </>
+                        <UserIcon className="w-5 h-5 text-dark-400" />
                       ) : (
-                        <>
-                          <Bot className="w-3.5 h-3.5 text-dark-500" />
-                          <span className="text-xs font-medium text-dark-500">{formatModelName(message.model)}</span>
-                        </>
+                        <Bot className="w-5 h-5 text-accent" />
                       )}
                     </div>
-                    {message.role === 'user' ? (
-                      editingMessageId === message.id ? (
-                        <div className="space-y-2">
-                          <textarea
-                            value={editContent}
-                            onChange={(e) => setEditContent(e.target.value)}
-                            className="w-full bg-dark-900 border border-dark-700 rounded-lg p-2 text-white resize-none focus:outline-none focus:border-accent/50"
-                            rows={3}
-                            autoFocus
-                          />
-                          <div className="flex gap-2 justify-end">
-                            <button
-                              onClick={handleEditCancel}
-                              className="px-3 py-1 text-xs rounded-lg bg-dark-700 hover:bg-dark-600 transition-colors"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={() => handleEditSave(message.id)}
-                              className="px-3 py-1 text-xs rounded-lg bg-accent hover:bg-accent transition-colors"
-                            >
-                              Save & Regenerate
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        renderMessage(message.content)
-                      )
-                    ) : (
-                      renderMessage(message.content)
-                    )}
                   </div>
 
-                  <div className={`flex-1 ${message.role === 'user' ? 'text-right' : ''}`}>
-                    <div className={`inline-block max-w-[80%] ${message.role === 'user'
+                  {/* Content Column */}
+                  <div className={`flex-1 min-w-0 flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'}`}>
+                    {/* Header: Name and Model */}
+                    <div className="flex items-center gap-2 mb-1 px-1">
+                      <span className="text-xs font-medium text-dark-400">
+                        {message.role === 'user' ? 'You' : formatModelName(message.model)}
+                      </span>
+                    </div>
+
+                    {/* Thinking Section (Assistant only) */}
+                    {message.role === 'assistant' && message.reasoning_content && (
+                      <div className="mb-2 w-full max-w-[85%]">
+                        <ThinkingSection
+                          reasoning={message.reasoning_content}
+                          isExpanded={expandedThinkingSections.has(message.id)}
+                          onToggle={() => toggleThinkingSection(message.id)}
+                          isStreaming={false}
+                          elapsedTime={0}
+                          stats={null}
+                        />
+                      </div>
+                    )}
+
+                    {/* Message Bubble */}
+                    <div className={`inline-block max-w-[85%] ${message.role === 'user'
                       ? 'bg-dark-700/80 border border-dark-600 text-dark-100 rounded-2xl rounded-tr-sm px-4 py-3'
-                      : 'bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 text-left shadow-lg'
+                      : 'bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg'
                       }`}>
                       {message.role === 'user' ? (
                         editingMessageId === message.id ? (
@@ -1631,79 +1605,81 @@ function Chat() {
                         renderMessage(message.content)
                       )}
                     </div>
-                  </div>
-                  {message.role === 'assistant' && (
-                    <div className="mt-2 flex gap-1 items-center">
-                      <button
-                        onClick={() => handleCopy(message.id, message.content, 'raw')}
-                        className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-white/[0.03] transition-colors"
-                        title={copiedMessageId === `${message.id}-raw` ? 'Copied!' : 'Copy Raw'}
-                      >
-                        {copiedMessageId === `${message.id}-raw` ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                      </button>
-                      <button
-                        onClick={() => handleCopy(message.id, message.content, 'markdown')}
-                        className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-white/[0.03] transition-colors"
-                        title={copiedMessageId === `${message.id}-markdown` ? 'Copied!' : 'Copy Markdown'}
-                      >
-                        {copiedMessageId === `${message.id}-markdown` ? <Check className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-                      </button>
-                      <button
-                        onClick={() => openForkModal(message.id)}
-                        className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-white/[0.03] transition-colors"
-                        title="Fork from here"
-                      >
-                        <GitBranch className="w-4 h-4" />
-                      </button>
-                      <TextToSpeech text={message.content} messageId={message.id} />
-                      {message.content.includes('```') && (
-                        <button
-                          onClick={() => openInCanvas(message.content, 'Edit Code')}
-                          className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-white/[0.03] transition-colors"
-                          title="Open in Canvas"
-                        >
-                          <Code className="w-4 h-4" />
-                        </button>
-                      )}
 
-                      {(message.prompt_tokens || message.response_time_ms || message.cost > 0) && (
-                        <div className="group relative">
+                    {/* Actions Row (Assistant Only) */}
+                    {message.role === 'assistant' && (
+                      <div className="mt-1 flex gap-1 items-center opacity-0 group-hover:opacity-100 transition-opacity px-1">
+                        <button
+                          onClick={() => handleCopy(message.id, message.content, 'raw')}
+                          className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
+                          title={copiedMessageId === `${message.id}-raw` ? 'Copied!' : 'Copy Raw'}
+                        >
+                          {copiedMessageId === `${message.id}-raw` ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          onClick={() => handleCopy(message.id, message.content, 'markdown')}
+                          className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
+                          title={copiedMessageId === `${message.id}-markdown` ? 'Copied!' : 'Copy Markdown'}
+                        >
+                          {copiedMessageId === `${message.id}-markdown` ? <Check className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          onClick={() => openForkModal(message.id)}
+                          className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
+                          title="Fork from here"
+                        >
+                          <GitBranch className="w-3.5 h-3.5" />
+                        </button>
+                        <TextToSpeech text={message.content} messageId={message.id} />
+                        {message.content.includes('```') && (
                           <button
-                            className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-white/[0.03] transition-colors"
-                            title="Message details"
+                            onClick={() => openInCanvas(message.content, 'Edit Code')}
+                            className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
+                            title="Open in Canvas"
                           >
-                            <Info className="w-4 h-4" />
+                            <Code className="w-3.5 h-3.5" />
                           </button>
-                          <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block z-10">
-                            <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
-                              <div className="space-y-1">
-                                {message.response_time_ms > 0 && (
-                                  <div className="flex justify-between gap-4">
-                                    <span className="text-dark-400">Time:</span>
-                                    <span className="text-dark-200 font-mono">{formatThinkingTime(message.response_time_ms / 1000)}</span>
-                                  </div>
-                                )}
-                                {(message.prompt_tokens || message.completion_tokens) && (
-                                  <div className="flex justify-between gap-4">
-                                    <span className="text-dark-400">Tokens:</span>
-                                    <span className="text-dark-200 font-mono">{((message.prompt_tokens || 0) + (message.completion_tokens || 0)).toLocaleString()} tks</span>
-                                  </div>
-                                )}
-                                {message.cost > 0 && (
-                                  <div className="flex justify-between gap-4">
-                                    <span className="text-dark-400">Cost:</span>
-                                    <span className="text-accent-400 font-mono">
-                                      ${message.cost.toFixed(2)}
-                                    </span>
-                                  </div>
-                                )}
+                        )}
+
+                        {(message.prompt_tokens || message.response_time_ms || message.cost > 0) && (
+                          <div className="group/info relative">
+                            <button
+                              className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
+                              title="Message details"
+                            >
+                              <Info className="w-3.5 h-3.5" />
+                            </button>
+                            <div className="absolute bottom-full left-0 mb-1 hidden group-hover/info:block z-10">
+                              <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
+                                <div className="space-y-1">
+                                  {message.response_time_ms > 0 && (
+                                    <div className="flex justify-between gap-4">
+                                      <span className="text-dark-400">Time:</span>
+                                      <span className="text-dark-200 font-mono">{formatThinkingTime(message.response_time_ms / 1000)}</span>
+                                    </div>
+                                  )}
+                                  {(message.prompt_tokens || message.completion_tokens) && (
+                                    <div className="flex justify-between gap-4">
+                                      <span className="text-dark-400">Tokens:</span>
+                                      <span className="text-dark-200 font-mono">{((message.prompt_tokens || 0) + (message.completion_tokens || 0)).toLocaleString()} tks</span>
+                                    </div>
+                                  )}
+                                  {message.cost > 0 && (
+                                    <div className="flex justify-between gap-4">
+                                      <span className="text-dark-400">Cost:</span>
+                                      <span className="text-accent-400 font-mono">
+                                        ${message.cost.toFixed(2)}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
 
@@ -1721,25 +1697,41 @@ function Chat() {
                   )}
 
                   {streamingMessage && (
-                    <div className="rounded-lg px-4 py-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Bot className="w-3.5 h-3.5 text-dark-500" />
-                        <span className="text-xs font-medium text-dark-500">{formatModelName(chatSettings.model)}</span>
+                    <div className="flex gap-4 group fade-in">
+                      <div className="flex-shrink-0 flex flex-col items-center pt-1">
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-dark-800">
+                          <Bot className="w-5 h-5 text-accent" />
+                        </div>
                       </div>
-                      {renderMessage(streamingMessage)}
+                      <div className="flex-1 min-w-0 flex flex-col items-start">
+                        <div className="flex items-center gap-2 mb-1 px-1">
+                          <span className="text-xs font-medium text-dark-400">{formatModelName(chatSettings.model)}</span>
+                        </div>
+                        <div className="inline-block max-w-[85%] bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg">
+                          {renderMessage(streamingMessage)}
+                        </div>
+                      </div>
                     </div>
                   )}
 
                   {streaming && !streamingMessage && !streamingReasoning && (
-                    <div className="rounded-lg px-4 py-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Bot className="w-3.5 h-3.5 text-dark-500" />
-                        <span className="text-xs font-medium text-dark-500">{formatModelName(chatSettings.model)}</span>
+                    <div className="flex gap-4 group fade-in">
+                      <div className="flex-shrink-0 flex flex-col items-center pt-1">
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-dark-800">
+                          <Bot className="w-5 h-5 text-accent" />
+                        </div>
                       </div>
-                      <div className="flex gap-1">
-                        <div className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                        <div className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                        <div className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                      <div className="flex-1 min-w-0 flex flex-col items-start">
+                        <div className="flex items-center gap-2 mb-1 px-1">
+                          <span className="text-xs font-medium text-dark-400">{formatModelName(chatSettings.model)}</span>
+                        </div>
+                        <div className="inline-block bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg">
+                          <div className="flex gap-1">
+                            <div className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                            <div className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                            <div className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1945,7 +1937,7 @@ function Chat() {
                       }
                     }}
                     placeholder={streaming ? "AI is responding..." : "Type a message..."}
-                    className="w-full px-4 py-3 rounded-lg glass-input outline-none text-dark-200 placeholder-dark-600 text-sm resize-none overflow-y-auto"
+                    className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-200 placeholder-dark-600 text-sm resize-none overflow-y-auto"
                     style={{ minHeight: '48px', maxHeight: '140px' }}
                     rows={1}
                     disabled={streaming}
@@ -1962,9 +1954,9 @@ function Chat() {
                 <button
                   type="submit"
                   disabled={!inputMessage.trim() || streaming}
-                  className="px-5 py-3 btn-primary text-dark-900 rounded-lg font-medium text-sm transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
+                  className="px-5 h-12 btn-primary text-dark-900 rounded-xl font-medium text-sm transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  <Send className="w-4 h-4" />
+                  <Send className="w-5 h-5" />
                   <span className="hidden sm:inline">Send</span>
                 </button>
               </form>
