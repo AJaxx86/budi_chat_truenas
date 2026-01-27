@@ -254,7 +254,7 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 w-[380px] glass-dropdown rounded-2xl z-[100] overflow-hidden shadow-2xl scale-in">
+        <div className="absolute top-full left-1/2 mt-2 w-[380px] glass-dropdown rounded-2xl z-[100] overflow-hidden shadow-2xl scale-in-centered">
           {/* Search Bar */}
           <div className="p-3 border-b border-dark-700/50 bg-dark-850">
             <div className="relative">

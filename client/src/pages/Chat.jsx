@@ -204,9 +204,8 @@ function Chat() {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const [streaming, setStreaming] = useState(false);
-  const [streamingMessage, setStreamingMessage] = useState('');
-  const [streamingReasoning, setStreamingReasoning] = useState('');
+  // Per-chat streaming state: Map<chatId, { streaming, message, reasoning, ... }>
+  const [streamingStates, setStreamingStates] = useState(new Map());
   const [showSettings, setShowSettings] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showForkModal, setShowForkModal] = useState(false);
@@ -215,7 +214,8 @@ function Chat() {
   const [forkModel, setForkModel] = useState(DEFAULT_MODEL);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
-  const abortControllerRef = useRef(null);
+  // Per-chat abort controllers
+  const abortControllersRef = useRef(new Map());
   const isCreatingChatRef = useRef(false);
   const userHasScrolledUp = useRef(false);
   const statsPopupRef = useRef(null);
@@ -226,10 +226,7 @@ function Chat() {
   const [editContent, setEditContent] = useState('');
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [usageStats, setUsageStats] = useState(null);
-  const [thinkingStartTime, setThinkingStartTime] = useState(null);
   const [thinkingElapsedTime, setThinkingElapsedTime] = useState(0);
-  const [lastThinkingStats, setLastThinkingStats] = useState(null);
-  const [thinkingComplete, setThinkingComplete] = useState(false);
   const currentChatIdRef = useRef(null);
 
   // Update ref whenever currentChat changes to prevent ghosting
@@ -265,6 +262,65 @@ function Chat() {
     agent_mode: false
   }));
 
+  // Factory for initial stream state
+  const createInitialStreamState = useCallback(() => ({
+    streaming: false,
+    streamingMessage: '',
+    streamingReasoning: '',
+    thinkingStartTime: null,
+    thinkingComplete: false,
+    lastThinkingStats: null,
+  }), []);
+
+  // Update streaming state for a specific chat
+  const updateStreamState = useCallback((chatId, updates) => {
+    setStreamingStates(prev => {
+      const newMap = new Map(prev);
+      const current = prev.get(chatId) || createInitialStreamState();
+      newMap.set(chatId, { ...current, ...updates });
+      return newMap;
+    });
+  }, [createInitialStreamState]);
+
+  // Clear streaming state for a chat
+  const clearStreamState = useCallback((chatId) => {
+    setStreamingStates(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(chatId);
+      return newMap;
+    });
+    // Also clean up abort controller
+    const controller = abortControllersRef.current.get(chatId);
+    if (controller) {
+      abortControllersRef.current.delete(chatId);
+    }
+  }, []);
+
+  // Get set of currently streaming chat IDs (for sidebar indicators)
+  const streamingChatIds = useMemo(() => {
+    const ids = new Set();
+    for (const [chatId, state] of streamingStates) {
+      if (state.streaming) ids.add(chatId);
+    }
+    return ids;
+  }, [streamingStates]);
+
+  // Derived streaming state for the active chat
+  const currentStreamState = useMemo(() => {
+    if (!currentChat?.id) return createInitialStreamState();
+    return streamingStates.get(currentChat.id) || createInitialStreamState();
+  }, [streamingStates, currentChat?.id, createInitialStreamState]);
+
+  // Destructure for easy access (maintains API compatibility)
+  const {
+    streaming,
+    streamingMessage,
+    streamingReasoning,
+    thinkingStartTime,
+    thinkingComplete,
+    lastThinkingStats
+  } = currentStreamState;
+
   // Check if current model supports reasoning
   const isReasoningSupported = useMemo(() => {
     return modelSupportsReasoning(chatSettings.model);
@@ -289,27 +345,33 @@ function Chat() {
     };
   }, [messages]);
 
+  // Cleanup on unmount - abort all active streams
+  useEffect(() => {
+    return () => {
+      for (const controller of abortControllersRef.current.values()) {
+        controller.abort();
+      }
+      abortControllersRef.current.clear();
+    };
+  }, []);
+
   useEffect(() => {
     loadChats();
   }, []);
 
   useEffect(() => {
-    // Skip clearing/aborting if we're in the middle of creating a new chat
+    // Skip if we're in the middle of creating a new chat
     if (isCreatingChatRef.current) {
       return;
     }
 
-    // Clear state immediately when switching chats or if no chat is selected
-    setStreamingMessage('');
-    setStreamingReasoning('');
-    setStreaming(false);
+    // Don't clear streaming states - they're per-chat now
     setUsageStats(null);
-
-    // We do NOT abort the controller here anymore. 
-    // This allows the previous message to continue generating in the background.
 
     if (currentChat?.id) {
       loadMessages(currentChat.id);
+    } else {
+      setMessages([]);
     }
   }, [currentChat?.id]);
 
@@ -337,15 +399,6 @@ function Chat() {
     }
     return () => clearInterval(interval);
   }, [streaming, thinkingStartTime, thinkingComplete]);
-
-  // Reset thinking timer when streaming starts
-  useEffect(() => {
-    if (streaming) {
-      setThinkingStartTime(Date.now());
-      setThinkingElapsedTime(0);
-      setLastThinkingStats(null);
-    }
-  }, [streaming]);
 
   // Close stats popup when clicking outside
   useEffect(() => {
@@ -461,14 +514,10 @@ function Chat() {
     const modelToUse = localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL;
     // Clear all existing state
     setMessages([]);
-    setStreamingMessage('');
-    setStreamingMessage('');
-    setStreamingReasoning('');
-    setThinkingComplete(false);
     setExpandedThinkingSections(new Set());
-    setLastThinkingStats(null);
     setThinkingElapsedTime(0);
     setShowSettings(false);
+    setUsageStats(null);
     // Create a temporary chat object without an ID
     // The actual chat will be created when the first message is sent
     setCurrentChat({
@@ -479,13 +528,6 @@ function Chat() {
       agent_mode: false,
       thinking_mode: 'auto'
     });
-    setMessages([]);
-    setStreamingMessage('');
-    setStreamingReasoning('');
-    setUsageStats(null);
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
     setChatSettings({
       model: modelToUse,
       temperature: 0.7,
@@ -547,6 +589,14 @@ function Chat() {
   };
 
   const deleteChat = async (chatId) => {
+    // Abort any active stream for this chat
+    const controller = abortControllersRef.current.get(chatId);
+    if (controller) {
+      controller.abort();
+      abortControllersRef.current.delete(chatId);
+      clearStreamState(chatId);
+    }
+
     try {
       const res = await fetch(`/api/chats/${chatId}`, {
         method: 'DELETE',
@@ -604,12 +654,17 @@ function Chat() {
     }
   };
 
-  const stopGeneration = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      setStreaming(false);
+  const stopGeneration = useCallback(() => {
+    const chatId = currentChat?.id;
+    if (!chatId) return;
+
+    const controller = abortControllersRef.current.get(chatId);
+    if (controller) {
+      controller.abort();
+      abortControllersRef.current.delete(chatId);
+      clearStreamState(chatId);
     }
-  };
+  }, [currentChat?.id, clearStreamState]);
 
   const sendMessage = async (e) => {
     e.preventDefault();
@@ -625,11 +680,6 @@ function Chat() {
     if (textareaRef.current) {
       textareaRef.current.style.height = '52px';
     }
-    setStreaming(true);
-    setStreamingMessage('');
-    setStreamingReasoning('');
-
-    abortControllerRef.current = new AbortController();
 
     // Add user message to UI immediately (with attachment previews)
     const tempUserMessage = {
@@ -641,9 +691,11 @@ function Chat() {
     };
     setMessages(prev => [...prev, tempUserMessage]);
 
+    // Determine chatId - may need to create the chat first
+    let chatId = currentChat.id;
+
     try {
       // If this is a new chat without an ID, create it first
-      let chatId = currentChat.id;
       if (!chatId) {
         isCreatingChatRef.current = true;
         const createRes = await fetch('/api/chats', {
@@ -669,6 +721,21 @@ function Chat() {
         currentChatIdRef.current = chatId; // Manually update ref for immediate use
       }
 
+      // Initialize streaming state for this chat
+      const streamStartTime = Date.now();
+      updateStreamState(chatId, {
+        streaming: true,
+        streamingMessage: '',
+        streamingReasoning: '',
+        thinkingStartTime: streamStartTime,
+        thinkingComplete: false,
+        lastThinkingStats: null,
+      });
+
+      // Create abort controller for this chat
+      const abortController = new AbortController();
+      abortControllersRef.current.set(chatId, abortController);
+
       // Final check before starting stream
       if (currentChatIdRef.current && currentChatIdRef.current !== chatId) {
         throw new Error('Chat changed before sending message');
@@ -688,7 +755,7 @@ function Chat() {
           } : undefined,
           attachment_ids: attachmentIds
         }),
-        signal: abortControllerRef.current.signal
+        signal: abortController.signal
       });
 
       if (!res.ok) {
@@ -700,8 +767,12 @@ function Chat() {
       const decoder = new TextDecoder();
       let buffer = '';
 
-      // Capture critical references for the loop
-      const currentStreamController = abortControllerRef.current;
+      // Local accumulators to avoid stale closures with state
+      let accumulatedMessage = '';
+      let accumulatedReasoning = '';
+
+      // Capture the specific controller for this stream
+      const currentStreamController = abortController;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -727,14 +798,18 @@ function Chat() {
               const data = JSON.parse(line.slice(6));
 
               if (data.type === 'reasoning') {
-                if (isActiveChat) {
-                  setStreamingReasoning(prev => prev + data.content);
-                }
+                // Accumulate locally to avoid stale closure
+                accumulatedReasoning += data.content;
+                updateStreamState(chatId, {
+                  streamingReasoning: accumulatedReasoning
+                });
               } else if (data.type === 'content') {
-                if (isActiveChat) {
-                  setThinkingComplete(true); // Stop thinking timer
-                  setStreamingMessage(prev => prev + data.content);
-                }
+                // Accumulate locally to avoid stale closure
+                accumulatedMessage += data.content;
+                updateStreamState(chatId, {
+                  thinkingComplete: true, // Stop thinking timer
+                  streamingMessage: accumulatedMessage
+                });
               } else if (data.type === 'title') {
                 // Handle concurrent title update
                 const newTitle = data.content;
@@ -745,11 +820,11 @@ function Chat() {
                   setCurrentChat(prev => (prev.id === chatId ? { ...prev, title: newTitle } : prev));
                 }
               } else if (data.type === 'done') {
-                // If we are not on the active chat, just ignore UI updates
-                if (!isActiveChat) return;
-
                 // Calculate thinking duration
-                const thinkingDuration = thinkingStartTime ? (Date.now() - thinkingStartTime) / 1000 : 0;
+                const chatState = streamingStates.get(chatId);
+                const thinkingDuration = chatState?.thinkingStartTime
+                  ? (Date.now() - chatState.thinkingStartTime) / 1000
+                  : 0;
 
                 // Capture usage data if provided
                 if (data.usage) {
@@ -761,27 +836,29 @@ function Chat() {
                     duration: thinkingDuration,
                     cost: data.cost || 0
                   };
-                  setLastThinkingStats(stats);
-                  setUsageStats(prev => ({
-                    ...prev,
-                    lastMessage: stats,
-                    totalPromptTokens: (prev?.totalPromptTokens || 0) + (data.usage.prompt_tokens || 0),
-                    totalCompletionTokens: (prev?.totalCompletionTokens || 0) + (data.usage.completion_tokens || 0),
-                    totalTokens: (prev?.totalTokens || 0) + (data.usage.total_tokens || 0),
-                    messageCount: (prev?.messageCount || 0) + 1
-                  }));
+                  updateStreamState(chatId, { lastThinkingStats: stats });
+                  if (isActiveChat) {
+                    setUsageStats(prev => ({
+                      ...prev,
+                      lastMessage: stats,
+                      totalPromptTokens: (prev?.totalPromptTokens || 0) + (data.usage.prompt_tokens || 0),
+                      totalCompletionTokens: (prev?.totalCompletionTokens || 0) + (data.usage.completion_tokens || 0),
+                      totalTokens: (prev?.totalTokens || 0) + (data.usage.total_tokens || 0),
+                      messageCount: (prev?.messageCount || 0) + 1
+                    }));
+                  }
                 } else {
                   // No usage data, but we still have duration
-                  setLastThinkingStats({ duration: thinkingDuration, totalTokens: 0 });
+                  updateStreamState(chatId, { lastThinkingStats: { duration: thinkingDuration, totalTokens: 0 } });
                 }
-                // Don't clear streaming states immediately - let loadMessages handle it
-                // This prevents the thinking section from disappearing before the message is added
+
+                // Reload messages for the completed chat
                 loadMessages(chatId);
                 loadChats();
-                // Clear streaming states after a short delay to ensure smooth transition
+
+                // Clear streaming state after a short delay to ensure smooth transition
                 setTimeout(() => {
-                  setStreamingMessage('');
-                  setStreamingReasoning('');
+                  clearStreamState(chatId);
                 }, 100);
               } else if (data.type === 'error') {
                 if (isActiveChat) {
@@ -802,12 +879,10 @@ function Chat() {
         alert(error.message || 'Failed to send message. Please check your API key configuration.');
       }
     } finally {
-      // Only clear streaming state if we are still on the same chat
-      // If we switched, the checking in useEffect would have already cleared it
-      if (currentChatIdRef.current === chatId) {
-        setStreaming(false);
-        abortControllerRef.current = null;
-        isCreatingChatRef.current = false;
+      isCreatingChatRef.current = false;
+      // Clean up abort controller
+      if (chatId) {
+        abortControllersRef.current.delete(chatId);
       }
     }
   };
@@ -1112,6 +1187,12 @@ function Chat() {
                       <span className="text-xs text-dark-500">
                         {chat.message_count === 1 ? '1 message' : `${chat.message_count || 0} messages`}
                       </span>
+                      {streamingChatIds.has(chat.id) && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-accent/20 text-accent text-[10px] font-medium">
+                          <span className="w-1.5 h-1.5 bg-accent rounded-full animate-pulse" />
+                          Generating
+                        </span>
+                      )}
                       {chat.agent_mode === 1 && (
                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-accent/10 text-accent text-[10px] font-medium">
                           <Zap className="w-2.5 h-2.5" />
@@ -1160,8 +1241,11 @@ function Chat() {
                   </div>
                 </div>
               ) : (
-                <div className="flex justify-center">
+                <div className="flex justify-center relative">
                   <MessageSquare className={`w-5 h-5 ${currentChat?.id === chat.id ? 'text-accent' : 'text-dark-400'}`} />
+                  {streamingChatIds.has(chat.id) && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-accent rounded-full animate-pulse" />
+                  )}
                 </div>
               )}
             </div>
@@ -1211,21 +1295,13 @@ function Chat() {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
         <div className="bg-dark-900/50 border-b border-dark-700/30 px-4 py-3 flex items-center justify-between relative z-50 overflow-visible">
-          <div className="flex items-center gap-3">
-            {/* Chat Title and Model Selector */}
+          {/* Left - Chat Title */}
+          <div className="flex items-center gap-3 flex-1 min-w-0">
             {currentChat ? (
               <>
-                <h2 className="text-sm font-medium text-dark-200">{currentChat.title}</h2>
-                <div className="h-3 w-px bg-dark-700/50"></div>
-                <div className="flex items-center">
-                  <ModelSelector
-                    selectedModel={chatSettings.model}
-                    onModelChange={handleModelChange}
-                    isDropdown={true}
-                  />
-                </div>
+                <h2 className="text-sm font-medium text-dark-200 truncate">{currentChat.title}</h2>
                 {chatSettings.agent_mode && (
-                  <span className="flex items-center gap-1.5 px-2.5 py-1 bg-dark-800/60 text-dark-400 rounded text-xs font-medium border border-dark-700/40">
+                  <span className="flex items-center gap-1.5 px-2.5 py-1 bg-dark-800/60 text-dark-400 rounded text-xs font-medium border border-dark-700/40 flex-shrink-0">
                     <Zap className="w-3 h-3" />
                     Agent
                   </span>
@@ -1236,8 +1312,19 @@ function Chat() {
             )}
           </div>
 
+          {/* Center - Model Selector */}
           {currentChat && (
-            <div className="flex items-center gap-2 overflow-visible">
+            <div className="flex items-center justify-center flex-shrink-0 px-4">
+              <ModelSelector
+                selectedModel={chatSettings.model}
+                onModelChange={handleModelChange}
+                isDropdown={true}
+              />
+            </div>
+          )}
+          {/* Right - Action Buttons */}
+          {currentChat ? (
+            <div className="flex items-center gap-2 overflow-visible flex-1 justify-end">
               <div className="relative overflow-visible" ref={statsPopupRef}>
                 <button
                   onClick={() => setShowInfoModal(!showInfoModal)}
@@ -1382,6 +1469,8 @@ function Chat() {
                 Settings
               </button>
             </div>
+          ) : (
+            <div className="flex-1" />
           )}
         </div>
 
