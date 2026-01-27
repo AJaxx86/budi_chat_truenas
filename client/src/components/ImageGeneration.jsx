@@ -93,7 +93,7 @@ function ImageGeneration({ chatId, onImageGenerated }) {
       {/* Trigger Button */}
       <button
         onClick={() => setIsOpen(true)}
-        className="w-12 h-12 rounded-xl glass-button text-dark-400 hover:text-accent-400 transition-all duration-200 flex items-center justify-center"
+        className="h-12 w-12 flex items-center justify-center rounded-xl glass-button text-dark-400 hover:text-accent-400 transition-all duration-200"
         title="Generate Image"
       >
         <Wand2 className="w-5 h-5" />

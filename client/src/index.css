@@ -90,10 +90,10 @@
   /* Atmospheric background with subtle glow and noise */
   .bg-mesh {
     background:
-      /* Subtle warm glow top-left */
-      radial-gradient(ellipse 50% 35% at 10% 20%, rgba(245, 158, 11, 0.04) 0%, transparent 50%),
+      /* Subtle accent glow top-left */
+      radial-gradient(ellipse 50% 35% at 10% 20%, hsl(var(--accent-h), var(--accent-s), var(--accent-l), 0.04) 0%, transparent 50%),
       /* Smaller accent glow bottom-right */
-      radial-gradient(ellipse 35% 25% at 90% 80%, rgba(251, 191, 36, 0.03) 0%, transparent 50%),
+      radial-gradient(ellipse 35% 25% at 90% 80%, hsl(var(--accent-h), var(--accent-s), calc(var(--accent-l) + 10%), 0.03) 0%, transparent 50%),
       /* Base gradient */
       linear-gradient(180deg, #171412 0%, #0c0a09 100%);
     background-attachment: fixed;

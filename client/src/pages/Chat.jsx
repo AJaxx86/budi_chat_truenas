@@ -1844,17 +1844,6 @@ function Chat() {
                 {/* Add more tool toggles here */}
               </div>
 
-              {streaming && (
-                <div className="flex justify-center mb-4">
-                  <button
-                    onClick={stopGeneration}
-                    className="flex items-center gap-2 px-4 py-2 bg-dark-800/60 text-dark-400 border border-dark-700/40 rounded-lg text-sm font-medium hover:bg-dark-800 hover:text-dark-300 transition-all duration-200"
-                  >
-                    <Square className="w-3 h-3 fill-current" />
-                    Stop
-                  </button>
-                </div>
-              )}
               {/* Pending Attachments Preview */}
               {pendingAttachments.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-3 p-2 rounded-xl bg-dark-800/50 border border-white/[0.06]">
@@ -1911,7 +1900,7 @@ function Chat() {
                 </div>
               )}
 
-              <form onSubmit={sendMessage} className="flex gap-3 items-end">
+              <form onSubmit={sendMessage} className="flex gap-3 items-center">
                 <ImageUpload
                   onFilesSelected={setPendingAttachments}
                   disabled={streaming}
@@ -1923,7 +1912,7 @@ function Chat() {
                     console.log('Image generated:', result);
                   }}
                 />
-                <div className="flex-1 relative">
+                <div className="flex-1 flex items-center">
                   <textarea
                     ref={textareaRef}
                     value={inputMessage}
@@ -1951,14 +1940,25 @@ function Chat() {
                   onTranscript={(text) => setInputMessage(prev => prev + (prev ? ' ' : '') + text)}
                   disabled={streaming}
                 />
-                <button
-                  type="submit"
-                  disabled={!inputMessage.trim() || streaming}
-                  className="px-5 h-12 btn-primary text-dark-900 rounded-xl font-medium text-sm transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  <Send className="w-5 h-5" />
-                  <span className="hidden sm:inline">Send</span>
-                </button>
+                {streaming ? (
+                  <button
+                    type="button"
+                    onClick={stopGeneration}
+                    className="h-12 px-5 rounded-lg font-medium text-sm transition-all duration-200 flex items-center justify-center gap-2 bg-dark-800/60 text-dark-400 border border-dark-700/40 hover:bg-dark-800 hover:text-dark-300"
+                  >
+                    <Square className="w-4 h-4 fill-current" />
+                    <span className="hidden sm:inline">Stop</span>
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={!inputMessage.trim()}
+                    className="h-12 px-5 btn-primary text-dark-900 rounded-lg font-medium text-sm transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span className="hidden sm:inline">Send</span>
+                  </button>
+                )}
               </form>
             </div>
           </div>

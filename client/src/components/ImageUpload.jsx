@@ -242,7 +242,7 @@ function ImageUpload({ onFilesSelected, disabled = false }) {
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled || uploading}
-          className={`w-12 h-12 rounded-xl transition-all duration-200 flex items-center justify-center ${uploading
+          className={`h-12 w-12 flex items-center justify-center rounded-xl transition-all duration-200 ${uploading
             ? 'bg-primary-500/10 text-primary-400'
             : 'glass-button text-dark-400 hover:text-primary-400'
             } disabled:opacity-50`}
