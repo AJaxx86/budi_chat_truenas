@@ -127,6 +127,21 @@ router.post("/:chatId", async (req, res) => {
     // Build OpenAI messages array
     const openaiMessages = [];
 
+    // Fetch global system prompt from settings
+    const globalPromptSetting = db
+      .prepare(`SELECT value FROM settings WHERE key = 'global_system_prompt'`)
+      .get();
+    const globalSystemPrompt = globalPromptSetting?.value;
+
+    // Inject global system prompt first (if set)
+    if (globalSystemPrompt) {
+      openaiMessages.push({
+        role: "system",
+        content: globalSystemPrompt,
+      });
+    }
+
+    // Then inject chat-specific system prompt (if set)
     if (chat.system_prompt) {
       openaiMessages.push({
         role: "system",
@@ -407,29 +422,57 @@ router.post("/:chatId", async (req, res) => {
     );
 
     // Update persistent user stats (survives message/chat deletion)
-    db.prepare(
-      `
-      INSERT INTO user_stats (user_id, total_messages, total_prompt_tokens, total_completion_tokens, total_cost, total_reasoning_chars, updated_at)
-      VALUES (?, 1, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(user_id) DO UPDATE SET
-        total_messages = total_messages + 1,
-        total_prompt_tokens = total_prompt_tokens + ?,
-        total_completion_tokens = total_completion_tokens + ?,
-        total_cost = total_cost + ?,
-        total_reasoning_chars = total_reasoning_chars + ?,
-        updated_at = CURRENT_TIMESTAMP
-    `,
-    ).run(
-      req.user.id,
-      usageData?.prompt_tokens || 0,
-      usageData?.completion_tokens || 0,
-      usageData?.cost || 0,
-      assistantReasoning?.length || 0,
-      usageData?.prompt_tokens || 0,
-      usageData?.completion_tokens || 0,
-      usageData?.cost || 0,
-      assistantReasoning?.length || 0,
-    );
+    const totalTokens = (usageData?.prompt_tokens || 0) + (usageData?.completion_tokens || 0);
+    const cost = usageData?.cost || 0;
+    const defaultKeyTokens = usedDefaultKey ? totalTokens : 0;
+    const defaultKeyCost = usedDefaultKey ? cost : 0;
+    const personalKeyTokens = usedDefaultKey ? 0 : totalTokens;
+    const personalKeyCost = usedDefaultKey ? 0 : cost;
+
+    console.log(`Stats update: usedDefaultKey=${usedDefaultKey}, totalTokens=${totalTokens}, cost=${cost}`);
+    console.log(`  -> defaultKeyTokens=${defaultKeyTokens}, defaultKeyCost=${defaultKeyCost}`);
+    console.log(`  -> personalKeyTokens=${personalKeyTokens}, personalKeyCost=${personalKeyCost}`);
+
+    try {
+      db.prepare(
+        `
+        INSERT INTO user_stats (user_id, total_messages, total_prompt_tokens, total_completion_tokens, total_cost, total_reasoning_chars, default_key_tokens, default_key_cost, personal_key_tokens, personal_key_cost, updated_at)
+        VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id) DO UPDATE SET
+          total_messages = total_messages + 1,
+          total_prompt_tokens = total_prompt_tokens + ?,
+          total_completion_tokens = total_completion_tokens + ?,
+          total_cost = total_cost + ?,
+          total_reasoning_chars = total_reasoning_chars + ?,
+          default_key_tokens = default_key_tokens + ?,
+          default_key_cost = default_key_cost + ?,
+          personal_key_tokens = personal_key_tokens + ?,
+          personal_key_cost = personal_key_cost + ?,
+          updated_at = CURRENT_TIMESTAMP
+      `,
+      ).run(
+        req.user.id,
+        usageData?.prompt_tokens || 0,
+        usageData?.completion_tokens || 0,
+        cost,
+        assistantReasoning?.length || 0,
+        defaultKeyTokens,
+        defaultKeyCost,
+        personalKeyTokens,
+        personalKeyCost,
+        usageData?.prompt_tokens || 0,
+        usageData?.completion_tokens || 0,
+        cost,
+        assistantReasoning?.length || 0,
+        defaultKeyTokens,
+        defaultKeyCost,
+        personalKeyTokens,
+        personalKeyCost,
+      );
+      console.log(`Stats update successful for user ${req.user.id}`);
+    } catch (statsError) {
+      console.error(`Stats update failed:`, statsError);
+    }
 
     // Update persistent per-model stats (survives message/chat deletion)
     if (chat.model) {

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Users, Settings, Plus, Trash2, Edit2,
   Save, X, Shield, Key, Eye, EyeOff, CheckCircle, XCircle,
-  Zap, Coins
+  Zap, Coins, RotateCcw
 } from 'lucide-react';
 
 function Admin() {
@@ -25,6 +25,7 @@ function Admin() {
   });
 
   const [titleGenerationModel, setTitleGenerationModel] = useState('google/gemini-2.5-flash-lite');
+  const [globalSystemPrompt, setGlobalSystemPrompt] = useState('');
 
   useEffect(() => {
     loadUsers();
@@ -52,6 +53,7 @@ function Admin() {
       setSettings(data);
       setDefaultApiKey(data.default_openai_api_key || '');
       setTitleGenerationModel(data.title_generation_model || 'google/gemini-2.5-flash-lite');
+      setGlobalSystemPrompt(data.global_system_prompt || '');
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
@@ -68,7 +70,8 @@ function Admin() {
         },
         body: JSON.stringify({
           default_openai_api_key: defaultApiKey,
-          title_generation_model: titleGenerationModel
+          title_generation_model: titleGenerationModel,
+          global_system_prompt: globalSystemPrompt
         })
       });
       alert('Settings saved successfully!');
@@ -151,6 +154,24 @@ function Admin() {
     }
   };
 
+  const handleResetUserStats = async (userId, userName) => {
+    if (!confirm(`Are you sure you want to reset all stats for ${userName}? This cannot be undone.`)) return;
+
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/stats`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (!res.ok) {
+        throw new Error('Failed to reset stats');
+      }
+      loadUsers();
+    } catch (error) {
+      console.error('Failed to reset user stats:', error);
+      alert('Failed to reset user stats');
+    }
+  };
+
   const cancelUserForm = () => {
     setUserForm({
       email: '',
@@ -221,6 +242,22 @@ function Admin() {
                   onChange={(e) => setTitleGenerationModel(e.target.value)}
                   className="w-full px-4 py-3 rounded-xl glass-input outline-none text-sm text-dark-100"
                   placeholder="google/gemini-2.5-flash-lite"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-dark-200 mb-2">
+                  Global System Prompt
+                </label>
+                <p className="text-sm text-dark-400 mb-3">
+                  Applied to all chats before any chat-specific system prompt. Useful for setting global behavior guidelines.
+                </p>
+                <textarea
+                  value={globalSystemPrompt}
+                  onChange={(e) => setGlobalSystemPrompt(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl glass-input outline-none text-sm text-dark-100 min-h-[120px] resize-y"
+                  placeholder="Enter a system prompt that will be applied to all chats..."
+                  rows={4}
                 />
               </div>
 
@@ -330,7 +367,7 @@ function Admin() {
                       className="w-4 h-4 rounded"
                     />
                     <div className="flex items-center gap-2">
-                      <Shield className="w-4 h-4 text-accent-400" />
+                      <Shield className="w-4 h-4 text-secondary" />
                       <span className="text-sm font-medium text-dark-200">Admin Privileges</span>
                     </div>
                   </label>
@@ -382,7 +419,7 @@ function Admin() {
                       <div className="flex items-center gap-3 mb-2">
                         <h3 className="font-semibold text-lg text-dark-100">{user.name}</h3>
                         {user.is_admin === 1 && (
-                          <span className="flex items-center gap-1 px-2.5 py-1 bg-accent-500/10 text-accent-400 rounded-full text-xs font-medium border border-accent-500/20">
+                          <span className="flex items-center gap-1 px-2.5 py-1 bg-secondary-10 text-secondary rounded-full text-xs font-medium border border-secondary-20">
                             <Shield className="w-3 h-3" />
                             Admin
                           </span>
@@ -419,48 +456,61 @@ function Admin() {
                       </div>
                     </div>
 
-                    {/* Usage Stats Grid */}
-                    <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {/* Default Key Tokens */}
-                      <div className="flex items-center gap-2 px-3 py-2 bg-accent/10 rounded-xl border border-accent/20">
-                        <Key className="w-4 h-4 text-accent" />
-                        <div className="min-w-0">
-                          <div className="text-xs text-dark-500">Default Tokens</div>
-                          <div className="text-sm font-semibold text-dark-200 truncate">
-                            {user.default_key_tokens?.toLocaleString() || 0}
+                    {/* Usage Stats - Lifetime totals with breakdown */}
+                    <div className="flex-1 flex flex-col gap-2">
+                      {/* Lifetime Stats Row */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="flex items-center gap-2 px-3 py-2 bg-dark-700/50 rounded-xl border border-dark-600/50">
+                          <Zap className="w-4 h-4 text-dark-300 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-[10px] text-dark-500 leading-tight">Lifetime Tokens</div>
+                            <div className="text-sm font-semibold text-dark-100 truncate">
+                              {user.lifetime_tokens?.toLocaleString() || 0}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 px-3 py-2 bg-dark-700/50 rounded-xl border border-dark-600/50">
+                          <Coins className="w-4 h-4 text-dark-300 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-[10px] text-dark-500 leading-tight">Lifetime Cost</div>
+                            <div className="text-sm font-semibold text-dark-100 truncate">
+                              ${(user.lifetime_cost || 0).toFixed(4)}
+                            </div>
                           </div>
                         </div>
                       </div>
-
-                      {/* Default Key Cost */}
-                      <div className="flex items-center gap-2 px-3 py-2 bg-accent/10 rounded-xl border border-accent/20">
-                        <Coins className="w-4 h-4 text-accent" />
-                        <div className="min-w-0">
-                          <div className="text-xs text-dark-500">Default Cost</div>
-                          <div className="text-sm font-semibold text-dark-200 truncate">
-                            ${(user.default_key_cost || 0).toFixed(4)}
+                      {/* Breakdown Row - Default Key (accent) vs Personal Key (secondary) */}
+                      <div className="grid grid-cols-4 gap-1.5">
+                        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-accent/10 rounded-lg border border-accent/20">
+                          <div className="min-w-0">
+                            <div className="text-[9px] text-dark-500 leading-tight">Default Tokens</div>
+                            <div className="text-xs font-medium text-accent truncate">
+                              {user.default_key_tokens?.toLocaleString() || 0}
+                            </div>
                           </div>
                         </div>
-                      </div>
-
-                      {/* Personal Key Tokens */}
-                      <div className="flex items-center gap-2 px-3 py-2 bg-accent-500/10 rounded-xl border border-accent-500/20">
-                        <Zap className="w-4 h-4 text-accent-400" />
-                        <div className="min-w-0">
-                          <div className="text-xs text-dark-500">Personal Tokens</div>
-                          <div className="text-sm font-semibold text-dark-200 truncate">
-                            {user.personal_key_tokens?.toLocaleString() || 0}
+                        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-accent/10 rounded-lg border border-accent/20">
+                          <div className="min-w-0">
+                            <div className="text-[9px] text-dark-500 leading-tight">Default Cost</div>
+                            <div className="text-xs font-medium text-accent truncate">
+                              ${(user.default_key_cost || 0).toFixed(4)}
+                            </div>
                           </div>
                         </div>
-                      </div>
-
-                      {/* Personal Key Cost */}
-                      <div className="flex items-center gap-2 px-3 py-2 bg-accent-500/10 rounded-xl border border-accent-500/20">
-                        <Coins className="w-4 h-4 text-accent-400" />
-                        <div className="min-w-0">
-                          <div className="text-xs text-dark-500">Personal Cost</div>
-                          <div className="text-sm font-semibold text-dark-200 truncate">
-                            ${(user.personal_key_cost || 0).toFixed(4)}
+                        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-secondary-10 rounded-lg border border-secondary-20">
+                          <div className="min-w-0">
+                            <div className="text-[9px] text-dark-500 leading-tight">Personal Tokens</div>
+                            <div className="text-xs font-medium text-secondary truncate">
+                              {user.personal_key_tokens?.toLocaleString() || 0}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-secondary-10 rounded-lg border border-secondary-20">
+                          <div className="min-w-0">
+                            <div className="text-[9px] text-dark-500 leading-tight">Personal Cost</div>
+                            <div className="text-xs font-medium text-secondary truncate">
+                              ${(user.personal_key_cost || 0).toFixed(4)}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -468,6 +518,13 @@ function Admin() {
 
                     {/* Action Buttons */}
                     <div className="flex gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => handleResetUserStats(user.id, user.name)}
+                        className="p-2 hover:bg-orange-500/10 rounded-lg transition-colors"
+                        title="Reset Stats"
+                      >
+                        <RotateCcw className="w-4 h-4 text-orange-400" />
+                      </button>
                       <button
                         onClick={() => handleEditUser(user)}
                         className="p-2 hover:bg-accent/10 rounded-lg transition-colors"

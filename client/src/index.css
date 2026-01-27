@@ -11,43 +11,75 @@
     --accent: hsl(var(--accent-h), var(--accent-s), var(--accent-l));
     --accent-light: hsl(var(--accent-h), var(--accent-s), 60%);
     --accent-dark: hsl(var(--accent-h), var(--accent-s), 40%);
+
+    /* Secondary color HSL values - default warm orange (analogous to amber) */
+    --secondary-h: 25;
+    --secondary-s: 95%;
+    --secondary-l: 55%;
+    --secondary: hsl(var(--secondary-h), var(--secondary-s), var(--secondary-l));
+    --secondary-light: hsl(var(--secondary-h), var(--secondary-s), 70%);
+    --secondary-dark: hsl(var(--secondary-h), var(--secondary-s), 50%);
   }
 
-  /* Preset themes */
+  /* Preset themes - accent with analogous/harmonious secondary colors */
   [data-accent="amber"] {
     --accent-h: 38;
     --accent-s: 92%;
     --accent-l: 50%;
+    /* Warm Orange - analogous warm tone */
+    --secondary-h: 25;
+    --secondary-s: 95%;
+    --secondary-l: 55%;
   }
 
   [data-accent="blue"] {
     --accent-h: 217;
     --accent-s: 91%;
     --accent-l: 60%;
+    /* Slate/Indigo - analogous cool tone */
+    --secondary-h: 230;
+    --secondary-s: 70%;
+    --secondary-l: 55%;
   }
 
   [data-accent="green"] {
     --accent-h: 142;
     --accent-s: 71%;
     --accent-l: 45%;
+    /* Emerald/Teal - analogous nature tone */
+    --secondary-h: 160;
+    --secondary-s: 70%;
+    --secondary-l: 45%;
   }
 
   [data-accent="purple"] {
     --accent-h: 262;
     --accent-s: 83%;
     --accent-l: 58%;
+    /* Violet - analogous purple family */
+    --secondary-h: 280;
+    --secondary-s: 70%;
+    --secondary-l: 60%;
   }
 
   [data-accent="rose"] {
     --accent-h: 350;
     --accent-s: 89%;
     --accent-l: 60%;
+    /* Coral/Pink - analogous warm pink */
+    --secondary-h: 10;
+    --secondary-s: 80%;
+    --secondary-l: 60%;
   }
 
   [data-accent="cyan"] {
     --accent-h: 186;
     --accent-s: 94%;
     --accent-l: 42%;
+    /* Teal - analogous cool tone */
+    --secondary-h: 175;
+    --secondary-s: 80%;
+    --secondary-l: 45%;
   }
 
   * {
@@ -290,6 +322,47 @@
 
   .fill-accent {
     fill: var(--accent);
+  }
+
+  /* Dynamic secondary color utilities */
+  .text-secondary {
+    color: var(--secondary);
+  }
+
+  .text-secondary-light {
+    color: var(--secondary-light);
+  }
+
+  .bg-secondary {
+    background-color: var(--secondary);
+  }
+
+  .bg-secondary-10 {
+    background-color: hsl(var(--secondary-h) var(--secondary-s) var(--secondary-l) / 0.1);
+  }
+
+  .bg-secondary-20 {
+    background-color: hsl(var(--secondary-h) var(--secondary-s) var(--secondary-l) / 0.2);
+  }
+
+  .border-secondary {
+    border-color: var(--secondary);
+  }
+
+  .border-secondary-20 {
+    border-color: hsl(var(--secondary-h) var(--secondary-s) var(--secondary-l) / 0.2);
+  }
+
+  .border-secondary-50 {
+    border-color: hsl(var(--secondary-h) var(--secondary-s) var(--secondary-l) / 0.5);
+  }
+
+  .hover\:bg-secondary-10:hover {
+    background-color: hsl(var(--secondary-h) var(--secondary-s) var(--secondary-l) / 0.1);
+  }
+
+  .hover\:text-secondary:hover {
+    color: var(--secondary);
   }
 
   /* Subtle animations */

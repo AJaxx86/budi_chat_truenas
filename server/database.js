@@ -349,6 +349,23 @@ function initDatabase() {
     }
   }
 
+  // Migration: Add default/personal key breakdown columns to user_stats
+  try {
+    const userStatsInfo = db.prepare("PRAGMA table_info(user_stats)").all();
+    const hasDefaultKeyTokens = userStatsInfo.some(
+      (col) => col.name === "default_key_tokens",
+    );
+    if (!hasDefaultKeyTokens) {
+      db.exec("ALTER TABLE user_stats ADD COLUMN default_key_tokens INTEGER DEFAULT 0");
+      db.exec("ALTER TABLE user_stats ADD COLUMN default_key_cost REAL DEFAULT 0");
+      db.exec("ALTER TABLE user_stats ADD COLUMN personal_key_tokens INTEGER DEFAULT 0");
+      db.exec("ALTER TABLE user_stats ADD COLUMN personal_key_cost REAL DEFAULT 0");
+      console.log("✅ Migration: Added default/personal key breakdown to user_stats table");
+    }
+  } catch (e) {
+    console.error("Migration error:", e);
+  }
+
   // Create default admin user if not exists
   const adminExists = db
     .prepare("SELECT id FROM users WHERE is_admin = 1")

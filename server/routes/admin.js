@@ -19,32 +19,28 @@ router.get('/users', (req, res) => {
       ORDER BY created_at DESC
     `).all();
 
-    // Get usage stats for each user
+    // Get usage stats for each user from persistent user_stats table
     const usersWithStats = users.map(user => {
-      const defaultKeyStats = db.prepare(`
+      const stats = db.prepare(`
         SELECT
-          COALESCE(SUM(prompt_tokens + completion_tokens), 0) as tokens,
-          COALESCE(SUM(cost), 0) as cost
-        FROM messages m
-        JOIN chats c ON m.chat_id = c.id
-        WHERE c.user_id = ? AND m.role = 'assistant' AND m.used_default_key = 1
-      `).get(user.id);
-
-      const personalKeyStats = db.prepare(`
-        SELECT
-          COALESCE(SUM(prompt_tokens + completion_tokens), 0) as tokens,
-          COALESCE(SUM(cost), 0) as cost
-        FROM messages m
-        JOIN chats c ON m.chat_id = c.id
-        WHERE c.user_id = ? AND m.role = 'assistant' AND (m.used_default_key = 0 OR m.used_default_key IS NULL)
+          COALESCE(total_prompt_tokens, 0) + COALESCE(total_completion_tokens, 0) as lifetime_tokens,
+          COALESCE(total_cost, 0) as lifetime_cost,
+          COALESCE(default_key_tokens, 0) as default_key_tokens,
+          COALESCE(default_key_cost, 0) as default_key_cost,
+          COALESCE(personal_key_tokens, 0) as personal_key_tokens,
+          COALESCE(personal_key_cost, 0) as personal_key_cost
+        FROM user_stats
+        WHERE user_id = ?
       `).get(user.id);
 
       return {
         ...user,
-        default_key_tokens: defaultKeyStats?.tokens || 0,
-        default_key_cost: defaultKeyStats?.cost || 0,
-        personal_key_tokens: personalKeyStats?.tokens || 0,
-        personal_key_cost: personalKeyStats?.cost || 0
+        lifetime_tokens: stats?.lifetime_tokens || 0,
+        lifetime_cost: stats?.lifetime_cost || 0,
+        default_key_tokens: stats?.default_key_tokens || 0,
+        default_key_cost: stats?.default_key_cost || 0,
+        personal_key_tokens: stats?.personal_key_tokens || 0,
+        personal_key_cost: stats?.personal_key_cost || 0
       };
     });
 
@@ -158,6 +154,24 @@ router.delete('/users/:id', (req, res) => {
   }
 });
 
+// Reset user stats
+router.delete('/users/:id/stats', (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Delete from user_stats table
+    db.prepare('DELETE FROM user_stats WHERE user_id = ?').run(id);
+
+    // Delete from user_model_stats table
+    db.prepare('DELETE FROM user_model_stats WHERE user_id = ?').run(id);
+
+    res.json({ message: 'User stats reset successfully' });
+  } catch (error) {
+    console.error('Reset user stats error:', error);
+    res.status(500).json({ error: 'Failed to reset user stats' });
+  }
+});
+
 // Get system settings
 router.get('/settings', (req, res) => {
   try {
@@ -176,7 +190,7 @@ router.get('/settings', (req, res) => {
 // Update system settings
 router.put('/settings', (req, res) => {
   try {
-    const { default_openai_api_key, title_generation_model } = req.body;
+    const { default_openai_api_key, title_generation_model, global_system_prompt } = req.body;
 
     const upsert = db.prepare(`
       INSERT INTO settings (key, value, updated_at)
@@ -190,6 +204,10 @@ router.put('/settings', (req, res) => {
 
     if (title_generation_model !== undefined) {
       upsert.run('title_generation_model', title_generation_model, title_generation_model);
+    }
+
+    if (global_system_prompt !== undefined) {
+      upsert.run('global_system_prompt', global_system_prompt, global_system_prompt);
     }
 
     res.json({ message: 'Settings updated successfully' });
