@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Wand2, X, Loader2, Settings2, Download, ExternalLink } from 'lucide-react';
 
-function ImageGeneration({ chatId, onImageGenerated }) {
-  const [isOpen, setIsOpen] = useState(false);
+function ImageGeneration({ chatId, onImageGenerated, isOpen: externalIsOpen, onClose, hideButton = false }) {
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  const isOpen = externalIsOpen !== undefined ? externalIsOpen : internalIsOpen;
+  const setIsOpen = externalIsOpen !== undefined ? (val) => { if (!val && onClose) onClose(); } : setInternalIsOpen;
   const [prompt, setPrompt] = useState('');
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
@@ -91,13 +93,15 @@ function ImageGeneration({ chatId, onImageGenerated }) {
   return (
     <>
       {/* Trigger Button */}
-      <button
-        onClick={() => setIsOpen(true)}
-        className="h-12 w-12 flex items-center justify-center rounded-xl glass-button text-dark-400 hover:text-accent-400 transition-all duration-200"
-        title="Generate Image"
-      >
-        <Wand2 className="w-5 h-5" />
-      </button>
+      {!hideButton && (
+        <button
+          onClick={() => setIsOpen(true)}
+          className="h-12 w-12 flex items-center justify-center rounded-xl glass-button text-dark-400 hover:text-accent-400 transition-all duration-200"
+          title="Generate Image"
+        >
+          <Wand2 className="w-5 h-5" />
+        </button>
+      )}
 
       {/* Modal */}
       {isOpen && (

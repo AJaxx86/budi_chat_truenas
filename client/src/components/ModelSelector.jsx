@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Bot, ChevronDown, Check, Search, Clock, Loader2, X } from 'lucide-react';
+import { Bot, ChevronDown, Check, Search, Clock, Loader2, X, Brain, Wrench, Eye } from 'lucide-react';
 
 const DEFAULT_MODEL = 'moonshotai/kimi-k2-thinking';
 const RECENT_MODELS_KEY = 'budi_chat_recent_models';
@@ -22,6 +22,115 @@ const FALLBACK_MODELS = [
   { id: 'qwen/qwen-2.5-72b-instruct', name: 'Qwen 2.5 72B', description: 'Alibaba Qwen 2.5 72B' },
   { id: 'mistralai/mistral-large-2411', name: 'Mistral Large', description: 'Mistral Large 2411' },
 ];
+
+// Helper to compute capabilities directly from model data (fast, no lookups)
+const getModelCapabilitiesFromData = (model) => {
+  if (!model) return { reasoning: false, tools: false, vision: false };
+
+  const params = model.supportedParameters || [];
+  const id = (model.id || '').toLowerCase();
+
+  // Check for vision-related parameters or model naming patterns
+  const hasVisionParams = params.includes('vision') || params.includes('image_input');
+  const isVisionModel = id.includes('vision') || id.includes('-4o') || id.includes('gpt-4o') ||
+    id.includes('claude-3') || id.includes('gemini') || id.includes('llava') ||
+    id.includes('pixtral') || id.includes('qwen-vl') || id.includes('llama-3.2');
+
+  return {
+    reasoning: params.includes('reasoning'),
+    tools: params.includes('tools'),
+    vision: hasVisionParams || isVisionModel,
+  };
+};
+
+// Helper to check if a model supports reasoning/thinking mode (for external use with modelId)
+const modelSupportsReasoning = (modelId) => {
+  try {
+    const cached = localStorage.getItem(MODELS_CACHE_KEY);
+    if (cached) {
+      const { models } = JSON.parse(cached);
+      const model = models.find(m => m.id === modelId);
+      return model?.supportedParameters?.includes('reasoning') ?? false;
+    }
+  } catch (e) {
+    console.error('Failed to check model reasoning support:', e);
+  }
+  return false;
+};
+
+// Helper to check if a model supports tool calling (for external use with modelId)
+const modelSupportsTools = (modelId) => {
+  try {
+    const cached = localStorage.getItem(MODELS_CACHE_KEY);
+    if (cached) {
+      const { models } = JSON.parse(cached);
+      const model = models.find(m => m.id === modelId);
+      return model?.supportedParameters?.includes('tools') ?? false;
+    }
+  } catch (e) {
+    console.error('Failed to check model tool support:', e);
+  }
+  return false;
+};
+
+// Helper to check if a model supports vision/image input (for external use with modelId)
+const modelSupportsVision = (modelId) => {
+  try {
+    const cached = localStorage.getItem(MODELS_CACHE_KEY);
+    if (cached) {
+      const { models } = JSON.parse(cached);
+      const model = models.find(m => m.id === modelId);
+      return getModelCapabilitiesFromData(model).vision;
+    }
+  } catch (e) {
+    console.error('Failed to check model vision support:', e);
+  }
+  return false;
+};
+
+// Get all capabilities for a model by ID (for external use, does localStorage lookup)
+const getModelCapabilities = (modelId) => {
+  try {
+    const cached = localStorage.getItem(MODELS_CACHE_KEY);
+    if (cached) {
+      const { models } = JSON.parse(cached);
+      const model = models.find(m => m.id === modelId);
+      return getModelCapabilitiesFromData(model);
+    }
+  } catch (e) {
+    console.error('Failed to get model capabilities:', e);
+  }
+  return { reasoning: false, tools: false, vision: false };
+};
+
+// Feature badges component for displaying model capabilities
+// Accepts either model object directly (fast) or falls back to modelId lookup (slower)
+const ModelFeatureBadges = ({ model, modelId, className = '' }) => {
+  // Use model data directly if provided, otherwise fall back to lookup
+  const caps = model ? getModelCapabilitiesFromData(model) : getModelCapabilities(modelId);
+
+  if (!caps.reasoning && !caps.tools && !caps.vision) return null;
+
+  return (
+    <div className={`flex items-center gap-1 ${className}`}>
+      {caps.reasoning && (
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-amber-500/15" title="Reasoning/Thinking">
+          <Brain className="w-2.5 h-2.5 text-amber-500/80" />
+        </span>
+      )}
+      {caps.tools && (
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-blue-500/15" title="Tool Calling (Web Search, etc.)">
+          <Wrench className="w-2.5 h-2.5 text-blue-500/80" />
+        </span>
+      )}
+      {caps.vision && (
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-emerald-500/15" title="Vision/Image Input">
+          <Eye className="w-2.5 h-2.5 text-emerald-500/80" />
+        </span>
+      )}
+    </div>
+  );
+};
 
 function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -303,7 +412,10 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
                           }`}
                       >
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-medium truncate ${selectedModel === model.id ? 'text-dark-50' : 'text-dark-200 group-hover:text-dark-100'}`}>{model.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className={`text-sm font-medium truncate ${selectedModel === model.id ? 'text-dark-50' : 'text-dark-200 group-hover:text-dark-100'}`}>{model.name}</p>
+                            <ModelFeatureBadges model={model} />
+                          </div>
                           <p className="text-xs text-dark-500 truncate">
                             {getProvider(model.id)}
                             {model.contextLength && (
@@ -359,7 +471,10 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
                             }`}
                         >
                           <div className="flex-1 min-w-0">
-                            <p className={`text-sm font-medium truncate ${selectedModel === model.id ? 'text-dark-50' : 'text-dark-200 group-hover:text-dark-100'}`}>{model.name}</p>
+                            <div className="flex items-center gap-2">
+                              <p className={`text-sm font-medium truncate ${selectedModel === model.id ? 'text-dark-50' : 'text-dark-200 group-hover:text-dark-100'}`}>{model.name}</p>
+                              <ModelFeatureBadges model={model} />
+                            </div>
                             <p className="text-xs text-dark-500 truncate">
                               {getProvider(model.id)}
                               {model.contextLength && (
@@ -391,20 +506,5 @@ function ModelSelector({ selectedModel, onModelChange, isDropdown = true }) {
   );
 }
 
-// Helper to check if a model supports reasoning/thinking mode
-export const modelSupportsReasoning = (modelId) => {
-  try {
-    const cached = localStorage.getItem(MODELS_CACHE_KEY);
-    if (cached) {
-      const { models } = JSON.parse(cached);
-      const model = models.find(m => m.id === modelId);
-      return model?.supportedParameters?.includes('reasoning') ?? false;
-    }
-  } catch (e) {
-    console.error('Failed to check model reasoning support:', e);
-  }
-  return false;
-};
-
 export default ModelSelector;
-export { DEFAULT_MODEL, RECENT_MODELS_KEY, MODELS_CACHE_KEY };
+export { DEFAULT_MODEL, RECENT_MODELS_KEY, MODELS_CACHE_KEY, modelSupportsReasoning, modelSupportsTools, modelSupportsVision, getModelCapabilities, ModelFeatureBadges };

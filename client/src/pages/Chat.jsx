@@ -2,19 +2,18 @@ import React, { useState, useEffect, useContext, useRef, memo, useCallback, useM
 import { useNavigate } from 'react-router-dom';
 import {
   MessageSquare, Plus, Settings as SettingsIcon, LogOut, Brain,
-  Send, Trash2, GitBranch, Bot, User as UserIcon,
-  Sparkles, Zap, Menu, X, ChevronDown, ChevronRight, Square,
-  Check, Trash, Copy, Pencil, Info, DollarSign, Hash, Lightbulb, Search, Share2, Code, FileText
-
+  Trash2, GitBranch, Bot, User as UserIcon,
+  Sparkles, Zap, Menu, X, ChevronDown, ChevronRight,
+  Check, Trash, Copy, Pencil, Info, DollarSign, Hash, Search, Share2, Code, FileText
 } from 'lucide-react';
 import SearchModal from '../components/SearchModal';
 import ExportMenu from '../components/ExportMenu';
 import ShareDialog from '../components/ShareDialog';
-import ImageUpload from '../components/ImageUpload';
 import ImageGeneration from '../components/ImageGeneration';
-import VoiceInput from '../components/VoiceInput';
 import TextToSpeech from '../components/TextToSpeech';
 import Canvas from '../components/Canvas';
+import InputBar from '../components/InputBar';
+import ToolCallDisplay from '../components/ToolCallDisplay';
 import { AuthContext } from '../contexts/AuthContext';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -93,6 +92,18 @@ const formatModelName = (modelId) => {
     .replace(/-/g, ' ')
     .replace(/\b\w/g, l => l.toUpperCase());
 };
+
+// Helper: Derive tool results from message history
+const getHistoricalToolResults = (messages) => {
+  const results = {};
+  messages.forEach(msg => {
+    if (msg.role === 'tool' && msg.tool_call_id) {
+      results[msg.tool_call_id] = msg.content;
+    }
+  });
+  return results;
+};
+
 
 // Memoized ThinkingSection component to prevent re-renders during streaming
 const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming, elapsedTime, stats }) => {
@@ -219,7 +230,6 @@ function Chat() {
   const isCreatingChatRef = useRef(false);
   const userHasScrolledUp = useRef(false);
   const statsPopupRef = useRef(null);
-  const textareaRef = useRef(null);
   const [expandedThinkingSections, setExpandedThinkingSections] = useState(new Set());
   const [copiedMessageId, setCopiedMessageId] = useState(null);
   const [editingMessageId, setEditingMessageId] = useState(null);
@@ -236,8 +246,6 @@ function Chat() {
 
   // Thinking mode state for reasoning models
   const [thinkingMode, setThinkingMode] = useState('auto');
-  const [showThinkingDropdown, setShowThinkingDropdown] = useState(false);
-  const thinkingDropdownRef = useRef(null);
 
   // Thinking mode options
   const THINKING_MODES = [
@@ -252,6 +260,12 @@ function Chat() {
   const [showSearch, setShowSearch] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [showImageGeneration, setShowImageGeneration] = useState(false);
+  const [enabledTools, setEnabledTools] = useState({
+    web_search: true,
+    calculator: true,
+    code_interpreter: true
+  });
   const [canvasState, setCanvasState] = useState({ isOpen: false, content: '', language: 'javascript', title: 'Canvas' });
   const targetMessageRef = useRef(null);
 
@@ -270,6 +284,8 @@ function Chat() {
     thinkingStartTime: null,
     thinkingComplete: false,
     lastThinkingStats: null,
+    toolCalls: [],
+    toolResults: {},
   }), []);
 
   // Update streaming state for a specific chat
@@ -318,7 +334,9 @@ function Chat() {
     streamingReasoning,
     thinkingStartTime,
     thinkingComplete,
-    lastThinkingStats
+    lastThinkingStats,
+    toolCalls,
+    toolResults
   } = currentStreamState;
 
   // Check if current model supports reasoning
@@ -412,19 +430,6 @@ function Chat() {
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showInfoModal]);
-
-  // Close thinking dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (thinkingDropdownRef.current && !thinkingDropdownRef.current.contains(event.target)) {
-        setShowThinkingDropdown(false);
-      }
-    };
-    if (showThinkingDropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [showThinkingDropdown]);
 
   // Keyboard shortcut for search (Cmd/Ctrl + K)
   useEffect(() => {
@@ -676,10 +681,6 @@ function Chat() {
 
     setInputMessage('');
     setPendingAttachments([]);
-    // Reset textarea height
-    if (textareaRef.current) {
-      textareaRef.current.style.height = '52px';
-    }
 
     // Add user message to UI immediately (with attachment previews)
     const tempUserMessage = {
@@ -860,6 +861,34 @@ function Chat() {
                 setTimeout(() => {
                   clearStreamState(chatId);
                 }, 100);
+              } else if (data.type === 'part_done') {
+                // First part of message is complete (pre-tools)
+                // Reload messages to show the saved part
+                loadMessages(chatId);
+
+                // Clear local streaming buffers so we don't duplicate
+                accumulatedMessage = '';
+                accumulatedReasoning = '';
+
+                // Update state but KEEP streaming true
+                updateStreamState(chatId, {
+                  streamingMessage: '',
+                  streamingReasoning: ''
+                });
+              } else if (data.type === 'tool_calls') {
+                // AI is calling tools - update UI
+                updateStreamState(chatId, {
+                  toolCalls: data.tool_calls
+                });
+              } else if (data.type === 'tool_result') {
+                // Tool execution completed - store result
+                const chatState = streamingStates.get(chatId) || createInitialStreamState();
+                updateStreamState(chatId, {
+                  toolResults: {
+                    ...chatState.toolResults,
+                    [data.tool_call_id]: data.result
+                  }
+                });
               } else if (data.type === 'error') {
                 if (isActiveChat) {
                   alert('Error: ' + data.error);
@@ -1193,12 +1222,7 @@ function Chat() {
                           Generating
                         </span>
                       )}
-                      {chat.agent_mode === 1 && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-accent/10 text-accent text-[10px] font-medium">
-                          <Zap className="w-2.5 h-2.5" />
-                          Agent
-                        </span>
-                      )}
+
                     </div>
                   </div>
 
@@ -1300,12 +1324,7 @@ function Chat() {
             {currentChat ? (
               <>
                 <h2 className="text-sm font-medium text-dark-200 truncate">{currentChat.title}</h2>
-                {chatSettings.agent_mode && (
-                  <span className="flex items-center gap-1.5 px-2.5 py-1 bg-dark-800/60 text-dark-400 rounded text-xs font-medium border border-dark-700/40 flex-shrink-0">
-                    <Zap className="w-3 h-3" />
-                    Agent
-                  </span>
-                )}
+
               </>
             ) : (
               <p className="text-dark-500 text-sm">Select a chat or create a new one</p>
@@ -1443,6 +1462,16 @@ function Chat() {
                   </div>
                 )}
               </div>
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                className={`p-2 rounded-lg transition-all duration-200 ${showSettings
+                  ? 'bg-dark-800 text-dark-300 border border-dark-700/50'
+                  : 'hover:bg-dark-800/40 text-dark-500 hover:text-dark-400'
+                  }`}
+                title="Settings"
+              >
+                <SettingsIcon className="w-4 h-4" />
+              </button>
               <ExportMenu
                 chatId={currentChat?.id}
                 chatTitle={currentChat?.title}
@@ -1451,23 +1480,12 @@ function Chat() {
               {currentChat?.id && (
                 <button
                   onClick={() => setShowShareDialog(true)}
-                  className="px-3 py-2 flex items-center gap-2 rounded-xl transition-all duration-200 text-sm font-medium glass-button text-dark-300 hover:text-dark-100"
+                  className="p-2 rounded-lg transition-all duration-200 hover:bg-dark-800/40 text-dark-500 hover:text-dark-400"
                   title="Share chat"
                 >
                   <Share2 className="w-4 h-4" />
-                  <span className="hidden sm:inline">Share</span>
                 </button>
               )}
-              <button
-                onClick={() => setShowSettings(!showSettings)}
-                className={`px-3 py-1.5 flex items-center gap-2 rounded-lg transition-all duration-200 text-sm font-medium ${showSettings
-                  ? 'bg-dark-800 text-dark-300 border border-dark-700/50'
-                  : 'hover:bg-dark-800/40 text-dark-500 hover:text-dark-400'
-                  }`}
-              >
-                <SettingsIcon className="w-4 h-4" />
-                Settings
-              </button>
             </div>
           ) : (
             <div className="flex-1" />
@@ -1528,21 +1546,9 @@ function Chat() {
                 />
               </div>
 
-              <div className="flex items-center justify-between pt-2">
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={chatSettings.agent_mode}
-                    onChange={(e) => setChatSettings({ ...chatSettings, agent_mode: e.target.checked })}
-                    className="w-5 h-5 rounded-md"
-                  />
-                  <span className="text-sm font-medium text-dark-300 flex items-center gap-2 group-hover:text-dark-200 transition-colors">
-                    <Zap className="w-4 h-4 text-accent-400" />
-                    Enable Agent Mode
-                    <span className="text-xs text-dark-500">(with tools)</span>
-                  </span>
-                </label>
 
+
+              <div className="flex justify-end pt-2">
                 <button
                   onClick={updateChatSettings}
                   className="btn-primary px-5 py-2.5 rounded-xl font-semibold transition-all duration-200"
@@ -1574,203 +1580,239 @@ function Chat() {
                 </div>
               )}
 
-              {messages.map((message, index) => (
-                <div
-                  key={message.id}
-                  id={`message-${message.id}`}
-                  className={`flex gap-4 ${message.role === 'user' ? 'flex-row-reverse' : ''} group`}
-                >
-                  {/* Avatar Column */}
-                  <div className="flex-shrink-0 flex flex-col items-center pt-1">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${message.role === 'user' ? 'bg-dark-700' : 'bg-dark-800'}`}>
-                      {message.role === 'user' ? (
-                        <UserIcon className="w-5 h-5 text-dark-400" />
-                      ) : (
-                        <Bot className="w-5 h-5 text-accent" />
-                      )}
-                    </div>
-                  </div>
 
-                  {/* Content Column */}
-                  <div className={`flex-1 min-w-0 flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'}`}>
-                    {/* Header: Name and Model */}
-                    <div className="flex items-center gap-2 mb-1 px-1">
-                      <span className="text-xs font-medium text-dark-400">
-                        {message.role === 'user' ? 'You' : formatModelName(message.model)}
-                      </span>
-                    </div>
+              {messages.length > 0 && (() => {
+                // Memoize tool results to avoid O(N^2) in render
+                const historicalToolResults = messages.reduce((acc, msg) => {
+                  if (msg.role === 'tool' && msg.tool_call_id) {
+                    acc[msg.tool_call_id] = msg.content;
+                  }
+                  return acc;
+                }, {});
 
-                    {/* Thinking Section (Assistant only) */}
-                    {message.role === 'assistant' && message.reasoning_content && (
-                      <div className="mb-2 w-full max-w-[85%]">
-                        <ThinkingSection
-                          reasoning={message.reasoning_content}
-                          isExpanded={expandedThinkingSections.has(message.id)}
-                          onToggle={() => toggleThinkingSection(message.id)}
-                          isStreaming={false}
-                          elapsedTime={0}
-                          stats={null}
-                        />
+                return messages.filter(m => m.role !== 'tool').map((message, index) => {
+                  // Get tool results for this message if it has tool calls
+                  let parsedToolCalls = [];
+
+                  try {
+                    if (message.tool_calls) {
+                      parsedToolCalls = typeof message.tool_calls === 'string'
+                        ? JSON.parse(message.tool_calls)
+                        : message.tool_calls;
+                    }
+                  } catch (e) {
+                    console.error('Failed to parse tool calls:', e);
+                  }
+
+                  return (
+                    <div
+                      key={message.id}
+                      id={`message-${message.id}`}
+                      className={`flex gap-4 ${message.role === 'user' ? 'flex-row-reverse' : ''} group`}
+                    >
+                      {/* Avatar Column */}
+                      <div className="flex-shrink-0 flex flex-col items-center pt-1">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${message.role === 'user' ? 'bg-dark-700' : 'bg-dark-800'}`}>
+                          {message.role === 'user' ? (
+                            <UserIcon className="w-5 h-5 text-dark-400" />
+                          ) : (
+                            <Bot className="w-5 h-5 text-accent" />
+                          )}
+                        </div>
                       </div>
-                    )}
 
-                    {/* Message Bubble */}
-                    <div className={`inline-block max-w-[85%] ${message.role === 'user'
-                      ? 'bg-dark-700/80 border border-dark-600 text-dark-100 rounded-2xl rounded-tr-sm px-4 py-3'
-                      : 'bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg'
-                      }`}>
-                      {message.role === 'user' ? (
-                        editingMessageId === message.id ? (
-                          <div className="space-y-2 text-left">
-                            <textarea
-                              value={editContent}
-                              onChange={(e) => setEditContent(e.target.value)}
-                              className="w-full min-w-[300px] bg-dark-800/50 border border-dark-600 rounded-lg p-2 text-white resize-none focus:outline-none focus:border-primary-400"
-                              rows={3}
-                              autoFocus
+                      {/* Content Column */}
+                      <div className={`flex-1 min-w-0 flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'}`}>
+                        {/* Header: Name and Model */}
+                        <div className="flex items-center gap-2 mb-1 px-1">
+                          <span className="text-xs font-medium text-dark-400">
+                            {message.role === 'user' ? 'You' : formatModelName(message.model)}
+                          </span>
+                        </div>
+
+                        {/* Thinking Section (Assistant only) */}
+                        {message.role === 'assistant' && message.reasoning_content && (
+                          <div className="mb-2 w-full max-w-[85%]">
+                            <ThinkingSection
+                              reasoning={message.reasoning_content}
+                              isExpanded={expandedThinkingSections.has(message.id)}
+                              onToggle={() => toggleThinkingSection(message.id)}
+                              isStreaming={false}
+                              elapsedTime={0}
+                              stats={null}
                             />
-                            <div className="flex gap-2 justify-end">
-                              <button
-                                onClick={handleEditCancel}
-                                className="px-3 py-1 text-xs rounded-lg bg-dark-700 hover:bg-dark-600 transition-colors"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                onClick={() => handleEditSave(message.id)}
-                                className="px-3 py-1 text-xs rounded-lg bg-primary-500 hover:bg-primary-400 transition-colors"
-                              >
-                                Save & Regenerate
-                              </button>
-                            </div>
                           </div>
-                        ) : (
-                          <>
-                            {renderMessage(message.content)}
-                            {/* Display attachments */}
-                            {message.attachments && message.attachments.length > 0 && (
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {message.attachments.map((att) => {
-                                  const isImage = att.mimetype?.startsWith('image/');
-                                  const getIcon = () => {
-                                    if (att.mimetype === 'application/pdf') return '📄';
-                                    if (att.mimetype === 'text/csv') return '📊';
-                                    if (att.mimetype === 'application/json') return '{ }';
-                                    if (att.mimetype?.includes('markdown') || att.original_name?.endsWith('.md')) return '📝';
-                                    if (att.mimetype === 'text/plain') return '📃';
-                                    return '📎';
-                                  };
-
-                                  if (isImage) {
-                                    return (
-                                      <img
-                                        key={att.id}
-                                        src={att.preview || `/api/uploads/${att.id}`}
-                                        alt={att.original_name}
-                                        className="max-w-[200px] max-h-[150px] rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                        onClick={() => window.open(att.preview || `/api/uploads/${att.id}`, '_blank')}
-                                      />
-                                    );
-                                  }
-
-                                  return (
-                                    <div
-                                      key={att.id}
-                                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-dark-800/50 border border-white/[0.08]"
-                                    >
-                                      <span className="text-lg">{getIcon()}</span>
-                                      <span className="text-xs text-dark-300 max-w-[150px] truncate">{att.original_name}</span>
-                                      {att.has_text && (
-                                        <span className="text-[10px] text-green-400">✓</span>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </>
-                        )
-                      ) : (
-                        renderMessage(message.content)
-                      )}
-                    </div>
-
-                    {/* Actions Row (Assistant Only) */}
-                    {message.role === 'assistant' && (
-                      <div className="mt-1 flex gap-1 items-center opacity-0 group-hover:opacity-100 transition-opacity px-1">
-                        <button
-                          onClick={() => handleCopy(message.id, message.content, 'raw')}
-                          className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
-                          title={copiedMessageId === `${message.id}-raw` ? 'Copied!' : 'Copy Raw'}
-                        >
-                          {copiedMessageId === `${message.id}-raw` ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                        </button>
-                        <button
-                          onClick={() => handleCopy(message.id, message.content, 'markdown')}
-                          className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
-                          title={copiedMessageId === `${message.id}-markdown` ? 'Copied!' : 'Copy Markdown'}
-                        >
-                          {copiedMessageId === `${message.id}-markdown` ? <Check className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
-                        </button>
-                        <button
-                          onClick={() => openForkModal(message.id)}
-                          className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
-                          title="Fork from here"
-                        >
-                          <GitBranch className="w-3.5 h-3.5" />
-                        </button>
-                        <TextToSpeech text={message.content} messageId={message.id} />
-                        {message.content.includes('```') && (
-                          <button
-                            onClick={() => openInCanvas(message.content, 'Edit Code')}
-                            className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
-                            title="Open in Canvas"
-                          >
-                            <Code className="w-3.5 h-3.5" />
-                          </button>
                         )}
 
-                        {(message.prompt_tokens || message.response_time_ms || message.cost > 0) && (
-                          <div className="group/info relative">
-                            <button
-                              className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
-                              title="Message details"
-                            >
-                              <Info className="w-3.5 h-3.5" />
-                            </button>
-                            <div className="absolute bottom-full left-0 mb-1 hidden group-hover/info:block z-10">
-                              <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
-                                <div className="space-y-1">
-                                  {message.response_time_ms > 0 && (
-                                    <div className="flex justify-between gap-4">
-                                      <span className="text-dark-400">Time:</span>
-                                      <span className="text-dark-200 font-mono">{formatThinkingTime(message.response_time_ms / 1000)}</span>
-                                    </div>
-                                  )}
-                                  {(message.prompt_tokens || message.completion_tokens) && (
-                                    <div className="flex justify-between gap-4">
-                                      <span className="text-dark-400">Tokens:</span>
-                                      <span className="text-dark-200 font-mono">{((message.prompt_tokens || 0) + (message.completion_tokens || 0)).toLocaleString()} tks</span>
-                                    </div>
-                                  )}
-                                  {message.cost > 0 && (
-                                    <div className="flex justify-between gap-4">
-                                      <span className="text-dark-400">Cost:</span>
-                                      <span className="text-accent-400 font-mono">
-                                        ${message.cost.toFixed(2)}
-                                      </span>
-                                    </div>
-                                  )}
+                        {/* Historical Tool Calls */}
+                        {message.role === 'assistant' && parsedToolCalls.length > 0 && (
+                          <div className="mb-2 max-w-[85%]">
+                            <ToolCallDisplay
+                              toolCalls={parsedToolCalls}
+                              toolResults={historicalToolResults}
+                            />
+                          </div>
+                        )}
+
+                        {/* Message Bubble */}
+                        <div className={`inline-block max-w-[85%] ${message.role === 'user'
+                          ? 'bg-dark-700/80 border border-dark-600 text-dark-100 rounded-2xl rounded-tr-sm px-4 py-3'
+                          : 'bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg'
+                          }`}>
+                          {message.role === 'user' ? (
+                            editingMessageId === message.id ? (
+                              <div className="space-y-2 text-left">
+                                <textarea
+                                  value={editContent}
+                                  onChange={(e) => setEditContent(e.target.value)}
+                                  className="w-full min-w-[300px] bg-dark-800/50 border border-dark-600 rounded-lg p-2 text-white resize-none focus:outline-none focus:border-primary-400"
+                                  rows={3}
+                                  autoFocus
+                                />
+                                <div className="flex gap-2 justify-end">
+                                  <button
+                                    onClick={handleEditCancel}
+                                    className="px-3 py-1 text-xs rounded-lg bg-dark-700 hover:bg-dark-600 transition-colors"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={() => handleEditSave(message.id)}
+                                    className="px-3 py-1 text-xs rounded-lg bg-primary-500 hover:bg-primary-400 transition-colors"
+                                  >
+                                    Save & Regenerate
+                                  </button>
                                 </div>
                               </div>
-                            </div>
+                            ) : (
+                              <>
+                                {renderMessage(message.content)}
+                                {/* Display attachments */}
+                                {message.attachments && message.attachments.length > 0 && (
+                                  <div className="flex flex-wrap gap-2 mt-2">
+                                    {message.attachments.map((att) => {
+                                      const isImage = att.mimetype?.startsWith('image/');
+                                      const getIcon = () => {
+                                        if (att.mimetype === 'application/pdf') return '📄';
+                                        if (att.mimetype === 'text/csv') return '📊';
+                                        if (att.mimetype === 'application/json') return '{ }';
+                                        if (att.mimetype?.includes('markdown') || att.original_name?.endsWith('.md')) return '📝';
+                                        if (att.mimetype === 'text/plain') return '📃';
+                                        return '📎';
+                                      };
+
+                                      if (isImage) {
+                                        return (
+                                          <img
+                                            key={att.id}
+                                            src={att.preview || `/api/uploads/${att.id}`}
+                                            alt={att.original_name}
+                                            className="max-w-[200px] max-h-[150px] rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                            onClick={() => window.open(att.preview || `/api/uploads/${att.id}`, '_blank')}
+                                          />
+                                        );
+                                      }
+
+                                      return (
+                                        <div
+                                          key={att.id}
+                                          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-dark-800/50 border border-white/[0.08]"
+                                        >
+                                          <span className="text-lg">{getIcon()}</span>
+                                          <span className="text-xs text-dark-300 max-w-[150px] truncate">{att.original_name}</span>
+                                          {att.has_text && (
+                                            <span className="text-[10px] text-green-400">✓</span>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </>
+                            )
+                          ) : (
+                            renderMessage(message.content)
+                          )}
+                        </div>
+
+                        {/* Actions Row (Assistant Only) */}
+                        {message.role === 'assistant' && (
+                          <div className="mt-1 flex gap-1 items-center opacity-0 group-hover:opacity-100 transition-opacity px-1">
+                            <button
+                              onClick={() => handleCopy(message.id, message.content, 'raw')}
+                              className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
+                              title={copiedMessageId === `${message.id}-raw` ? 'Copied!' : 'Copy Raw'}
+                            >
+                              {copiedMessageId === `${message.id}-raw` ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                            <button
+                              onClick={() => handleCopy(message.id, message.content, 'markdown')}
+                              className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
+                              title={copiedMessageId === `${message.id}-markdown` ? 'Copied!' : 'Copy Markdown'}
+                            >
+                              {copiedMessageId === `${message.id}-markdown` ? <Check className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
+                            </button>
+                            <button
+                              onClick={() => openForkModal(message.id)}
+                              className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
+                              title="Fork from here"
+                            >
+                              <GitBranch className="w-3.5 h-3.5" />
+                            </button>
+                            <TextToSpeech text={message.content} messageId={message.id} />
+                            {message.content.includes('```') && (
+                              <button
+                                onClick={() => openInCanvas(message.content, 'Edit Code')}
+                                className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
+                                title="Open in Canvas"
+                              >
+                                <Code className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
+                            {(message.prompt_tokens || message.response_time_ms || message.cost > 0) && (
+                              <div className="group/info relative">
+                                <button
+                                  className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
+                                  title="Message details"
+                                >
+                                  <Info className="w-3.5 h-3.5" />
+                                </button>
+                                <div className="absolute bottom-full left-0 mb-1 hidden group-hover/info:block z-10">
+                                  <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
+                                    <div className="space-y-1">
+                                      {message.response_time_ms > 0 && (
+                                        <div className="flex justify-between gap-4">
+                                          <span className="text-dark-400">Time:</span>
+                                          <span className="text-dark-200 font-mono">{formatThinkingTime(message.response_time_ms / 1000)}</span>
+                                        </div>
+                                      )}
+                                      {(message.prompt_tokens || message.completion_tokens) && (
+                                        <div className="flex justify-between gap-4">
+                                          <span className="text-dark-400">Tokens:</span>
+                                          <span className="text-dark-200 font-mono">{((message.prompt_tokens || 0) + (message.completion_tokens || 0)).toLocaleString()} tks</span>
+                                        </div>
+                                      )}
+                                      {message.cost > 0 && (
+                                        <div className="flex justify-between gap-4">
+                                          <span className="text-dark-400">Cost:</span>
+                                          <span className="text-accent-400 font-mono">
+                                            ${message.cost.toFixed(2)}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
-                    )}
-                  </div>
-                </div>
-              ))}
+                    </div>
+                  )
+                })
+              })()}
 
               {(streaming || streamingMessage || streamingReasoning) && (
                 <div className="pr-8">
@@ -1782,6 +1824,14 @@ function Chat() {
                       isStreaming={!streamingMessage || (streamingReasoning && streaming)}
                       elapsedTime={thinkingElapsedTime}
                       stats={lastThinkingStats}
+                    />
+                  )}
+
+                  {/* Tool Call Indicators */}
+                  {toolCalls && toolCalls.length > 0 && (
+                    <ToolCallDisplay
+                      toolCalls={toolCalls}
+                      toolResults={toolResults}
                     />
                   )}
 
@@ -1834,224 +1884,34 @@ function Chat() {
 
         {/* Input */}
         {currentChat && (
-          <div className="border-t border-dark-700/30 bg-dark-900/50 p-4">
-            <div className="max-w-2xl mx-auto">
-              {/* Tools Toolbar */}
-              <div className="flex items-center gap-3 mb-3">
-                {/* Thinking Mode Dropdown */}
-                <div className="relative" ref={thinkingDropdownRef}>
-                  <button
-                    type="button"
-                    onClick={() => isReasoningSupported && setShowThinkingDropdown(!showThinkingDropdown)}
-                    disabled={!isReasoningSupported}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${!isReasoningSupported
-                      ? 'bg-dark-800/40 text-dark-600 border border-dark-700/30 cursor-not-allowed opacity-70'
-                      : thinkingMode === 'auto'
-                        ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 hover:bg-blue-500/20'
-                        : thinkingMode === 'low'
-                          ? 'bg-green-500/10 text-green-400 border border-green-500/30 hover:bg-green-500/20'
-                          : thinkingMode === 'medium'
-                            ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/20'
-                            : thinkingMode === 'high'
-                              ? 'bg-orange-500/10 text-orange-400 border border-orange-500/30 hover:bg-orange-500/20'
-                              : thinkingMode === 'max'
-                                ? 'bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20'
-                                : 'bg-dark-800/60 text-dark-400 border border-dark-700/40 hover:bg-dark-800 hover:text-dark-300'
-                      }`}
-                    title={!isReasoningSupported ? "Model doesn't support extended thinking" : "Thinking Mode"}
-                  >
-                    <Lightbulb className={`w-3.5 h-3.5 ${!isReasoningSupported ? 'text-dark-600' :
-                      thinkingMode === 'low' ? 'text-green-400' :
-                        thinkingMode === 'medium' ? 'text-yellow-400' :
-                          thinkingMode === 'high' ? 'text-orange-400' :
-                            thinkingMode === 'max' ? 'text-red-400' :
-                              ''
-                      }`} />
-                    <span>Thinking: {THINKING_MODES.find(m => m.id === thinkingMode)?.label}</span>
-                    <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${showThinkingDropdown ? 'rotate-180' : ''}`} />
-                  </button>
-
-                  {/* Dropdown Menu - Opens Upward */}
-                  {showThinkingDropdown && (
-                    <div className="absolute bottom-full left-0 mb-2 w-56 glass-dropdown rounded-lg shadow-xl border border-dark-700/50 overflow-hidden scale-in z-50">
-                      <div className="p-2 border-b border-dark-700/30">
-                        <p className="text-xs font-medium text-dark-400 px-2">Thinking Mode</p>
-                        <p className="text-[10px] text-dark-500 px-2 mt-0.5">Controls reasoning depth for supported models</p>
-                      </div>
-                      <div className="p-1">
-                        {THINKING_MODES.map((mode) => (
-                          <button
-                            key={mode.id}
-                            type="button"
-                            onClick={async () => {
-                              setThinkingMode(mode.id);
-                              setShowThinkingDropdown(false);
-                              if (currentChat && currentChat.id) {
-                                try {
-                                  await fetch(`/api/chats/${currentChat.id}`, {
-                                    method: 'PUT',
-                                    headers: {
-                                      'Content-Type': 'application/json',
-                                      'Authorization': `Bearer ${localStorage.getItem('token')}`
-                                    },
-                                    body: JSON.stringify({ thinking_mode: mode.id })
-                                  });
-                                } catch (error) {
-                                  console.error('Failed to update thinking mode:', error);
-                                }
-                              }
-                            }}
-                            className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-left transition-all duration-150 ${thinkingMode === mode.id
-                              ? 'bg-accent/10 text-accent'
-                              : 'hover:bg-dark-700/50 text-dark-300 hover:text-dark-100'
-                              }`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <div className={`w-1.5 h-1.5 rounded-full ${mode.id === 'off' ? 'bg-dark-500' :
-                                mode.id === 'auto' ? 'bg-blue-400' :
-                                  mode.id === 'low' ? 'bg-green-400' :
-                                    mode.id === 'medium' ? 'bg-yellow-400' :
-                                      mode.id === 'high' ? 'bg-orange-400' :
-                                        'bg-red-400'
-                                }`} />
-                              <div>
-                                <p className="text-xs font-medium">{mode.label}</p>
-                                <p className="text-[10px] text-dark-500">{mode.description}</p>
-                              </div>
-                            </div>
-                            {thinkingMode === mode.id && (
-                              <Check className="w-3.5 h-3.5 text-accent" />
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Placeholder for future tools */}
-                {/* Add more tool toggles here */}
-              </div>
-
-              {/* Pending Attachments Preview */}
-              {pendingAttachments.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-3 p-2 rounded-xl bg-dark-800/50 border border-white/[0.06]">
-                  {pendingAttachments.map((file) => {
-                    const isImage = file.mimetype?.startsWith('image/');
-                    const getIcon = () => {
-                      if (file.mimetype === 'application/pdf') return '📄';
-                      if (file.mimetype === 'text/csv') return '📊';
-                      if (file.mimetype === 'application/json') return '{ }';
-                      if (file.mimetype?.includes('markdown') || file.original_name?.endsWith('.md')) return '📝';
-                      if (file.mimetype === 'text/plain') return '📃';
-                      return '📎';
-                    };
-
-                    return (
-                      <div
-                        key={file.id}
-                        className="relative group w-16 h-16 rounded-lg overflow-hidden border border-white/[0.1] bg-dark-800"
-                      >
-                        {isImage && file.preview ? (
-                          <img
-                            src={file.preview}
-                            alt={file.original_name}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex flex-col items-center justify-center">
-                            <span className="text-2xl">{getIcon()}</span>
-                            {file.has_text && (
-                              <span className="text-[8px] text-green-400 mt-0.5">✓ parsed</span>
-                            )}
-                          </div>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (file.preview) URL.revokeObjectURL(file.preview);
-                            fetch(`/api/uploads/${file.id}`, {
-                              method: 'DELETE',
-                              headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-                            }).catch(console.error);
-                            setPendingAttachments(prev => prev.filter(f => f.id !== file.id));
-                          }}
-                          className="absolute top-0.5 right-0.5 p-1 bg-dark-900/80 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <X className="w-3 h-3 text-dark-300" />
-                        </button>
-                        <div className="absolute inset-x-0 bottom-0 bg-dark-900/80 px-1 py-0.5">
-                          <p className="text-[8px] text-dark-300 truncate">{file.original_name}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              <form onSubmit={sendMessage} className="flex gap-3 items-center">
-                <ImageUpload
-                  onFilesSelected={setPendingAttachments}
-                  disabled={streaming}
-                />
-                <ImageGeneration
-                  chatId={currentChat?.id}
-                  onImageGenerated={(result) => {
-                    // Add the generated image info to the chat
-                    console.log('Image generated:', result);
-                  }}
-                />
-                <div className="flex-1 flex items-center">
-                  <textarea
-                    ref={textareaRef}
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        if (inputMessage.trim() && !streaming) {
-                          sendMessage(e);
-                        }
-                      }
-                    }}
-                    placeholder={streaming ? "AI is responding..." : "Type a message..."}
-                    className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-200 placeholder-dark-600 text-sm resize-none overflow-y-auto"
-                    style={{ minHeight: '48px', maxHeight: '140px' }}
-                    rows={1}
-                    disabled={streaming}
-                    onInput={(e) => {
-                      e.target.style.height = 'auto';
-                      e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px';
-                    }}
-                  />
-                </div>
-                <VoiceInput
-                  onTranscript={(text) => setInputMessage(prev => prev + (prev ? ' ' : '') + text)}
-                  disabled={streaming}
-                />
-                {streaming ? (
-                  <button
-                    type="button"
-                    onClick={stopGeneration}
-                    className="h-12 px-5 rounded-lg font-medium text-sm transition-all duration-200 flex items-center justify-center gap-2 bg-dark-800/60 text-dark-400 border border-dark-700/40 hover:bg-dark-800 hover:text-dark-300"
-                  >
-                    <Square className="w-4 h-4 fill-current" />
-                    <span className="hidden sm:inline">Stop</span>
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    disabled={!inputMessage.trim()}
-                    className="h-12 px-5 btn-primary text-dark-900 rounded-lg font-medium text-sm transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    <Send className="w-4 h-4" />
-                    <span className="hidden sm:inline">Send</span>
-                  </button>
-                )}
-              </form>
-            </div>
-          </div>
+          <InputBar
+            inputMessage={inputMessage}
+            setInputMessage={setInputMessage}
+            onSendMessage={sendMessage}
+            onStopGeneration={stopGeneration}
+            streaming={streaming}
+            pendingAttachments={pendingAttachments}
+            setPendingAttachments={setPendingAttachments}
+            thinkingMode={thinkingMode}
+            setThinkingMode={setThinkingMode}
+            isReasoningSupported={isReasoningSupported}
+            chatId={currentChat?.id}
+            onOpenImageGeneration={() => setShowImageGeneration(true)}
+            enabledTools={enabledTools}
+            setEnabledTools={setEnabledTools}
+          />
         )}
+
+        {/* Image Generation Modal */}
+        <ImageGeneration
+          chatId={currentChat?.id}
+          onImageGenerated={(result) => {
+            console.log('Image generated:', result);
+          }}
+          isOpen={showImageGeneration}
+          onClose={() => setShowImageGeneration(false)}
+          hideButton={true}
+        />
       </div>
 
       {/* Fork Modal */}

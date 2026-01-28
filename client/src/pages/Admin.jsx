@@ -26,6 +26,8 @@ function Admin() {
 
   const [titleGenerationModel, setTitleGenerationModel] = useState('google/gemini-2.5-flash-lite');
   const [globalSystemPrompt, setGlobalSystemPrompt] = useState('');
+  const [braveSearchApiKey, setBraveSearchApiKey] = useState('');
+  const [showBraveKey, setShowBraveKey] = useState(false);
 
   useEffect(() => {
     loadUsers();
@@ -54,6 +56,7 @@ function Admin() {
       setDefaultApiKey(data.default_openai_api_key || '');
       setTitleGenerationModel(data.title_generation_model || 'google/gemini-2.5-flash-lite');
       setGlobalSystemPrompt(data.global_system_prompt || '');
+      setBraveSearchApiKey(data.brave_search_api_key || '');
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
@@ -71,7 +74,8 @@ function Admin() {
         body: JSON.stringify({
           default_openai_api_key: defaultApiKey,
           title_generation_model: titleGenerationModel,
-          global_system_prompt: globalSystemPrompt
+          global_system_prompt: globalSystemPrompt,
+          brave_search_api_key: braveSearchApiKey
         })
       });
       alert('Settings saved successfully!');
@@ -261,10 +265,161 @@ function Admin() {
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-dark-200 mb-2">
+                  Brave Search API Key
+                </label>
+                <p className="text-sm text-dark-400 mb-3">
+                  Required for web search functionality. Get a key from <a href="https://brave.com/search/api/" target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Brave Search API</a>.
+                </p>
+                <div className="relative">
+                  <input
+                    type={showBraveKey ? 'text' : 'password'}
+                    value={braveSearchApiKey}
+                    onChange={(e) => setBraveSearchApiKey(e.target.value)}
+                    className="w-full px-4 py-3 pr-12 rounded-xl glass-input outline-none font-mono text-sm text-dark-100"
+                    placeholder="BSA..."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowBraveKey(!showBraveKey)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-200"
+                  >
+                    {showBraveKey ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleSaveSettings}
+              disabled={loading}
+              className="btn-primary mt-6 px-6 py-3 rounded-xl font-semibold transition-all duration-200 disabled:opacity-50 flex items-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Save Settings
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* User Management */}
+        <div className="glass-card rounded-2xl p-8">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-accent flex items-center gap-3 tracking-tight">
+              <Users className="w-7 h-7" />
+              User Management
+            </h2>
+
+            {!showNewUser && (
               <button
-                onClick={handleSaveSettings}
+                onClick={() => setShowNewUser(true)}
+                className="btn-primary px-4 py-2.5 rounded-xl font-semibold transition-all duration-200 flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                Add User
+              </button>
+            )}
+          </div>
+
+          {/* New/Edit User Form */}
+          {showNewUser && (
+            <form onSubmit={handleUserSubmit} className="mb-8 p-6 bg-dark-800/50 rounded-xl border border-dark-700/40">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-lg text-dark-100">
+                  {editingUser ? 'Edit User' : 'New User'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={cancelUserForm}
+                  className="p-1.5 hover:bg-dark-700/50 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-dark-400" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-dark-200 mb-2">
+                    Name
+                  </label>
+                  <input
+                    type="text"
+                    value={userForm.name}
+                    onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
+                    className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-100"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-dark-200 mb-2">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={userForm.email}
+                    onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                    className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-100"
+                    required
+                    disabled={!!editingUser}
+                  />
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-dark-200 mb-2">
+                  Password {editingUser && '(leave blank to keep current)'}
+                </label>
+                <input
+                  type="password"
+                  value={userForm.password}
+                  onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-100"
+                  required={!editingUser}
+                />
+              </div>
+
+              <div className="space-y-3 mb-4">
+                <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl hover:bg-dark-700/30 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={userForm.is_admin}
+                    onChange={(e) => setUserForm({ ...userForm, is_admin: e.target.checked })}
+                    className="w-4 h-4 rounded"
+                  />
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-secondary" />
+                    <span className="text-sm font-medium text-dark-200">Admin Privileges</span>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl hover:bg-dark-700/30 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={userForm.use_default_key}
+                    onChange={(e) => setUserForm({ ...userForm, use_default_key: e.target.checked })}
+                    className="w-4 h-4 rounded"
+                  />
+                  <div className="flex items-center gap-2">
+                    <Key className="w-4 h-4 text-dark-400" />
+                    <span className="text-sm font-medium text-dark-200">Can Use Default API Key</span>
+                  </div>
+                </label>
+              </div>
+
+              <button
+                type="submit"
                 disabled={loading}
-                className="btn-primary px-6 py-3 rounded-xl font-semibold transition-all duration-200 disabled:opacity-50 flex items-center gap-2"
+                className="btn-primary w-full py-3 rounded-xl font-semibold transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {loading ? (
                   <>
@@ -274,276 +429,150 @@ function Admin() {
                 ) : (
                   <>
                     <Save className="w-4 h-4" />
-                    Save Settings
+                    {editingUser ? 'Update User' : 'Create User'}
                   </>
                 )}
               </button>
-            </div>
-          </div>
+            </form>
+          )}
 
-          {/* User Management */}
-          <div className="glass-card rounded-2xl p-8">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-accent flex items-center gap-3 tracking-tight">
-                <Users className="w-7 h-7" />
-                User Management
-              </h2>
-
-              {!showNewUser && (
-                <button
-                  onClick={() => setShowNewUser(true)}
-                  className="btn-primary px-4 py-2.5 rounded-xl font-semibold transition-all duration-200 flex items-center gap-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add User
-                </button>
-              )}
-            </div>
-
-            {/* New/Edit User Form */}
-            {showNewUser && (
-              <form onSubmit={handleUserSubmit} className="mb-8 p-6 bg-dark-800/50 rounded-xl border border-dark-700/40">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-lg text-dark-100">
-                    {editingUser ? 'Edit User' : 'New User'}
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={cancelUserForm}
-                    className="p-1.5 hover:bg-dark-700/50 rounded-lg transition-colors"
-                  >
-                    <X className="w-5 h-5 text-dark-400" />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm font-medium text-dark-200 mb-2">
-                      Name
-                    </label>
-                    <input
-                      type="text"
-                      value={userForm.name}
-                      onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
-                      className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-100"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-dark-200 mb-2">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      value={userForm.email}
-                      onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
-                      className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-100"
-                      required
-                      disabled={!!editingUser}
-                    />
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-dark-200 mb-2">
-                    Password {editingUser && '(leave blank to keep current)'}
-                  </label>
-                  <input
-                    type="password"
-                    value={userForm.password}
-                    onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-                    className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-100"
-                    required={!editingUser}
-                  />
-                </div>
-
-                <div className="space-y-3 mb-4">
-                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl hover:bg-dark-700/30 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={userForm.is_admin}
-                      onChange={(e) => setUserForm({ ...userForm, is_admin: e.target.checked })}
-                      className="w-4 h-4 rounded"
-                    />
-                    <div className="flex items-center gap-2">
-                      <Shield className="w-4 h-4 text-secondary" />
-                      <span className="text-sm font-medium text-dark-200">Admin Privileges</span>
+          {/* Users List */}
+          <div className="space-y-3">
+            {users.map(user => (
+              <div
+                key={user.id}
+                className="p-5 bg-dark-800/50 border border-dark-700/50 rounded-xl hover:border-dark-600 transition-all duration-200"
+              >
+                <div className="flex items-center justify-between gap-4">
+                  {/* User Info */}
+                  <div className="flex-shrink-0 min-w-0">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h3 className="font-semibold text-lg text-dark-100">{user.name}</h3>
+                      {user.is_admin === 1 && (
+                        <span className="flex items-center gap-1 px-2.5 py-1 bg-secondary-10 text-secondary rounded-full text-xs font-medium border border-secondary-20">
+                          <Shield className="w-3 h-3" />
+                          Admin
+                        </span>
+                      )}
                     </div>
-                  </label>
-
-                  <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl hover:bg-dark-700/30 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={userForm.use_default_key}
-                      onChange={(e) => setUserForm({ ...userForm, use_default_key: e.target.checked })}
-                      className="w-4 h-4 rounded"
-                    />
-                    <div className="flex items-center gap-2">
-                      <Key className="w-4 h-4 text-dark-400" />
-                      <span className="text-sm font-medium text-dark-200">Can Use Default API Key</span>
-                    </div>
-                  </label>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="btn-primary w-full py-3 rounded-xl font-semibold transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {loading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      {editingUser ? 'Update User' : 'Create User'}
-                    </>
-                  )}
-                </button>
-              </form>
-            )}
-
-            {/* Users List */}
-            <div className="space-y-3">
-              {users.map(user => (
-                <div
-                  key={user.id}
-                  className="p-5 bg-dark-800/50 border border-dark-700/50 rounded-xl hover:border-dark-600 transition-all duration-200"
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    {/* User Info */}
-                    <div className="flex-shrink-0 min-w-0">
-                      <div className="flex items-center gap-3 mb-2">
-                        <h3 className="font-semibold text-lg text-dark-100">{user.name}</h3>
-                        {user.is_admin === 1 && (
-                          <span className="flex items-center gap-1 px-2.5 py-1 bg-secondary-10 text-secondary rounded-full text-xs font-medium border border-secondary-20">
-                            <Shield className="w-3 h-3" />
-                            Admin
-                          </span>
+                    <p className="text-sm text-dark-400 mb-2">{user.email}</p>
+                    <div className="flex gap-4 text-xs text-dark-500">
+                      <span className="flex items-center gap-1">
+                        {user.has_api_key ? (
+                          <>
+                            <CheckCircle className="w-3 h-3 text-green-400" />
+                            <span className="text-dark-300">Has API key</span>
+                          </>
+                        ) : (
+                          <>
+                            <XCircle className="w-3 h-3 text-dark-500" />
+                            <span>No API key</span>
+                          </>
                         )}
-                      </div>
-                      <p className="text-sm text-dark-400 mb-2">{user.email}</p>
-                      <div className="flex gap-4 text-xs text-dark-500">
-                        <span className="flex items-center gap-1">
-                          {user.has_api_key ? (
-                            <>
-                              <CheckCircle className="w-3 h-3 text-green-400" />
-                              <span className="text-dark-300">Has API key</span>
-                            </>
-                          ) : (
-                            <>
-                              <XCircle className="w-3 h-3 text-dark-500" />
-                              <span>No API key</span>
-                            </>
-                          )}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          {user.use_default_key ? (
-                            <>
-                              <CheckCircle className="w-3 h-3 text-accent" />
-                              <span className="text-dark-300">Can use default key</span>
-                            </>
-                          ) : (
-                            <>
-                              <XCircle className="w-3 h-3 text-dark-500" />
-                              <span>Cannot use default key</span>
-                            </>
-                          )}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Usage Stats - Lifetime totals with breakdown */}
-                    <div className="flex-1 flex flex-col gap-2">
-                      {/* Lifetime Stats Row */}
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="flex items-center gap-2 px-3 py-2 bg-dark-700/50 rounded-xl border border-dark-600/50">
-                          <Zap className="w-4 h-4 text-dark-300 flex-shrink-0" />
-                          <div className="min-w-0">
-                            <div className="text-[10px] text-dark-500 leading-tight">Lifetime Tokens</div>
-                            <div className="text-sm font-semibold text-dark-100 truncate">
-                              {user.lifetime_tokens?.toLocaleString() || 0}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 px-3 py-2 bg-dark-700/50 rounded-xl border border-dark-600/50">
-                          <Coins className="w-4 h-4 text-dark-300 flex-shrink-0" />
-                          <div className="min-w-0">
-                            <div className="text-[10px] text-dark-500 leading-tight">Lifetime Cost</div>
-                            <div className="text-sm font-semibold text-dark-100 truncate">
-                              ${(user.lifetime_cost || 0).toFixed(4)}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      {/* Breakdown Row - Default Key (accent) vs Personal Key (secondary) */}
-                      <div className="grid grid-cols-4 gap-1.5">
-                        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-accent/10 rounded-lg border border-accent/20">
-                          <div className="min-w-0">
-                            <div className="text-[9px] text-dark-500 leading-tight">Default Tokens</div>
-                            <div className="text-xs font-medium text-accent truncate">
-                              {user.default_key_tokens?.toLocaleString() || 0}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-accent/10 rounded-lg border border-accent/20">
-                          <div className="min-w-0">
-                            <div className="text-[9px] text-dark-500 leading-tight">Default Cost</div>
-                            <div className="text-xs font-medium text-accent truncate">
-                              ${(user.default_key_cost || 0).toFixed(4)}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-secondary-10 rounded-lg border border-secondary-20">
-                          <div className="min-w-0">
-                            <div className="text-[9px] text-dark-500 leading-tight">Personal Tokens</div>
-                            <div className="text-xs font-medium text-secondary truncate">
-                              {user.personal_key_tokens?.toLocaleString() || 0}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 px-2 py-1.5 bg-secondary-10 rounded-lg border border-secondary-20">
-                          <div className="min-w-0">
-                            <div className="text-[9px] text-dark-500 leading-tight">Personal Cost</div>
-                            <div className="text-xs font-medium text-secondary truncate">
-                              ${(user.personal_key_cost || 0).toFixed(4)}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex gap-2 flex-shrink-0">
-                      <button
-                        onClick={() => handleResetUserStats(user.id, user.name)}
-                        className="p-2 hover:bg-orange-500/10 rounded-lg transition-colors"
-                        title="Reset Stats"
-                      >
-                        <RotateCcw className="w-4 h-4 text-orange-400" />
-                      </button>
-                      <button
-                        onClick={() => handleEditUser(user)}
-                        className="p-2 hover:bg-accent/10 rounded-lg transition-colors"
-                        title="Edit"
-                      >
-                        <Edit2 className="w-4 h-4 text-accent" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteUser(user.id)}
-                        className="p-2 hover:bg-red-500/10 rounded-lg transition-colors"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4 text-red-400" />
-                      </button>
+                      </span>
+                      <span className="flex items-center gap-1">
+                        {user.use_default_key ? (
+                          <>
+                            <CheckCircle className="w-3 h-3 text-accent" />
+                            <span className="text-dark-300">Can use default key</span>
+                          </>
+                        ) : (
+                          <>
+                            <XCircle className="w-3 h-3 text-dark-500" />
+                            <span>Cannot use default key</span>
+                          </>
+                        )}
+                      </span>
                     </div>
                   </div>
+
+                  {/* Usage Stats - Lifetime totals with breakdown */}
+                  <div className="flex-1 flex flex-col gap-2">
+                    {/* Lifetime Stats Row */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex items-center gap-2 px-3 py-2 bg-dark-700/50 rounded-xl border border-dark-600/50">
+                        <Zap className="w-4 h-4 text-dark-300 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-[10px] text-dark-500 leading-tight">Lifetime Tokens</div>
+                          <div className="text-sm font-semibold text-dark-100 truncate">
+                            {user.lifetime_tokens?.toLocaleString() || 0}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 px-3 py-2 bg-dark-700/50 rounded-xl border border-dark-600/50">
+                        <Coins className="w-4 h-4 text-dark-300 flex-shrink-0" />
+                        <div className="min-w-0">
+                          <div className="text-[10px] text-dark-500 leading-tight">Lifetime Cost</div>
+                          <div className="text-sm font-semibold text-dark-100 truncate">
+                            ${(user.lifetime_cost || 0).toFixed(4)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    {/* Breakdown Row - Default Key (accent) vs Personal Key (secondary) */}
+                    <div className="grid grid-cols-4 gap-1.5">
+                      <div className="flex items-center gap-1.5 px-2 py-1.5 bg-accent/10 rounded-lg border border-accent/20">
+                        <div className="min-w-0">
+                          <div className="text-[9px] text-dark-500 leading-tight">Default Tokens</div>
+                          <div className="text-xs font-medium text-accent truncate">
+                            {user.default_key_tokens?.toLocaleString() || 0}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 px-2 py-1.5 bg-accent/10 rounded-lg border border-accent/20">
+                        <div className="min-w-0">
+                          <div className="text-[9px] text-dark-500 leading-tight">Default Cost</div>
+                          <div className="text-xs font-medium text-accent truncate">
+                            ${(user.default_key_cost || 0).toFixed(4)}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 px-2 py-1.5 bg-secondary-10 rounded-lg border border-secondary-20">
+                        <div className="min-w-0">
+                          <div className="text-[9px] text-dark-500 leading-tight">Personal Tokens</div>
+                          <div className="text-xs font-medium text-secondary truncate">
+                            {user.personal_key_tokens?.toLocaleString() || 0}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 px-2 py-1.5 bg-secondary-10 rounded-lg border border-secondary-20">
+                        <div className="min-w-0">
+                          <div className="text-[9px] text-dark-500 leading-tight">Personal Cost</div>
+                          <div className="text-xs font-medium text-secondary truncate">
+                            ${(user.personal_key_cost || 0).toFixed(4)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => handleResetUserStats(user.id, user.name)}
+                      className="p-2 hover:bg-orange-500/10 rounded-lg transition-colors"
+                      title="Reset Stats"
+                    >
+                      <RotateCcw className="w-4 h-4 text-orange-400" />
+                    </button>
+                    <button
+                      onClick={() => handleEditUser(user)}
+                      className="p-2 hover:bg-accent/10 rounded-lg transition-colors"
+                      title="Edit"
+                    >
+                      <Edit2 className="w-4 h-4 text-accent" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteUser(user.id)}
+                      className="p-2 hover:bg-red-500/10 rounded-lg transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-400" />
+                    </button>
+                  </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>

@@ -272,6 +272,14 @@
     background-color: var(--accent);
   }
 
+  .bg-accent-light {
+    background-color: var(--accent-light);
+  }
+
+  .hover\:bg-accent-light:hover {
+    background-color: var(--accent-light);
+  }
+
   .bg-accent\/10 {
     background-color: hsl(var(--accent-h), var(--accent-s), var(--accent-l), 0.1);
   }
@@ -669,4 +677,56 @@ input[type="checkbox"]:focus {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* Tool Call Indicators */
+.tool-call-container {
+  @apply flex flex-col gap-1.5 my-3 mx-auto max-w-2xl;
+}
+
+.tool-call-item {
+  @apply rounded-lg overflow-hidden;
+  background: rgba(41, 37, 36, 0.4);
+  border: 1px solid rgba(68, 64, 60, 0.3);
+}
+
+.tool-call-header {
+  @apply flex items-center justify-between gap-3 px-3 py-2 w-full text-left;
+}
+
+.tool-call-icon {
+  @apply flex items-center justify-center w-6 h-6 rounded-md;
+  background: rgba(68, 64, 60, 0.4);
+  color: #a8a29e;
+}
+
+.tool-call-icon-running {
+  background: hsl(var(--accent-h), var(--accent-s), var(--accent-l), 0.15);
+  color: var(--accent);
+  animation: toolPulse 1.5s ease-in-out infinite;
+}
+
+.tool-call-icon-complete {
+  background: rgba(16, 185, 129, 0.1);
+  color: #34d399;
+}
+
+@keyframes toolPulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.tool-call-name {
+  @apply text-xs font-medium text-dark-200;
+}
+
+.tool-call-description {
+  @apply text-[11px] text-dark-500 truncate max-w-[280px];
 }

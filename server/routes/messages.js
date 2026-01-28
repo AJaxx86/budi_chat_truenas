@@ -304,28 +304,26 @@ router.post("/:chatId", async (req, res) => {
       }
     }
 
-    // Add tools if agent mode is enabled
-    if (chat.agent_mode) {
-      const tools = db
-        .prepare(
-          `
-        SELECT name, description, parameters
-        FROM tools
-        WHERE enabled = 1
-      `,
-        )
-        .all();
+    // Always include enabled tools - OpenRouter handles gracefully if model doesn't support them
+    const tools = db
+      .prepare(
+        `
+      SELECT name, description, parameters
+      FROM tools
+      WHERE enabled = 1
+    `,
+      )
+      .all();
 
-      if (tools.length > 0) {
-        requestOptions.tools = tools.map((t) => ({
-          type: "function",
-          function: {
-            name: t.name,
-            description: t.description,
-            parameters: JSON.parse(t.parameters),
-          },
-        }));
-      }
+    if (tools.length > 0) {
+      requestOptions.tools = tools.map((t) => ({
+        type: "function",
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: JSON.parse(t.parameters),
+        },
+      }));
     }
 
     // Set up SSE
@@ -401,25 +399,28 @@ router.post("/:chatId", async (req, res) => {
       console.log(`Usage: ${JSON.stringify(usageData)}`);
     }
 
-    // Save assistant message with usage stats
-    db.prepare(
-      `
-      INSERT INTO messages (id, chat_id, role, content, reasoning_content, tool_calls, prompt_tokens, completion_tokens, response_time_ms, model, cost, used_default_key)
-      VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-    ).run(
-      assistantMessageId,
-      chatId,
-      assistantMessage,
-      assistantReasoning || null,
-      toolCalls.length > 0 ? JSON.stringify(toolCalls) : null,
-      usageData?.prompt_tokens || null,
-      usageData?.completion_tokens || null,
-      responseTimeMs,
-      chat.model,
-      usageData?.cost || 0,
-      usedDefaultKey ? 1 : 0,
-    );
+    // Only save initial assistant message if it has content (not just tool calls)
+    // If there are tool calls but no content, the final synthesized message will be saved later
+    if (assistantMessage || toolCalls.length > 0) {
+      db.prepare(
+        `
+        INSERT INTO messages (id, chat_id, role, content, reasoning_content, tool_calls, prompt_tokens, completion_tokens, response_time_ms, model, cost, used_default_key)
+        VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      ).run(
+        assistantMessageId,
+        chatId,
+        assistantMessage,
+        assistantReasoning || null,
+        toolCalls.length > 0 ? JSON.stringify(toolCalls) : null,
+        usageData?.prompt_tokens || null,
+        usageData?.completion_tokens || null,
+        responseTimeMs,
+        chat.model,
+        usageData?.cost || 0,
+        usedDefaultKey ? 1 : 0,
+      );
+    }
 
     // Update persistent user stats (survives message/chat deletion)
     const totalTokens = (usageData?.prompt_tokens || 0) + (usageData?.completion_tokens || 0);
@@ -499,39 +500,279 @@ router.post("/:chatId", async (req, res) => {
       );
     }
 
-    // Handle tool calls if any
-    if (toolCalls.length > 0) {
+    // If there is initial content, notify client to finalize this segment
+    if (assistantMessage) {
+      res.write(`data: ${JSON.stringify({ type: "part_done" })}\n\n`);
+    }
+
+    // Handle tool calls with a loop - model can call tools continuously
+    let currentToolCalls = toolCalls;
+    let conversationMessages = [...openaiMessages];
+    let finalMessage = assistantMessage;
+    let finalReasoning = assistantReasoning;
+    let finalUsage = usageData;
+    let totalResponseTime = responseTimeMs;
+
+    while (currentToolCalls.length > 0) {
       res.write(
-        `data: ${JSON.stringify({ type: "tool_calls", tool_calls: toolCalls })}\n\n`,
+        `data: ${JSON.stringify({ type: "tool_calls", tool_calls: currentToolCalls })}\n\n`,
       );
 
-      for (const toolCall of toolCalls) {
-        const result = await executeToolCall(toolCall);
+      // Execute all tool calls and collect results (don't save to DB - internal only)
+      const toolResults = [];
+      for (const toolCall of currentToolCalls) {
+        const result = await executeToolCall(toolCall, req.user.id);
 
-        // Save tool response
-        const toolMessageId = uuidv4();
-        db.prepare(
-          `
-          INSERT INTO messages (id, chat_id, role, content, tool_call_id, name)
-          VALUES (?, ?, 'tool', ?, ?, ?)
-        `,
-        ).run(
-          toolMessageId,
-          chatId,
+        toolResults.push({
+          tool_call_id: toolCall.id,
+          name: toolCall.function.name,
           result,
-          toolCall.id,
-          toolCall.function.name,
-        );
+        });
 
+        // Only notify client that tool completed (not the full result)
         res.write(
           `data: ${JSON.stringify({
             type: "tool_result",
             tool_call_id: toolCall.id,
             name: toolCall.function.name,
-            result,
+            result: result // Send full result so client can display it immediately
           })}\n\n`,
         );
+
+        // Save tool result to database
+        const toolMessageId = uuidv4();
+        db.prepare(`
+          INSERT INTO messages (id, chat_id, role, content, tool_call_id, name, created_at)
+          VALUES (?, ?, 'tool', ?, ?, ?, ?)
+        `).run(
+          toolMessageId,
+          chatId,
+          result,
+          toolCall.id,
+          toolCall.function.name,
+          new Date().toISOString()
+        );
       }
+
+      // Build messages for follow-up: conversation so far + assistant tool call + tool results
+      conversationMessages = [
+        ...conversationMessages,
+        {
+          role: "assistant",
+          content: finalMessage || null,
+          tool_calls: currentToolCalls,
+        },
+        ...toolResults.map((tr) => ({
+          role: "tool",
+          tool_call_id: tr.tool_call_id,
+          content: tr.result,
+        })),
+      ];
+
+      console.log(`Making follow-up request to synthesize ${toolResults.length} tool result(s)`);
+
+      // Follow-up request options - include tools so model can call more if needed
+      const followUpOptions = {
+        model: chat.model,
+        messages: conversationMessages,
+        temperature: chat.temperature,
+        stream: true,
+        usage: { include: true },
+      };
+
+      // Include tools so model can continue calling them
+      const tools = db
+        .prepare(
+          `
+        SELECT name, description, parameters
+        FROM tools
+        WHERE enabled = 1
+      `,
+        )
+        .all();
+
+      if (tools.length > 0) {
+        followUpOptions.tools = tools.map((t) => ({
+          type: "function",
+          function: {
+            name: t.name,
+            description: t.description,
+            parameters: JSON.parse(t.parameters),
+          },
+        }));
+      }
+
+      // Add thinking configuration if enabled
+      if (thinking) {
+        followUpOptions.extra_body = {
+          include_reasoning: true,
+          thinking,
+        };
+      }
+
+      const synthesisStartTime = Date.now();
+      const synthesisStream = await openai.chat.completions.create(followUpOptions);
+
+      let synthesisMessage = "";
+      let synthesisReasoning = "";
+      let synthesisUsage = null;
+      let synthesisToolCalls = [];
+
+      for await (const chunk of synthesisStream) {
+        const delta = chunk.choices[0]?.delta;
+
+        if (chunk.usage) {
+          synthesisUsage = chunk.usage;
+        }
+
+        if (!delta) continue;
+
+        const reasoning =
+          delta.reasoning_content || delta.reasoning || delta.thought;
+
+        if (reasoning) {
+          synthesisReasoning += reasoning;
+          res.write(
+            `data: ${JSON.stringify({ type: "reasoning", content: reasoning })}\n\n`,
+          );
+        }
+
+        if (delta.content) {
+          synthesisMessage += delta.content;
+          res.write(
+            `data: ${JSON.stringify({ type: "content", content: delta.content })}\n\n`,
+          );
+        }
+
+        // Check for more tool calls
+        if (delta.tool_calls) {
+          for (const toolCall of delta.tool_calls) {
+            if (!synthesisToolCalls[toolCall.index]) {
+              synthesisToolCalls[toolCall.index] = {
+                id: toolCall.id,
+                type: "function",
+                function: { name: "", arguments: "" },
+              };
+            }
+
+            if (toolCall.function?.name) {
+              synthesisToolCalls[toolCall.index].function.name = toolCall.function.name;
+            }
+
+            if (toolCall.function?.arguments) {
+              synthesisToolCalls[toolCall.index].function.arguments +=
+                toolCall.function.arguments;
+            }
+          }
+        }
+      }
+
+      const synthesisTimeMs = Date.now() - synthesisStartTime;
+      totalResponseTime += synthesisTimeMs;
+      console.log(
+        `Synthesis complete. ${synthesisMessage.length} chars, ${synthesisToolCalls.length} tool calls in ${synthesisTimeMs}ms`,
+      );
+
+      // Update for next iteration or final save
+      finalMessage = synthesisMessage;
+      finalReasoning = synthesisReasoning;
+      finalUsage = synthesisUsage;
+      currentToolCalls = synthesisToolCalls.filter(tc => tc && tc.function.name);
+    }
+
+    // Only save the final assistant message (with actual content)
+    if (finalMessage) {
+      // Generate a new ID for the final part to avoid collision with initial part
+      const finalMessageId = uuidv4();
+
+      db.prepare(
+        `
+        INSERT INTO messages (id, chat_id, role, content, reasoning_content, prompt_tokens, completion_tokens, response_time_ms, model, cost, used_default_key)
+        VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      ).run(
+        finalMessageId,
+        chatId,
+        finalMessage,
+        finalReasoning || null,
+        finalUsage?.prompt_tokens || null,
+        finalUsage?.completion_tokens || null,
+        totalResponseTime,
+        chat.model,
+        finalUsage?.cost || 0,
+        usedDefaultKey ? 1 : 0,
+      );
+
+      // Update stats for final response
+      const synthTokens = (finalUsage?.prompt_tokens || 0) + (finalUsage?.completion_tokens || 0);
+      const synthCost = finalUsage?.cost || 0;
+
+      try {
+        db.prepare(
+          `
+          INSERT INTO user_stats (user_id, total_messages, total_prompt_tokens, total_completion_tokens, total_cost, total_reasoning_chars, default_key_tokens, default_key_cost, personal_key_tokens, personal_key_cost, updated_at)
+          VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(user_id) DO UPDATE SET
+            total_messages = total_messages + 1,
+            total_prompt_tokens = total_prompt_tokens + ?,
+            total_completion_tokens = total_completion_tokens + ?,
+            total_cost = total_cost + ?,
+            total_reasoning_chars = total_reasoning_chars + ?,
+            default_key_tokens = default_key_tokens + ?,
+            default_key_cost = default_key_cost + ?,
+            personal_key_tokens = personal_key_tokens + ?,
+            personal_key_cost = personal_key_cost + ?,
+            updated_at = CURRENT_TIMESTAMP
+        `,
+        ).run(
+          req.user.id,
+          finalUsage?.prompt_tokens || 0,
+          finalUsage?.completion_tokens || 0,
+          synthCost,
+          finalReasoning?.length || 0,
+          usedDefaultKey ? synthTokens : 0,
+          usedDefaultKey ? synthCost : 0,
+          usedDefaultKey ? 0 : synthTokens,
+          usedDefaultKey ? 0 : synthCost,
+          finalUsage?.prompt_tokens || 0,
+          finalUsage?.completion_tokens || 0,
+          synthCost,
+          finalReasoning?.length || 0,
+          usedDefaultKey ? synthTokens : 0,
+          usedDefaultKey ? synthCost : 0,
+          usedDefaultKey ? 0 : synthTokens,
+          usedDefaultKey ? 0 : synthCost,
+        );
+      } catch (statsError) {
+        console.error(`Stats update failed:`, statsError);
+      }
+
+      // Update model stats
+      if (chat.model) {
+        db.prepare(
+          `
+          INSERT INTO user_model_stats (user_id, model, usage_count, total_prompt_tokens, total_completion_tokens, total_cost, updated_at)
+          VALUES (?, ?, 1, ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(user_id, model) DO UPDATE SET
+            usage_count = usage_count + 1,
+            total_prompt_tokens = total_prompt_tokens + ?,
+            total_completion_tokens = total_completion_tokens + ?,
+            total_cost = total_cost + ?,
+            updated_at = CURRENT_TIMESTAMP
+        `,
+        ).run(
+          req.user.id,
+          chat.model,
+          finalUsage?.prompt_tokens || 0,
+          finalUsage?.completion_tokens || 0,
+          finalUsage?.cost || 0,
+          finalUsage?.prompt_tokens || 0,
+          finalUsage?.completion_tokens || 0,
+          finalUsage?.cost || 0,
+        );
+      }
+
+      usageData = finalUsage;
     }
 
     // Update chat timestamp

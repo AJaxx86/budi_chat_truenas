@@ -143,14 +143,14 @@ function ExportMenu({ chatId, chatTitle, messages }) {
     <div className="relative" ref={menuRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`px-3 py-2 flex items-center gap-2 rounded-xl transition-all duration-200 text-sm font-medium ${
+        className={`p-2 flex items-center gap-1 rounded-lg transition-all duration-200 ${
           isOpen
-            ? 'bg-primary-500/10 text-primary-400 border border-primary-500/20'
-            : 'glass-button text-dark-300 hover:text-dark-100'
+            ? 'bg-dark-800 text-dark-300 border border-dark-700/50'
+            : 'hover:bg-dark-800/40 text-dark-500 hover:text-dark-400'
         }`}
+        title="Export chat"
       >
         <Download className="w-4 h-4" />
-        <span className="hidden sm:inline">Export</span>
         <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 

@@ -4,7 +4,7 @@ import { Mic, MicOff, Loader2, AlertCircle } from 'lucide-react';
 // Check if browser supports speech recognition
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-function VoiceInput({ onTranscript, disabled = false }) {
+function VoiceInput({ onTranscript, disabled = false, compact = false }) {
     const [isListening, setIsListening] = useState(false);
     const [isSupported, setIsSupported] = useState(true);
     const [error, setError] = useState(null);
@@ -98,10 +98,10 @@ function VoiceInput({ onTranscript, disabled = false }) {
             <button
                 type="button"
                 disabled
-                className="p-2.5 rounded-xl text-dark-600 cursor-not-allowed"
+                className={`${compact ? 'w-9 h-9' : 'p-2.5'} rounded-xl text-dark-600 cursor-not-allowed flex items-center justify-center`}
                 title="Speech recognition not supported in this browser"
             >
-                <MicOff className="w-5 h-5" />
+                <MicOff className={compact ? 'w-4 h-4' : 'w-5 h-5'} />
             </button>
         );
     }
@@ -112,17 +112,15 @@ function VoiceInput({ onTranscript, disabled = false }) {
                 type="button"
                 onClick={toggleListening}
                 disabled={disabled}
-                className={`h-12 w-12 flex items-center justify-center rounded-xl transition-all duration-200 ${isListening
+                className={`${compact ? 'w-9 h-9' : 'h-12 w-12'} flex items-center justify-center rounded-xl transition-all duration-200 ${isListening
                     ? 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse'
-                    : 'glass-button text-dark-400 hover:text-primary-400'
+                    : compact
+                        ? 'text-dark-400 hover:text-dark-200 hover:bg-dark-700/50'
+                        : 'glass-button text-dark-400 hover:text-primary-400'
                     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                 title={isListening ? 'Stop listening' : 'Start voice input'}
             >
-                {isListening ? (
-                    <Mic className="w-5 h-5" />
-                ) : (
-                    <Mic className="w-5 h-5" />
-                )}
+                <Mic className={compact ? 'w-4 h-4' : 'w-5 h-5'} />
             </button>
 
             {/* Listening indicator */}
