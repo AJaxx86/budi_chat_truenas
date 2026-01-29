@@ -680,8 +680,8 @@ router.post("/:chatId", async (req, res) => {
       currentToolCalls = synthesisToolCalls.filter(tc => tc && tc.function.name);
     }
 
-    // Only save the final assistant message (with actual content)
-    if (finalMessage) {
+    // Only save the final assistant message (with actual content) when tool calls were processed
+    if (finalMessage && toolCalls.length > 0) {
       // Generate a new ID for the final part to avoid collision with initial part
       const finalMessageId = uuidv4();
 

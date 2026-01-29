@@ -43,6 +43,13 @@ function InputBar({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Reset textarea height when input is cleared
+  useEffect(() => {
+    if (!inputMessage && textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+  }, [inputMessage]);
+
   // Auto-resize textarea
   const handleTextareaInput = (e) => {
     e.target.style.height = 'auto';
