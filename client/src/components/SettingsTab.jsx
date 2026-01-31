@@ -11,8 +11,6 @@ const ACCENT_PRESETS = [
   { id: 'cyan', name: 'Cyan', color: 'hsl(186, 94%, 42%)' },
 ];
 
-const ACCENT_STORAGE_KEY = 'budi_accent_color';
-
 function SettingsTab({ user, logout }) {
   const navigate = useNavigate();
   const [apiKey, setApiKey] = useState('');
@@ -25,15 +23,15 @@ function SettingsTab({ user, logout }) {
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
-  const [accentColor, setAccentColor] = useState(() => {
-    return localStorage.getItem(ACCENT_STORAGE_KEY) || 'amber';
-  });
+  const [accentColor, setAccentColor] = useState(user?.accent_color || 'amber');
 
   useEffect(() => {
     loadUserData();
-    // Apply accent color on mount
-    document.documentElement.setAttribute('data-accent', accentColor);
-  }, []);
+    // Apply accent color from user data on mount
+    if (user?.accent_color) {
+      document.documentElement.setAttribute('data-accent', user.accent_color);
+    }
+  }, [user]);
 
   const loadUserData = async () => {
     try {
@@ -42,15 +40,30 @@ function SettingsTab({ user, logout }) {
       });
       const data = await res.json();
       setHasApiKey(!!data.has_api_key);
+      if (data.accent_color) {
+        setAccentColor(data.accent_color);
+      }
     } catch (error) {
       console.error('Failed to load user data:', error);
     }
   };
 
-  const handleAccentChange = (presetId) => {
+  const handleAccentChange = async (presetId) => {
     setAccentColor(presetId);
-    localStorage.setItem(ACCENT_STORAGE_KEY, presetId);
     document.documentElement.setAttribute('data-accent', presetId);
+
+    try {
+      await fetch('/api/auth/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ accent_color: presetId })
+      });
+    } catch (error) {
+      console.error('Failed to save accent color:', error);
+    }
   };
 
   const handleSaveApiKey = async (e) => {

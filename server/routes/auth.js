@@ -51,10 +51,10 @@ router.post('/register', (req, res) => {
     // Hash password
     const hashedPassword = bcrypt.hashSync(password, 10);
 
-    // Create user with default 'user' group
+    // Create user with default 'user' group and accent color
     const result = db.prepare(`
-      INSERT INTO users (email, password, name, user_group)
-      VALUES (?, ?, ?, 'user')
+      INSERT INTO users (email, password, name, user_group, accent_color)
+      VALUES (?, ?, ?, 'user', 'amber')
     `).run(email, hashedPassword, name);
 
     const token = generateToken(result.lastInsertRowid);
@@ -69,6 +69,7 @@ router.post('/register', (req, res) => {
         name,
         is_admin: false,
         user_group: 'user',
+        accent_color: 'amber',
         group_info: groupInfo,
         permissions
       }
@@ -107,6 +108,7 @@ router.post('/login', (req, res) => {
         name: user.name,
         is_admin: !!user.is_admin,
         user_group: userGroup,
+        accent_color: user.accent_color || 'amber',
         group_info: groupInfo,
         permissions
       }
@@ -120,7 +122,7 @@ router.post('/login', (req, res) => {
 // Get current user
 router.get('/me', authMiddleware, (req, res) => {
   const user = db.prepare(`
-    SELECT id, email, name, is_admin, use_default_key, user_group,
+    SELECT id, email, name, is_admin, use_default_key, user_group, accent_color,
            CASE WHEN openai_api_key IS NOT NULL THEN 1 ELSE 0 END as has_api_key
     FROM users WHERE id = ?
   `).get(req.user.id);
@@ -140,7 +142,7 @@ router.get('/me', authMiddleware, (req, res) => {
 // Update user profile
 router.put('/profile', authMiddleware, (req, res) => {
   try {
-    const { name, password, openai_api_key } = req.body;
+    const { name, password, openai_api_key, accent_color } = req.body;
     const updates = [];
     const values = [];
 
@@ -157,6 +159,11 @@ router.put('/profile', authMiddleware, (req, res) => {
     if (openai_api_key !== undefined) {
       updates.push('openai_api_key = ?');
       values.push(openai_api_key || null);
+    }
+
+    if (accent_color !== undefined) {
+      updates.push('accent_color = ?');
+      values.push(accent_color);
     }
 
     if (updates.length === 0) {

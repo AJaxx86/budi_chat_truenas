@@ -392,6 +392,18 @@ function initDatabase() {
     console.error("Migration error:", e);
   }
 
+  // Migration: Add accent_color column to users table
+  try {
+    const usersInfo = db.prepare("PRAGMA table_info(users)").all();
+    const hasAccentColor = usersInfo.some((col) => col.name === "accent_color");
+    if (!hasAccentColor) {
+      db.exec("ALTER TABLE users ADD COLUMN accent_color TEXT DEFAULT 'amber'");
+      console.log("✅ Migration: Added accent_color column to users table");
+    }
+  } catch (e) {
+    console.error("Migration error:", e);
+  }
+
   // Initialize default user groups with permissions
   const defaultGroups = [
     {
