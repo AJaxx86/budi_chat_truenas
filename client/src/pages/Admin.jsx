@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Users, Settings, Plus, Trash2, Edit2,
   Save, X, Shield, Key, Eye, EyeOff, CheckCircle, XCircle,
-  Zap, Coins, RotateCcw
+  Zap, Coins, RotateCcw, UserCog
 } from 'lucide-react';
 
 function Admin() {
@@ -20,7 +20,7 @@ function Admin() {
     email: '',
     password: '',
     name: '',
-    is_admin: false,
+    user_group: 'user',
     use_default_key: false
   });
 
@@ -29,9 +29,14 @@ function Admin() {
   const [braveSearchApiKey, setBraveSearchApiKey] = useState('');
   const [showBraveKey, setShowBraveKey] = useState(false);
 
+  // Groups state
+  const [groups, setGroups] = useState([]);
+  const [savingGroups, setSavingGroups] = useState(false);
+
   useEffect(() => {
     loadUsers();
     loadSettings();
+    loadGroups();
   }, []);
 
   const loadUsers = async () => {
@@ -59,6 +64,18 @@ function Admin() {
       setBraveSearchApiKey(data.brave_search_api_key || '');
     } catch (error) {
       console.error('Failed to load settings:', error);
+    }
+  };
+
+  const loadGroups = async () => {
+    try {
+      const res = await fetch('/api/admin/groups', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      const data = await res.json();
+      setGroups(data);
+    } catch (error) {
+      console.error('Failed to load groups:', error);
     }
   };
 
@@ -117,7 +134,7 @@ function Admin() {
         email: '',
         password: '',
         name: '',
-        is_admin: false,
+        user_group: 'user',
         use_default_key: false
       });
       setEditingUser(null);
@@ -136,7 +153,7 @@ function Admin() {
       email: user.email,
       password: '',
       name: user.name,
-      is_admin: !!user.is_admin,
+      user_group: user.user_group || (user.is_admin ? 'admin' : 'user'),
       use_default_key: !!user.use_default_key
     });
     setEditingUser(user);
@@ -181,7 +198,7 @@ function Admin() {
       email: '',
       password: '',
       name: '',
-      is_admin: false,
+      user_group: 'user',
       use_default_key: false
     });
     setEditingUser(null);
@@ -389,31 +406,25 @@ function Admin() {
               </div>
 
               <div className="space-y-3 mb-4">
-                <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl hover:bg-dark-700/30 transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={userForm.is_admin}
-                    onChange={(e) => setUserForm({ ...userForm, is_admin: e.target.checked })}
-                    className="w-4 h-4 rounded"
-                  />
-                  <div className="flex items-center gap-2">
-                    <Shield className="w-4 h-4 text-secondary" />
-                    <span className="text-sm font-medium text-dark-200">Admin Privileges</span>
-                  </div>
-                </label>
-
-                <label className="flex items-center gap-3 cursor-pointer p-3 rounded-xl hover:bg-dark-700/30 transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={userForm.use_default_key}
-                    onChange={(e) => setUserForm({ ...userForm, use_default_key: e.target.checked })}
-                    className="w-4 h-4 rounded"
-                  />
-                  <div className="flex items-center gap-2">
-                    <Key className="w-4 h-4 text-dark-400" />
-                    <span className="text-sm font-medium text-dark-200">Can Use Default API Key</span>
-                  </div>
-                </label>
+                <div>
+                  <label className="block text-sm font-medium text-dark-200 mb-2">
+                    User Group
+                  </label>
+                  <select
+                    value={userForm.user_group}
+                    onChange={(e) => setUserForm({ ...userForm, user_group: e.target.value })}
+                    className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-100"
+                  >
+                    {groups.map(group => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-dark-500 mt-1">
+                    Permissions are controlled by the group settings below
+                  </p>
+                </div>
               </div>
 
               <button
@@ -570,6 +581,80 @@ function Admin() {
                       <Trash2 className="w-4 h-4 text-red-400" />
                     </button>
                   </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* User Groups Management */}
+        <div className="glass-card rounded-2xl p-8 mt-6">
+          <h2 className="text-2xl font-bold text-accent mb-6 flex items-center gap-3 tracking-tight">
+            <UserCog className="w-7 h-7" />
+            User Groups & Permissions
+          </h2>
+          <p className="text-sm text-dark-400 mb-6">
+            Configure permissions for each user group. Changes are saved automatically.
+          </p>
+
+          <div className="space-y-6">
+            {groups.map(group => (
+              <div
+                key={group.id}
+                className="p-5 bg-dark-800/50 border border-dark-700/50 rounded-xl"
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <span
+                    className="inline-flex items-center px-3 py-1 rounded-lg text-sm font-bold uppercase tracking-wider"
+                    style={{
+                      backgroundColor: `${group.color}20`,
+                      color: group.color,
+                      border: `1px solid ${group.color}40`
+                    }}
+                  >
+                    {group.name}
+                  </span>
+                  <span className="text-xs text-dark-500">({group.id})</span>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {Object.entries(group.permissions || {}).map(([key, value]) => (
+                    <label
+                      key={key}
+                      className="flex items-center gap-2 p-2 rounded-lg hover:bg-dark-700/30 cursor-pointer transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={value}
+                        onChange={async (e) => {
+                          const newPermissions = { ...group.permissions, [key]: e.target.checked };
+                          // Update local state immediately
+                          setGroups(groups.map(g =>
+                            g.id === group.id ? { ...g, permissions: newPermissions } : g
+                          ));
+                          // Save to server
+                          try {
+                            await fetch(`/api/admin/groups/${group.id}`, {
+                              method: 'PUT',
+                              headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${localStorage.getItem('token')}`
+                              },
+                              body: JSON.stringify({ permissions: newPermissions })
+                            });
+                          } catch (error) {
+                            console.error('Failed to update group permissions:', error);
+                            // Revert on error
+                            loadGroups();
+                          }
+                        }}
+                        className="w-4 h-4 rounded accent-accent"
+                      />
+                      <span className="text-xs text-dark-300">
+                        {key.replace(/^can_/, '').replace(/_/g, ' ')}
+                      </span>
+                    </label>
+                  ))}
                 </div>
               </div>
             ))}

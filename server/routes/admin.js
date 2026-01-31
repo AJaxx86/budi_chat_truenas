@@ -13,7 +13,7 @@ router.use(adminMiddleware);
 router.get('/users', (req, res) => {
   try {
     const users = db.prepare(`
-      SELECT id, email, name, is_admin, use_default_key, created_at,
+      SELECT id, email, name, is_admin, use_default_key, user_group, created_at,
              CASE WHEN openai_api_key IS NOT NULL THEN 1 ELSE 0 END as has_api_key
       FROM users
       ORDER BY created_at DESC
@@ -54,7 +54,7 @@ router.get('/users', (req, res) => {
 // Create user
 router.post('/users', (req, res) => {
   try {
-    const { email, password, name, is_admin, use_default_key } = req.body;
+    const { email, password, name, is_admin, use_default_key, user_group } = req.body;
 
     if (!email || !password || !name) {
       return res.status(400).json({ error: 'Email, password, and name are required' });
@@ -65,18 +65,23 @@ router.post('/users', (req, res) => {
       return res.status(400).json({ error: 'Email already exists' });
     }
 
+    // Determine user_group: explicit user_group takes precedence over is_admin
+    const finalGroup = user_group || (is_admin ? 'admin' : 'user');
+    const finalIsAdmin = finalGroup === 'admin' ? 1 : 0;
+
     const hashedPassword = bcrypt.hashSync(password, 10);
     const result = db.prepare(`
-      INSERT INTO users (email, password, name, is_admin, use_default_key)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(email, hashedPassword, name, is_admin ? 1 : 0, use_default_key ? 1 : 0);
+      INSERT INTO users (email, password, name, is_admin, use_default_key, user_group)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(email, hashedPassword, name, finalIsAdmin, use_default_key ? 1 : 0, finalGroup);
 
     res.json({
       id: result.lastInsertRowid,
       email,
       name,
-      is_admin: !!is_admin,
-      use_default_key: !!use_default_key
+      is_admin: !!finalIsAdmin,
+      use_default_key: !!use_default_key,
+      user_group: finalGroup
     });
   } catch (error) {
     console.error('Create user error:', error);
@@ -88,7 +93,7 @@ router.post('/users', (req, res) => {
 router.put('/users/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, password, is_admin, use_default_key } = req.body;
+    const { name, email, password, is_admin, use_default_key, user_group } = req.body;
 
     const updates = [];
     const values = [];
@@ -108,9 +113,18 @@ router.put('/users/:id', (req, res) => {
       values.push(bcrypt.hashSync(password, 10));
     }
 
-    if (is_admin !== undefined) {
+    // user_group takes precedence over is_admin
+    if (user_group !== undefined) {
+      updates.push('user_group = ?');
+      values.push(user_group);
+      // Also update is_admin for backwards compatibility
+      updates.push('is_admin = ?');
+      values.push(user_group === 'admin' ? 1 : 0);
+    } else if (is_admin !== undefined) {
       updates.push('is_admin = ?');
       values.push(is_admin ? 1 : 0);
+      updates.push('user_group = ?');
+      values.push(is_admin ? 'admin' : 'user');
     }
 
     if (use_default_key !== undefined) {
@@ -218,6 +232,63 @@ router.put('/settings', (req, res) => {
   } catch (error) {
     console.error('Update settings error:', error);
     res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
+// Get all user groups
+router.get('/groups', (req, res) => {
+  try {
+    const groups = db.prepare('SELECT * FROM user_groups ORDER BY id').all();
+    const groupsWithParsedPermissions = groups.map(group => ({
+      ...group,
+      permissions: JSON.parse(group.permissions || '{}')
+    }));
+    res.json(groupsWithParsedPermissions);
+  } catch (error) {
+    console.error('Get groups error:', error);
+    res.status(500).json({ error: 'Failed to fetch groups' });
+  }
+});
+
+// Update user group permissions
+router.put('/groups/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, color, permissions } = req.body;
+
+    const updates = [];
+    const values = [];
+
+    if (name !== undefined) {
+      updates.push('name = ?');
+      values.push(name);
+    }
+
+    if (color !== undefined) {
+      updates.push('color = ?');
+      values.push(color);
+    }
+
+    if (permissions !== undefined) {
+      updates.push('permissions = ?');
+      values.push(JSON.stringify(permissions));
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No updates provided' });
+    }
+
+    updates.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(id);
+
+    db.prepare(`
+      UPDATE user_groups SET ${updates.join(', ')} WHERE id = ?
+    `).run(...values);
+
+    res.json({ message: 'Group updated successfully' });
+  } catch (error) {
+    console.error('Update group error:', error);
+    res.status(500).json({ error: 'Failed to update group' });
   }
 });
 

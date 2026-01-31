@@ -25,7 +25,7 @@ router.use(authMiddleware);
 router.post("/:chatId", async (req, res) => {
   try {
     const { chatId } = req.params;
-    const { content, thinking, attachment_ids = [] } = req.body;
+    const { content, reasoning, attachment_ids = [] } = req.body;
 
     // Fetch attachments if provided
     let attachments = [];
@@ -290,18 +290,9 @@ router.post("/:chatId", async (req, res) => {
       usage: { include: true },
     };
 
-    // Add thinking configuration if enabled
-    if (thinking) {
-      requestOptions.extra_body = {
-        include_reasoning: true,
-        thinking,
-      };
-
-      // Some models (like newer Claude) require max_tokens to be set when using thinking
-      // OpenRouter usually handles defaults, but we might want to ensure a high limit
-      if (!requestOptions.max_tokens) {
-        // Optionally set max_tokens based on budget if needed, but let's leave it to server default for now or add if strictly required
-      }
+    // Add reasoning configuration if enabled (OpenRouter format)
+    if (reasoning) {
+      requestOptions.reasoning = reasoning;
     }
 
     // Always include enabled tools - OpenRouter handles gracefully if model doesn't support them
@@ -399,9 +390,9 @@ router.post("/:chatId", async (req, res) => {
       console.log(`Usage: ${JSON.stringify(usageData)}`);
     }
 
-    // Only save initial assistant message if it has content (not just tool calls)
-    // If there are tool calls but no content, the final synthesized message will be saved later
-    if (assistantMessage || toolCalls.length > 0) {
+    // Only save initial assistant message if there are NO tool calls
+    // (when tools are involved, we save the final synthesized response later)
+    if (assistantMessage && toolCalls.length === 0) {
       db.prepare(
         `
         INSERT INTO messages (id, chat_id, role, content, reasoning_content, tool_calls, prompt_tokens, completion_tokens, response_time_ms, model, cost, used_default_key)
@@ -498,11 +489,6 @@ router.post("/:chatId", async (req, res) => {
         usageData?.completion_tokens || 0,
         usageData?.cost || 0,
       );
-    }
-
-    // If there is initial content, notify client to finalize this segment
-    if (assistantMessage) {
-      res.write(`data: ${JSON.stringify({ type: "part_done" })}\n\n`);
     }
 
     // Handle tool calls with a loop - model can call tools continuously
@@ -602,12 +588,9 @@ router.post("/:chatId", async (req, res) => {
         }));
       }
 
-      // Add thinking configuration if enabled
-      if (thinking) {
-        followUpOptions.extra_body = {
-          include_reasoning: true,
-          thinking,
-        };
+      // Add reasoning configuration if enabled (OpenRouter format)
+      if (reasoning) {
+        followUpOptions.reasoning = reasoning;
       }
 
       const synthesisStartTime = Date.now();
@@ -680,21 +663,27 @@ router.post("/:chatId", async (req, res) => {
       currentToolCalls = synthesisToolCalls.filter(tc => tc && tc.function.name);
     }
 
-    // Only save the final assistant message (with actual content)
-    if (finalMessage) {
+    // Track whether we went through the tool processing path
+    const toolsWereProcessed = toolCalls.length > 0;
+    let finalMessageId = null;
+
+    // Only save the final assistant message if tools were processed
+    // (simple messages without tools are already saved above at line 395)
+    if (finalMessage && toolsWereProcessed) {
       // Generate a new ID for the final part to avoid collision with initial part
-      const finalMessageId = uuidv4();
+      finalMessageId = uuidv4();
 
       db.prepare(
         `
-        INSERT INTO messages (id, chat_id, role, content, reasoning_content, prompt_tokens, completion_tokens, response_time_ms, model, cost, used_default_key)
-        VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO messages (id, chat_id, role, content, reasoning_content, tool_calls, prompt_tokens, completion_tokens, response_time_ms, model, cost, used_default_key)
+        VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       ).run(
         finalMessageId,
         chatId,
         finalMessage,
         finalReasoning || null,
+        JSON.stringify(toolCalls),
         finalUsage?.prompt_tokens || null,
         finalUsage?.completion_tokens || null,
         totalResponseTime,
@@ -782,10 +771,13 @@ router.post("/:chatId", async (req, res) => {
     `,
     ).run(chatId);
 
+    // Use the correct message ID based on whether tools were processed
+    const savedMessageId = toolsWereProcessed ? finalMessageId : assistantMessageId;
+
     res.write(
       `data: ${JSON.stringify({
         type: "done",
-        message_id: assistantMessageId,
+        message_id: savedMessageId,
         usage: usageData || null,
         model: chat.model,
         cost: usageData?.cost || 0,

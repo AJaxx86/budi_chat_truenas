@@ -44,6 +44,18 @@ function initDatabase() {
     )
   `);
 
+  // User groups table (for role-based permissions)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_groups (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      color TEXT,
+      permissions TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Chats table
   db.exec(`
     CREATE TABLE IF NOT EXISTS chats (
@@ -364,6 +376,86 @@ function initDatabase() {
     }
   } catch (e) {
     console.error("Migration error:", e);
+  }
+
+  // Migration: Add user_group column to users table
+  try {
+    const usersInfo = db.prepare("PRAGMA table_info(users)").all();
+    const hasUserGroup = usersInfo.some((col) => col.name === "user_group");
+    if (!hasUserGroup) {
+      db.exec("ALTER TABLE users ADD COLUMN user_group TEXT DEFAULT 'user'");
+      // Migrate existing admins to admin group
+      db.exec("UPDATE users SET user_group = 'admin' WHERE is_admin = 1");
+      console.log("✅ Migration: Added user_group column to users table");
+    }
+  } catch (e) {
+    console.error("Migration error:", e);
+  }
+
+  // Initialize default user groups with permissions
+  const defaultGroups = [
+    {
+      id: 'guest',
+      name: 'Guest',
+      color: '#6b7280',
+      permissions: JSON.stringify({
+        can_access_chat: true,
+        can_create_chats: true,
+        can_delete_chats: true,
+        can_use_default_key: false,
+        can_access_memories: false,
+        can_access_image_gen: false,
+        can_access_settings: false,
+        can_access_admin: false,
+        can_view_other_stats: false,
+        can_edit_permissions: false,
+        can_manage_users: false
+      })
+    },
+    {
+      id: 'user',
+      name: 'User',
+      color: '#3b82f6',
+      permissions: JSON.stringify({
+        can_access_chat: true,
+        can_create_chats: true,
+        can_delete_chats: true,
+        can_use_default_key: true,
+        can_access_memories: true,
+        can_access_image_gen: true,
+        can_access_settings: true,
+        can_access_admin: false,
+        can_view_other_stats: false,
+        can_edit_permissions: false,
+        can_manage_users: false
+      })
+    },
+    {
+      id: 'admin',
+      name: 'Admin',
+      color: '#a855f7',
+      permissions: JSON.stringify({
+        can_access_chat: true,
+        can_create_chats: true,
+        can_delete_chats: true,
+        can_use_default_key: true,
+        can_access_memories: true,
+        can_access_image_gen: true,
+        can_access_settings: true,
+        can_access_admin: true,
+        can_view_other_stats: true,
+        can_edit_permissions: true,
+        can_manage_users: true
+      })
+    }
+  ];
+
+  const insertGroup = db.prepare(`
+    INSERT OR IGNORE INTO user_groups (id, name, color, permissions)
+    VALUES (?, ?, ?, ?)
+  `);
+  for (const group of defaultGroups) {
+    insertGroup.run(group.id, group.name, group.color, group.permissions);
   }
 
   // Create default admin user if not exists

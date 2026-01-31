@@ -5,6 +5,34 @@ import { generateToken, authMiddleware } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// Helper function to get permissions for a user group
+function getGroupPermissions(groupId) {
+  const group = db.prepare('SELECT permissions FROM user_groups WHERE id = ?').get(groupId || 'user');
+  if (group && group.permissions) {
+    return JSON.parse(group.permissions);
+  }
+  // Default permissions if group not found
+  return {
+    can_access_chat: true,
+    can_create_chats: true,
+    can_delete_chats: true,
+    can_use_default_key: false,
+    can_access_memories: false,
+    can_access_image_gen: false,
+    can_access_settings: false,
+    can_access_admin: false,
+    can_view_other_stats: false,
+    can_edit_permissions: false,
+    can_manage_users: false
+  };
+}
+
+// Helper to get group info
+function getGroupInfo(groupId) {
+  const group = db.prepare('SELECT id, name, color FROM user_groups WHERE id = ?').get(groupId || 'user');
+  return group || { id: 'user', name: 'User', color: '#3b82f6' };
+}
+
 // Register
 router.post('/register', (req, res) => {
   try {
@@ -23,13 +51,15 @@ router.post('/register', (req, res) => {
     // Hash password
     const hashedPassword = bcrypt.hashSync(password, 10);
 
-    // Create user
+    // Create user with default 'user' group
     const result = db.prepare(`
-      INSERT INTO users (email, password, name)
-      VALUES (?, ?, ?)
+      INSERT INTO users (email, password, name, user_group)
+      VALUES (?, ?, ?, 'user')
     `).run(email, hashedPassword, name);
 
     const token = generateToken(result.lastInsertRowid);
+    const groupInfo = getGroupInfo('user');
+    const permissions = getGroupPermissions('user');
 
     res.json({
       token,
@@ -37,7 +67,10 @@ router.post('/register', (req, res) => {
         id: result.lastInsertRowid,
         email,
         name,
-        is_admin: false
+        is_admin: false,
+        user_group: 'user',
+        group_info: groupInfo,
+        permissions
       }
     });
   } catch (error) {
@@ -56,12 +89,15 @@ router.post('/login', (req, res) => {
     }
 
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    
+
     if (!user || !bcrypt.compareSync(password, user.password)) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
     const token = generateToken(user.id);
+    const userGroup = user.user_group || (user.is_admin ? 'admin' : 'user');
+    const groupInfo = getGroupInfo(userGroup);
+    const permissions = getGroupPermissions(userGroup);
 
     res.json({
       token,
@@ -69,7 +105,10 @@ router.post('/login', (req, res) => {
         id: user.id,
         email: user.email,
         name: user.name,
-        is_admin: !!user.is_admin
+        is_admin: !!user.is_admin,
+        user_group: userGroup,
+        group_info: groupInfo,
+        permissions
       }
     });
   } catch (error) {
@@ -81,12 +120,21 @@ router.post('/login', (req, res) => {
 // Get current user
 router.get('/me', authMiddleware, (req, res) => {
   const user = db.prepare(`
-    SELECT id, email, name, is_admin, use_default_key, 
+    SELECT id, email, name, is_admin, use_default_key, user_group,
            CASE WHEN openai_api_key IS NOT NULL THEN 1 ELSE 0 END as has_api_key
     FROM users WHERE id = ?
   `).get(req.user.id);
-  
-  res.json(user);
+
+  const userGroup = user.user_group || (user.is_admin ? 'admin' : 'user');
+  const groupInfo = getGroupInfo(userGroup);
+  const permissions = getGroupPermissions(userGroup);
+
+  res.json({
+    ...user,
+    user_group: userGroup,
+    group_info: groupInfo,
+    permissions
+  });
 });
 
 // Update user profile

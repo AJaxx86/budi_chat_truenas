@@ -3,13 +3,13 @@ import { Send, Square, Lightbulb, Check, X } from 'lucide-react';
 import PlusMenu from './PlusMenu';
 import VoiceInput from './VoiceInput';
 
-const THINKING_MODES = [
-  { id: 'off', label: 'Off', description: 'No extended thinking', budgetTokens: 0 },
-  { id: 'auto', label: 'Auto', description: 'Model default', budgetTokens: 16384 },
-  { id: 'low', label: 'Low', description: 'Quick reasoning', budgetTokens: 1024 },
-  { id: 'medium', label: 'Medium', description: 'Balanced thinking', budgetTokens: 4096 },
-  { id: 'high', label: 'High', description: 'Deep reasoning', budgetTokens: 16384 },
-  { id: 'max', label: 'Max', description: 'Maximum reasoning', budgetTokens: 32768 },
+// Thinking modes with effort levels for OpenRouter reasoning API
+export const THINKING_MODES = [
+  { id: 'off', label: 'Off', description: 'No extended thinking', effort: null },
+  { id: 'low', label: 'Low', description: 'Quick reasoning', effort: 'low' },
+  { id: 'medium', label: 'Medium', description: 'Balanced thinking', effort: 'medium' },
+  { id: 'high', label: 'High', description: 'Deep reasoning', effort: 'high' },
+  { id: 'max', label: 'Max', description: 'Maximum reasoning', effort: 'high', max_tokens: 32768 },
 ];
 
 
@@ -93,7 +93,6 @@ function InputBar({
 
   const getThinkingModeColor = () => {
     switch (thinkingMode) {
-      case 'auto': return 'text-blue-400';
       case 'low': return 'text-green-400';
       case 'medium': return 'text-yellow-400';
       case 'high': return 'text-orange-400';
@@ -251,11 +250,10 @@ function InputBar({
                     >
                       <div className="flex items-center gap-2">
                         <div className={`w-1.5 h-1.5 rounded-full ${mode.id === 'off' ? 'bg-dark-500' :
-                          mode.id === 'auto' ? 'bg-blue-400' :
-                            mode.id === 'low' ? 'bg-green-400' :
-                              mode.id === 'medium' ? 'bg-yellow-400' :
-                                mode.id === 'high' ? 'bg-orange-400' :
-                                  'bg-red-400'
+                          mode.id === 'low' ? 'bg-green-400' :
+                            mode.id === 'medium' ? 'bg-yellow-400' :
+                              mode.id === 'high' ? 'bg-orange-400' :
+                                'bg-red-400'
                           }`} />
                         <div>
                           <p className="text-xs font-medium">{mode.label}</p>

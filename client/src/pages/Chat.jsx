@@ -12,7 +12,7 @@ import ShareDialog from '../components/ShareDialog';
 import ImageGeneration from '../components/ImageGeneration';
 import TextToSpeech from '../components/TextToSpeech';
 import Canvas from '../components/Canvas';
-import InputBar from '../components/InputBar';
+import InputBar, { THINKING_MODES } from '../components/InputBar';
 import ToolCallDisplay from '../components/ToolCallDisplay';
 import { AuthContext } from '../contexts/AuthContext';
 import { marked } from 'marked';
@@ -210,7 +210,7 @@ function Chat() {
     temperature: 0.7,
     system_prompt: '',
     agent_mode: false,
-    thinking_mode: 'auto'
+    thinking_mode: 'medium'
   }));
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -244,18 +244,8 @@ function Chat() {
     currentChatIdRef.current = currentChat?.id;
   }, [currentChat?.id]);
 
-  // Thinking mode state for reasoning models
-  const [thinkingMode, setThinkingMode] = useState('auto');
-
-  // Thinking mode options
-  const THINKING_MODES = [
-    { id: 'off', label: 'Off', description: 'No extended thinking', budgetTokens: 0 },
-    { id: 'auto', label: 'Auto', description: 'Model default', budgetTokens: 16384 },
-    { id: 'low', label: 'Low', description: 'Quick reasoning', budgetTokens: 1024 },
-    { id: 'medium', label: 'Medium', description: 'Balanced thinking', budgetTokens: 4096 },
-    { id: 'high', label: 'High', description: 'Deep reasoning', budgetTokens: 16384 },
-    { id: 'max', label: 'Max', description: 'Maximum reasoning', budgetTokens: 32768 },
-  ];
+  // Thinking mode state for reasoning models (default to 'medium')
+  const [thinkingMode, setThinkingMode] = useState('medium');
 
   const [showSearch, setShowSearch] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
@@ -499,6 +489,13 @@ function Chat() {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const data = await res.json();
+
+      // Only update state if this chat is still the active one
+      // This prevents race conditions when user switches chats during a stream
+      if (chatId !== currentChatIdRef.current) {
+        return; // User switched chats, don't update
+      }
+
       setMessages(data.messages || []);
       setChatSettings({
         model: data.model,
@@ -506,7 +503,7 @@ function Chat() {
         system_prompt: data.system_prompt || '',
         agent_mode: !!data.agent_mode
       });
-      setThinkingMode(data.thinking_mode || 'auto');
+      setThinkingMode(data.thinking_mode || 'medium');
       // Update currentChat with latest data (including updated title)
       const { messages: _, ...chatData } = data;
       setCurrentChat(prev => ({ ...prev, ...chatData }));
@@ -531,7 +528,7 @@ function Chat() {
       temperature: 0.7,
       system_prompt: '',
       agent_mode: false,
-      thinking_mode: 'auto'
+      thinking_mode: 'medium'
     });
     setChatSettings({
       model: modelToUse,
@@ -539,7 +536,7 @@ function Chat() {
       system_prompt: '',
       agent_mode: false
     });
-    setThinkingMode('auto');
+    setThinkingMode('medium');
   };
 
   const updateChatSettings = async () => {
@@ -711,7 +708,7 @@ function Chat() {
             temperature: chatSettings.temperature,
             system_prompt: chatSettings.system_prompt,
             agent_mode: chatSettings.agent_mode,
-            thinking_mode: thinkingMode || 'auto'
+            thinking_mode: thinkingMode || 'medium'
           })
         });
         const newChat = await createRes.json();
@@ -750,9 +747,11 @@ function Chat() {
         },
         body: JSON.stringify({
           content: userMessage,
-          thinking: thinkingMode !== 'off' ? {
-            type: 'enabled',
-            budget_tokens: THINKING_MODES.find(m => m.id === thinkingMode)?.budgetTokens || 16384
+          reasoning: thinkingMode !== 'off' ? {
+            effort: THINKING_MODES.find(m => m.id === thinkingMode)?.effort || 'medium',
+            ...(THINKING_MODES.find(m => m.id === thinkingMode)?.max_tokens && {
+              max_tokens: THINKING_MODES.find(m => m.id === thinkingMode).max_tokens
+            })
           } : undefined,
           attachment_ids: attachmentIds
         }),
@@ -837,7 +836,6 @@ function Chat() {
                     duration: thinkingDuration,
                     cost: data.cost || 0
                   };
-                  updateStreamState(chatId, { lastThinkingStats: stats });
                   if (isActiveChat) {
                     setUsageStats(prev => ({
                       ...prev,
@@ -848,33 +846,15 @@ function Chat() {
                       messageCount: (prev?.messageCount || 0) + 1
                     }));
                   }
-                } else {
-                  // No usage data, but we still have duration
-                  updateStreamState(chatId, { lastThinkingStats: { duration: thinkingDuration, totalTokens: 0 } });
                 }
 
-                // Reload messages for the completed chat
+                // Clear streaming state FIRST to prevent duplicate display
+                // (streaming content + loaded message showing simultaneously)
+                clearStreamState(chatId);
+
+                // Then reload messages for the completed chat
                 loadMessages(chatId);
                 loadChats();
-
-                // Clear streaming state after a short delay to ensure smooth transition
-                setTimeout(() => {
-                  clearStreamState(chatId);
-                }, 100);
-              } else if (data.type === 'part_done') {
-                // First part of message is complete (pre-tools)
-                // Reload messages to show the saved part
-                loadMessages(chatId);
-
-                // Clear local streaming buffers so we don't duplicate
-                accumulatedMessage = '';
-                accumulatedReasoning = '';
-
-                // Update state but KEEP streaming true
-                updateStreamState(chatId, {
-                  streamingMessage: '',
-                  streamingReasoning: ''
-                });
               } else if (data.type === 'tool_calls') {
                 // AI is calling tools - update UI
                 updateStreamState(chatId, {
@@ -1136,48 +1116,53 @@ function Chat() {
       {/* Sidebar */}
       <div className={`${showSidebar ? 'w-72' : 'w-16'} transition-all duration-300 ease-out glass-sidebar flex flex-col overflow-hidden`}>
         <div className={`${showSidebar ? 'p-5' : 'p-2'} border-b border-dark-700/30`}>
-          <div className={`flex items-center ${showSidebar ? 'justify-between mb-5' : 'justify-center mb-2'}`}>
-            {showSidebar ? (
-              <>
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <div className="w-9 h-9 rounded-lg bg-dark-700/60 flex items-center justify-center border border-dark-600/40">
-                      <MessageSquare className="w-4 h-4 text-dark-300" />
-                    </div>
-                  </div>
-                  <div>
-                    <h1 className="font-semibold text-base text-dark-100 tracking-tight font-mono">Budi Chat</h1>
-                    <p className="text-xs text-dark-500">{user?.name}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowSidebar(false)}
-                  className="p-2 hover:bg-dark-700/30 rounded-lg transition-all duration-200"
-                  title="Collapse sidebar"
-                >
-                  <ChevronRight className="w-4 h-4 text-dark-500" />
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={() => setShowSidebar(true)}
-                className="p-2 hover:bg-dark-700/30 rounded-lg transition-all duration-200"
-                title="Expand sidebar"
-              >
+          <div className={`flex items-center ${showSidebar ? 'gap-3 mb-5' : 'justify-center mb-2'}`}>
+            {/* Toggle button - always on left */}
+            <button
+              onClick={() => setShowSidebar(!showSidebar)}
+              className="p-2 hover:bg-dark-700/30 rounded-lg transition-all duration-200 flex-shrink-0"
+              title={showSidebar ? "Collapse sidebar" : "Expand sidebar"}
+            >
+              {showSidebar ? (
+                <MessageSquare className="w-4 h-4 text-dark-300" />
+              ) : (
                 <Menu className="w-4 h-4 text-dark-500" />
-              </button>
+              )}
+            </button>
+
+            {/* User info - only when expanded */}
+            {showSidebar && (
+              <div className="flex-1 min-w-0">
+                <h1 className="font-semibold text-base text-dark-100 tracking-tight truncate">
+                  {user?.name || 'User'}
+                </h1>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider"
+                    style={{
+                      backgroundColor: `${user?.group_info?.color || '#3b82f6'}20`,
+                      color: user?.group_info?.color || '#3b82f6',
+                      border: `1px solid ${user?.group_info?.color || '#3b82f6'}40`
+                    }}
+                  >
+                    {user?.group_info?.name || user?.user_group || 'User'}
+                  </span>
+                </div>
+              </div>
             )}
           </div>
 
           <div className={`flex ${showSidebar ? 'gap-2' : 'flex-col gap-2'}`}>
-            <button
-              onClick={createNewChat}
-              className={`${showSidebar ? 'flex-1 py-3 gap-2' : 'w-10 h-10 mx-auto'} gradient-primary text-white rounded-xl font-semibold hover:shadow-glow transition-all duration-200 flex items-center justify-center shine active:scale-[0.98]`}
-              title={showSidebar ? undefined : "New Chat"}
-            >
-              <Plus className="w-4 h-4" />
-              {showSidebar && "New Chat"}
-            </button>
+            {(!user?.permissions || user.permissions.can_create_chats) && (
+              <button
+                onClick={createNewChat}
+                className={`${showSidebar ? 'flex-1 py-3 gap-2' : 'w-10 h-10 mx-auto'} gradient-primary text-white rounded-xl font-semibold hover:shadow-glow transition-all duration-200 flex items-center justify-center shine active:scale-[0.98]`}
+                title={showSidebar ? undefined : "New Chat"}
+              >
+                <Plus className="w-4 h-4" />
+                {showSidebar && "New Chat"}
+              </button>
+            )}
             <button
               onClick={() => setShowSearch(true)}
               className={`${showSidebar ? 'px-3 py-3' : 'w-10 h-10 mx-auto'} glass-button text-dark-400 hover:text-dark-200 rounded-xl transition-all duration-200 flex items-center justify-center`}
@@ -1227,7 +1212,7 @@ function Chat() {
                   </div>
 
                   <div className="flex items-center gap-1">
-                    {deletingChatId === chat.id ? (
+                    {(!user?.permissions || user.permissions.can_delete_chats) && (deletingChatId === chat.id ? (
                       <>
                         <button
                           onClick={(e) => {
@@ -1261,7 +1246,7 @@ function Chat() {
                       >
                         <Trash2 className="w-3.5 h-3.5 text-dark-400 hover:text-red-400" />
                       </button>
-                    )}
+                    ))}
                   </div>
                 </div>
               ) : (
@@ -1277,23 +1262,27 @@ function Chat() {
         </div>
 
         <div className={`${showSidebar ? 'p-3' : 'p-2'} border-t border-dark-700/30 space-y-1`}>
-          <button
-            onClick={() => navigate('/memories')}
-            className={`${showSidebar ? 'w-full px-4 gap-3' : 'w-9 h-9 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-400 hover:text-dark-300`}
-            title={showSidebar ? undefined : "Memories"}
-          >
-            <Brain className="w-4 h-4" />
-            {showSidebar && "Memories"}
-          </button>
-          <button
-            onClick={() => navigate('/settings')}
-            className={`${showSidebar ? 'w-full px-4 gap-3' : 'w-9 h-9 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-400 hover:text-dark-300`}
-            title={showSidebar ? undefined : "Settings"}
-          >
-            <SettingsIcon className="w-4 h-4" />
-            {showSidebar && "Settings"}
-          </button>
-          {user?.is_admin && (
+          {(!user?.permissions || user.permissions.can_access_memories) && (
+            <button
+              onClick={() => navigate('/memories')}
+              className={`${showSidebar ? 'w-full px-4 gap-3' : 'w-9 h-9 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-400 hover:text-dark-300`}
+              title={showSidebar ? undefined : "Memories"}
+            >
+              <Brain className="w-4 h-4" />
+              {showSidebar && "Memories"}
+            </button>
+          )}
+          {(!user?.permissions || user.permissions.can_access_settings) && (
+            <button
+              onClick={() => navigate('/settings')}
+              className={`${showSidebar ? 'w-full px-4 gap-3' : 'w-9 h-9 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-400 hover:text-dark-300`}
+              title={showSidebar ? undefined : "Settings"}
+            >
+              <SettingsIcon className="w-4 h-4" />
+              {showSidebar && "Settings"}
+            </button>
+          )}
+          {(!user?.permissions || user.permissions.can_access_admin) && (
             <button
               onClick={() => navigate('/admin')}
               className={`${showSidebar ? 'w-full px-4 gap-3' : 'w-9 h-9 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-400 hover:text-dark-300`}
@@ -1896,7 +1885,7 @@ function Chat() {
             setThinkingMode={setThinkingMode}
             isReasoningSupported={isReasoningSupported}
             chatId={currentChat?.id}
-            onOpenImageGeneration={() => setShowImageGeneration(true)}
+            onOpenImageGeneration={(!user?.permissions || user.permissions.can_access_image_gen) ? () => setShowImageGeneration(true) : undefined}
             enabledTools={enabledTools}
             setEnabledTools={setEnabledTools}
           />
