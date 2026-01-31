@@ -4,7 +4,7 @@ import {
   MessageSquare, Plus, Settings as SettingsIcon, LogOut, Brain,
   Trash2, GitBranch, Bot, User as UserIcon,
   Sparkles, Zap, Menu, X, ChevronDown, ChevronRight,
-  Check, Trash, Copy, Pencil, Info, DollarSign, Hash, Search, Share2, Code, FileText
+  Check, Trash, Copy, Pencil, Info, DollarSign, Hash, Search, Share2, Code, FileText, Shield
 } from 'lucide-react';
 import SearchModal from '../components/SearchModal';
 import ExportMenu from '../components/ExportMenu';
@@ -1137,16 +1137,23 @@ function Chat() {
                   {user?.name || 'User'}
                 </h1>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span
-                    className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider"
-                    style={{
-                      backgroundColor: `${user?.group_info?.color || '#3b82f6'}20`,
-                      color: user?.group_info?.color || '#3b82f6',
-                      border: `1px solid ${user?.group_info?.color || '#3b82f6'}40`
-                    }}
-                  >
-                    {user?.group_info?.name || user?.user_group || 'User'}
-                  </span>
+                  {user?.is_admin ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider bg-secondary-10 text-secondary border border-secondary-20">
+                      <Shield className="w-3 h-3" />
+                      Admin
+                    </span>
+                  ) : (
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider"
+                      style={{
+                        backgroundColor: `${user?.group_info?.color || '#3b82f6'}20`,
+                        color: user?.group_info?.color || '#3b82f6',
+                        border: `1px solid ${user?.group_info?.color || '#3b82f6'}40`
+                      }}
+                    >
+                      {user?.group_info?.name || user?.user_group || 'User'}
+                    </span>
+                  )}
                 </div>
               </div>
             )}

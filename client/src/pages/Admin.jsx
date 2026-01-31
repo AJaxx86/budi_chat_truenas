@@ -459,11 +459,30 @@ function Admin() {
                   <div className="flex-shrink-0 min-w-0">
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="font-semibold text-lg text-dark-100">{user.name}</h3>
-                      {user.is_admin === 1 && (
+                      {user.is_admin === 1 ? (
                         <span className="flex items-center gap-1 px-2.5 py-1 bg-secondary-10 text-secondary rounded-full text-xs font-medium border border-secondary-20">
                           <Shield className="w-3 h-3" />
                           Admin
                         </span>
+                      ) : (
+                        (() => {
+                          const group = groups.find(g => g.id === user.user_group);
+                          if (group) {
+                            return (
+                              <span
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border"
+                                style={{
+                                  backgroundColor: `${group.color}20`,
+                                  color: group.color,
+                                  borderColor: `${group.color}40`
+                                }}
+                              >
+                                {group.name}
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()
                       )}
                     </div>
                     <p className="text-sm text-dark-400 mb-2">{user.email}</p>
