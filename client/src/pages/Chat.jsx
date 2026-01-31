@@ -104,7 +104,6 @@ const getHistoricalToolResults = (messages) => {
   return results;
 };
 
-
 // Memoized ThinkingSection component to prevent re-renders during streaming
 const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming, elapsedTime, stats }) => {
   const contentRef = useRef(null);
@@ -134,7 +133,7 @@ const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming, el
   const cost = hasStats ? (stats.cost || (stats.promptTokens || 0) > 0 ? calculateCost(stats.promptTokens || 0, stats.completionTokens || 0, stats.model) : 0) : 0;
 
   return (
-    <div className="mb-4">
+    <div className="mb-2 border-l-2 border-l-amber-500/50 bg-dark-800/30 rounded-r-lg">
       <div className="flex items-center justify-between">
         <button
           type="button"
@@ -149,7 +148,7 @@ const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming, el
             {isStreaming ? (
               <>Thinking... <span className="text-dark-500 font-mono text-xs ml-1">{formatThinkingTime(elapsedTime || 0)}</span></>
             ) : (
-              'Reasoning'
+              'Thinking'
             )}
           </span>
           <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
@@ -1586,7 +1585,13 @@ function Chat() {
                   return acc;
                 }, {});
 
-                return messages.filter(m => m.role !== 'tool').map((message, index) => {
+                return messages.filter(m => {
+                  // Filter out tool messages
+                  if (m.role === 'tool') return false;
+                  // Filter out empty assistant messages with no reasoning or tool calls
+                  if (m.role === 'assistant' && !m.content?.trim() && !m.reasoning_content && !m.tool_calls) return false;
+                  return true;
+                }).map((message, index) => {
                   // Get tool results for this message if it has tool calls
                   let parsedToolCalls = [];
 
@@ -1812,6 +1817,7 @@ function Chat() {
 
               {(streaming || streamingMessage || streamingReasoning) && (
                 <div className="pr-8">
+                  {/* Streaming Thinking Section */}
                   {(streamingReasoning || (streaming && !streamingMessage)) && (
                     <ThinkingSection
                       reasoning={streamingReasoning}

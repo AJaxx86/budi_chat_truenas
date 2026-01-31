@@ -234,8 +234,8 @@ router.post("/:chatId", async (req, res) => {
       };
 
       if (msg.reasoning_content) {
-        // Some models support pre-filled reasoning, but standard API doesn't usually
-        // We'll skip adding it to history for now unless the model supports it via specific fields
+        // Reasoning is now saved in separate messages, no need to prepend to content
+        // The separate assistant messages with reasoning will be loaded in sequence
       }
 
       if (msg.tool_calls) {
@@ -390,9 +390,9 @@ router.post("/:chatId", async (req, res) => {
       console.log(`Usage: ${JSON.stringify(usageData)}`);
     }
 
-    // Only save initial assistant message if there are NO tool calls
-    // (when tools are involved, we save the final synthesized response later)
-    if (assistantMessage && toolCalls.length === 0) {
+    // Save initial assistant message
+    // When tools are involved, this preserves the initial reasoning before tool execution
+    if (assistantMessage || assistantReasoning || toolCalls.length > 0) {
       db.prepare(
         `
         INSERT INTO messages (id, chat_id, role, content, reasoning_content, tool_calls, prompt_tokens, completion_tokens, response_time_ms, model, cost, used_default_key)
@@ -401,7 +401,7 @@ router.post("/:chatId", async (req, res) => {
       ).run(
         assistantMessageId,
         chatId,
-        assistantMessage,
+        assistantMessage || "",
         assistantReasoning || null,
         toolCalls.length > 0 ? JSON.stringify(toolCalls) : null,
         usageData?.prompt_tokens || null,
@@ -658,6 +658,7 @@ router.post("/:chatId", async (req, res) => {
 
       // Update for next iteration or final save
       finalMessage = synthesisMessage;
+      // Don't combine - synthesis gets its own reasoning
       finalReasoning = synthesisReasoning;
       finalUsage = synthesisUsage;
       currentToolCalls = synthesisToolCalls.filter(tc => tc && tc.function.name);
@@ -667,10 +668,9 @@ router.post("/:chatId", async (req, res) => {
     const toolsWereProcessed = toolCalls.length > 0;
     let finalMessageId = null;
 
-    // Only save the final assistant message if tools were processed
-    // (simple messages without tools are already saved above at line 395)
+    // Save synthesis as separate message when tools were processed
     if (finalMessage && toolsWereProcessed) {
-      // Generate a new ID for the final part to avoid collision with initial part
+      // Generate a new ID for the synthesis message
       finalMessageId = uuidv4();
 
       db.prepare(
@@ -683,7 +683,7 @@ router.post("/:chatId", async (req, res) => {
         chatId,
         finalMessage,
         finalReasoning || null,
-        JSON.stringify(toolCalls),
+        null, // No tool_calls in synthesis message
         finalUsage?.prompt_tokens || null,
         finalUsage?.completion_tokens || null,
         totalResponseTime,

@@ -21,7 +21,7 @@ function ThinkingSection({ reasoning, isExpanded, onToggle }) {
                 className="flex items-center gap-2 text-sm font-medium text-dark-400 hover:text-dark-300 transition-colors px-3 py-1.5 rounded-lg hover:bg-white/[0.03] select-none"
             >
                 <Brain className="w-4 h-4 text-accent-400" />
-                <span>Thought Process</span>
+                <span>Thinking</span>
                 <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
             </button>
             {isExpanded && (
