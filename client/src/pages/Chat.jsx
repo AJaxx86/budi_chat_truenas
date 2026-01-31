@@ -770,7 +770,9 @@ function Chat() {
       let accumulatedReasoning = '';
       let accumulatedPreToolReasoning = '';
       let accumulatedPostToolReasoning = '';
-      let hasReceivedToolCalls = false;  // Track if we're in post-tool phase
+      let hasReceivedToolCalls = false;
+      let accumulatedSteps = []; // Track steps locally
+      let currentLocalStepId = null;
 
       // Capture the specific controller for this stream
       const currentStreamController = abortController;
@@ -786,7 +788,6 @@ function Chat() {
         }
 
         // Check if this is the active chat for UI updates
-        // We do NOT break here if it's not active - we keep the stream alive for the server
         const isActiveChat = currentChatIdRef.current === chatId;
 
         buffer += decoder.decode(value, { stream: true });
@@ -799,10 +800,7 @@ function Chat() {
               const data = JSON.parse(line.slice(6));
 
               if (data.type === 'reasoning') {
-                // Accumulate locally to avoid stale closure
                 accumulatedReasoning += data.content;
-
-                // Route reasoning to pre-tool or post-tool based on phase
                 if (hasReceivedToolCalls) {
                   accumulatedPostToolReasoning += data.content;
                   updateStreamState(chatId, {
@@ -818,29 +816,23 @@ function Chat() {
                   });
                 }
               } else if (data.type === 'content') {
-                // Accumulate locally to avoid stale closure
                 accumulatedMessage += data.content;
                 updateStreamState(chatId, {
-                  thinkingComplete: true, // Stop thinking timer
+                  thinkingComplete: true,
                   streamingMessage: accumulatedMessage
                 });
               } else if (data.type === 'title') {
-                // Handle concurrent title update
                 const newTitle = data.content;
-                // Always update the chat list item
                 setChats(prev => prev.map(c => c.id === chatId ? { ...c, title: newTitle } : c));
-                // Update currentChat only if it matches
                 if (isActiveChat) {
                   setCurrentChat(prev => (prev.id === chatId ? { ...prev, title: newTitle } : prev));
                 }
               } else if (data.type === 'done') {
-                // Calculate thinking duration
                 const chatState = streamingStates.get(chatId);
                 const thinkingDuration = chatState?.thinkingStartTime
                   ? (Date.now() - chatState.thinkingStartTime) / 1000
                   : 0;
 
-                // Capture usage data if provided
                 if (data.usage) {
                   const stats = {
                     promptTokens: data.usage.prompt_tokens || 0,
@@ -862,22 +854,16 @@ function Chat() {
                   }
                 }
 
-                // Clear streaming state FIRST to prevent duplicate display
-                // (streaming content + loaded message showing simultaneously)
                 clearStreamState(chatId);
-
-                // Then reload messages for the completed chat
                 loadMessages(chatId);
                 loadChats();
               } else if (data.type === 'tool_calls') {
-                // AI is calling tools - mark that we're entering post-tool phase
                 hasReceivedToolCalls = true;
                 updateStreamState(chatId, {
                   toolCalls: data.tool_calls,
                   isPostToolPhase: true
                 });
               } else if (data.type === 'tool_result') {
-                // Tool execution completed - store result
                 const chatState = streamingStates.get(chatId) || createInitialStreamState();
                 updateStreamState(chatId, {
                   toolResults: {
@@ -886,8 +872,6 @@ function Chat() {
                   }
                 });
               } else if (data.type === 'step_start') {
-                // New step started - add to steps array
-                const chatState = streamingStates.get(chatId) || createInitialStreamState();
                 const newStep = {
                   id: data.step_id,
                   type: data.step_type,
@@ -898,35 +882,57 @@ function Chat() {
                   toolCallId: data.tool_call_id || null,
                   toolArguments: data.tool_arguments || null
                 };
+                accumulatedSteps = [...accumulatedSteps, newStep];
+                currentLocalStepId = data.step_id;
+
                 updateStreamState(chatId, {
-                  steps: [...chatState.steps, newStep],
-                  currentStepId: data.step_id
+                  steps: accumulatedSteps,
+                  currentStepId: currentLocalStepId
                 });
               } else if (data.type === 'step_content') {
-                // Append content to specific step
-                const chatState = streamingStates.get(chatId) || createInitialStreamState();
-                const updatedSteps = chatState.steps.map(step =>
+                accumulatedSteps = accumulatedSteps.map(step =>
                   step.id === data.step_id
                     ? { ...step, content: step.content + data.content }
                     : step
                 );
-                updateStreamState(chatId, { steps: updatedSteps });
+
+                updateStreamState(chatId, { steps: accumulatedSteps });
               } else if (data.type === 'step_complete') {
-                // Mark step as complete
-                const chatState = streamingStates.get(chatId) || createInitialStreamState();
-                const updatedSteps = chatState.steps.map(step =>
+                accumulatedSteps = accumulatedSteps.map(step =>
                   step.id === data.step_id
                     ? { ...step, isComplete: true, duration_ms: data.duration_ms }
                     : step
                 );
+
                 updateStreamState(chatId, {
-                  steps: updatedSteps,
+                  steps: accumulatedSteps,
                   currentStepId: null
                 });
-              } else if (data.type === 'error') {
                 if (isActiveChat) {
                   alert('Error: ' + data.error);
                 }
+              } else if (data.type === 'message_finalized') {
+                // Optimistic update to prevent UI flicker
+                // We use the accumulated steps and content to update the message list immediately
+                // This ensures that even if loadMessages is slow or races, the user sees the seamless state
+                const finalMessage = {
+                  id: data.message_id,
+                  role: 'assistant',
+                  content: accumulatedMessage,
+                  model: currentChat.model, // heuristic
+                  created_at: new Date().toISOString(),
+                  steps: accumulatedSteps,
+                  reasoning_content: accumulatedReasoning, // fallback
+                  tool_calls: hasReceivedToolCalls ? JSON.stringify(streamingStates.get(chatId)?.toolCalls || []) : null
+                };
+
+                setMessages(prev => {
+                  // If we already have this message (rare race), update it
+                  if (prev.some(m => m.id === finalMessage.id)) {
+                    return prev.map(m => m.id === finalMessage.id ? finalMessage : m);
+                  }
+                  return [...prev, finalMessage];
+                });
               }
             } catch (e) {
               console.error('Failed to parse SSE data:', e);
@@ -943,7 +949,6 @@ function Chat() {
       }
     } finally {
       isCreatingChatRef.current = false;
-      // Clean up abort controller
       if (chatId) {
         abortControllersRef.current.delete(chatId);
       }

@@ -436,20 +436,44 @@ router.post("/:chatId", async (req, res) => {
 
         for (const toolCall of delta.tool_calls) {
           if (!toolCalls[toolCall.index]) {
+            // New tool call starting
             toolCalls[toolCall.index] = {
               id: toolCall.id,
               type: "function",
               function: { name: "", arguments: "" },
             };
+
+            // Start a new step for this tool call
+            // We store the step ID on the toolCalls object itself to track it
+            toolCalls[toolCall.index].stepId = startStep("tool_call", {
+              tool_call_id: toolCall.id,
+              tool_name: toolCall.function?.name || "",
+              tool_arguments: ""
+            });
           }
 
           if (toolCall.function?.name) {
             toolCalls[toolCall.index].function.name = toolCall.function.name;
+            // Update step with name
+            const step = steps.find(s => s.id === toolCalls[toolCall.index].stepId);
+            if (step) {
+              step.toolName = toolCalls[toolCall.index].function.name;
+              // We don't send individual updates for name changes to client to save bandwidth, 
+              // the initial start or final complete is usually enough, or step_content if needed.
+            }
           }
 
           if (toolCall.function?.arguments) {
             toolCalls[toolCall.index].function.arguments +=
               toolCall.function.arguments;
+
+            // Update step with arguments
+            const step = steps.find(s => s.id === toolCalls[toolCall.index].stepId);
+            if (step) {
+              step.toolArguments = toolCalls[toolCall.index].function.arguments;
+              // For tool calls, we treat arguments as "content" for the step stream
+              appendStepContent(step.id, toolCall.function.arguments);
+            }
           }
         }
       }
@@ -459,6 +483,15 @@ router.post("/:chatId", async (req, res) => {
     if (currentReasoningStepId) {
       completeStep(currentReasoningStepId);
       currentReasoningStepId = null;
+    }
+
+    // Complete any tool call steps
+    if (toolCalls.length > 0) {
+      for (const toolCall of toolCalls) {
+        if (toolCall && toolCall.stepId) {
+          completeStep(toolCall.stepId);
+        }
+      }
     }
 
     const responseTimeMs = Date.now() - requestStartTime;
@@ -490,6 +523,33 @@ router.post("/:chatId", async (req, res) => {
         usageData?.cost || 0,
         usedDefaultKey ? 1 : 0,
       );
+
+      // Save all fine-grained steps if available
+      if (steps.length > 0) {
+        const insertStep = db.prepare(`
+          INSERT INTO message_steps (id, message_id, chat_id, step_type, step_index, content, tool_call_id, tool_name, tool_arguments, duration_ms)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        for (const step of steps) {
+          try {
+            insertStep.run(
+              step.id,
+              assistantMessageId,
+              chatId,
+              step.type,
+              step.index,
+              step.content || null,
+              step.toolCallId || null,
+              step.toolName || null,
+              step.toolArguments || null,
+              step.duration_ms || null
+            );
+          } catch (stepErr) {
+            console.error('Failed to save step:', stepErr);
+          }
+        }
+      }
     }
 
     // Update persistent user stats (survives message/chat deletion)
@@ -920,6 +980,12 @@ router.post("/:chatId", async (req, res) => {
         );
       }
     }
+
+    // Send final message ID to client for optimistic update
+    res.write(`data: ${JSON.stringify({
+      type: "message_finalized",
+      message_id: savedMessageId
+    })}\n\n`);
 
     res.write(
       `data: ${JSON.stringify({

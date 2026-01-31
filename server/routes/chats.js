@@ -42,7 +42,27 @@ router.get('/:id', (req, res) => {
       SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC
     `).all(id);
 
-    res.json({ ...chat, messages });
+    // Fetch steps for all messages in this chat
+    const messageSteps = db.prepare(`
+      SELECT * FROM message_steps WHERE chat_id = ? ORDER BY message_id, step_index ASC
+    `).all(id);
+
+    // Group steps by message_id
+    const stepsByMessage = {};
+    for (const step of messageSteps) {
+      if (!stepsByMessage[step.message_id]) {
+        stepsByMessage[step.message_id] = [];
+      }
+      stepsByMessage[step.message_id].push(step);
+    }
+
+    // Attach steps to messages
+    const messagesWithSteps = messages.map(msg => ({
+      ...msg,
+      steps: stepsByMessage[msg.id] || []
+    }));
+
+    res.json({ ...chat, messages: messagesWithSteps });
   } catch (error) {
     console.error('Get chat error:', error);
     res.status(500).json({ error: 'Failed to fetch chat' });
@@ -56,9 +76,9 @@ router.post('/', (req, res) => {
     const id = uuidv4();
 
     db.prepare(`
-      INSERT INTO chats (id, user_id, title, model, system_prompt, temperature, agent_mode)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
+      INSERT INTO chats(id, user_id, title, model, system_prompt, temperature, agent_mode)
+      VALUES(?, ?, ?, ?, ?, ?, ?)
+        `).run(
       id,
       req.user.id,
       title || 'New Chat',
@@ -119,7 +139,7 @@ router.put('/:id', (req, res) => {
 
     db.prepare(`
       UPDATE chats SET ${updates.join(', ')} WHERE id = ? AND user_id = ?
-    `).run(...values);
+      `).run(...values);
 
     res.json({ message: 'Chat updated successfully' });
   } catch (error) {
@@ -149,7 +169,7 @@ router.post('/:id/fork', (req, res) => {
     // Get original chat
     const originalChat = db.prepare(`
       SELECT * FROM chats WHERE id = ? AND user_id = ?
-    `).get(id, req.user.id);
+      `).get(id, req.user.id);
 
     if (!originalChat) {
       return res.status(404).json({ error: 'Chat not found' });
@@ -158,13 +178,13 @@ router.post('/:id/fork', (req, res) => {
     // Create new chat (use provided model or fall back to original)
     const newChatId = uuidv4();
     db.prepare(`
-      INSERT INTO chats (id, user_id, title, parent_chat_id, fork_point_message_id, 
-                        model, system_prompt, temperature, agent_mode)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+      INSERT INTO chats(id, user_id, title, parent_chat_id, fork_point_message_id,
+        model, system_prompt, temperature, agent_mode)
+      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
       newChatId,
       req.user.id,
-      title || `${originalChat.title} (Fork)`,
+      title || `${originalChat.title}(Fork)`,
       id,
       message_id,
       model || originalChat.model,
@@ -178,12 +198,12 @@ router.post('/:id/fork', (req, res) => {
       SELECT * FROM messages 
       WHERE chat_id = ? AND created_at <= (SELECT created_at FROM messages WHERE id = ?)
       ORDER BY created_at ASC
-    `).all(id, message_id);
+      `).all(id, message_id);
 
     const insertMessage = db.prepare(`
-      INSERT INTO messages (id, chat_id, role, content, tool_calls, tool_call_id, name, created_at, prompt_tokens, completion_tokens, response_time_ms, model, cost)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+      INSERT INTO messages(id, chat_id, role, content, tool_calls, tool_call_id, name, created_at, prompt_tokens, completion_tokens, response_time_ms, model, cost)
+    VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
 
     for (const msg of messages) {
       insertMessage.run(
