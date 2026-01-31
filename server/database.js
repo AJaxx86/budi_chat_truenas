@@ -215,6 +215,29 @@ function initDatabase() {
     )
   `);
 
+  // Message steps table (for storing individual AI response steps)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS message_steps (
+      id TEXT PRIMARY KEY,
+      message_id TEXT NOT NULL,
+      chat_id TEXT NOT NULL,
+      step_type TEXT NOT NULL,
+      step_index INTEGER NOT NULL,
+      content TEXT,
+      tool_call_id TEXT,
+      tool_name TEXT,
+      tool_arguments TEXT,
+      duration_ms INTEGER,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Index for faster step lookups by message
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_message_steps_message ON message_steps(message_id)
+  `);
+
   // Migration: Add default_image_model to users table
   try {
     const usersInfo = db.prepare("PRAGMA table_info(users)").all();

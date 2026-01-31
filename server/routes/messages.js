@@ -328,6 +328,62 @@ router.post("/:chatId", async (req, res) => {
     let usageData = null;
     const assistantMessageId = uuidv4();
 
+    // Step-based tracking for timeline display
+    let steps = [];
+    let currentStepId = null;
+    let stepIndex = 0;
+    let currentReasoningStepId = null;
+
+    // Helper to start a new step
+    const startStep = (stepType, extraData = {}) => {
+      const stepId = uuidv4();
+      currentStepId = stepId;
+      const step = {
+        id: stepId,
+        type: stepType,
+        index: stepIndex++,
+        content: "",
+        startTime: Date.now(),
+        ...extraData
+      };
+      steps.push(step);
+      res.write(`data: ${JSON.stringify({
+        type: "step_start",
+        step_id: stepId,
+        step_type: stepType,
+        step_index: step.index,
+        ...extraData
+      })}\n\n`);
+      return stepId;
+    };
+
+    // Helper to append content to current step
+    const appendStepContent = (stepId, content) => {
+      const step = steps.find(s => s.id === stepId);
+      if (step) {
+        step.content += content;
+        res.write(`data: ${JSON.stringify({
+          type: "step_content",
+          step_id: stepId,
+          content: content
+        })}\n\n`);
+      }
+    };
+
+    // Helper to complete a step
+    const completeStep = (stepId) => {
+      const step = steps.find(s => s.id === stepId);
+      if (step) {
+        step.duration_ms = Date.now() - step.startTime;
+        step.isComplete = true;
+        res.write(`data: ${JSON.stringify({
+          type: "step_complete",
+          step_id: stepId,
+          duration_ms: step.duration_ms
+        })}\n\n`);
+      }
+    };
+
     console.log(`Starting stream for model: ${chat.model}`);
     const requestStartTime = Date.now();
     const stream = await openai.chat.completions.create(requestOptions);
@@ -347,13 +403,24 @@ router.post("/:chatId", async (req, res) => {
         delta.reasoning_content || delta.reasoning || delta.thought;
 
       if (reasoning) {
+        // Start a reasoning step if we don't have one active
+        if (!currentReasoningStepId) {
+          currentReasoningStepId = startStep("reasoning");
+        }
         assistantReasoning += reasoning;
+        appendStepContent(currentReasoningStepId, reasoning);
+        // Also send legacy event for backward compatibility
         res.write(
           `data: ${JSON.stringify({ type: "reasoning", content: reasoning })}\n\n`,
         );
       }
 
       if (delta.content) {
+        // Complete any active reasoning step before content starts
+        if (currentReasoningStepId) {
+          completeStep(currentReasoningStepId);
+          currentReasoningStepId = null;
+        }
         assistantMessage += delta.content;
         res.write(
           `data: ${JSON.stringify({ type: "content", content: delta.content })}\n\n`,
@@ -361,6 +428,12 @@ router.post("/:chatId", async (req, res) => {
       }
 
       if (delta.tool_calls) {
+        // Complete any active reasoning step before tool calls
+        if (currentReasoningStepId) {
+          completeStep(currentReasoningStepId);
+          currentReasoningStepId = null;
+        }
+
         for (const toolCall of delta.tool_calls) {
           if (!toolCalls[toolCall.index]) {
             toolCalls[toolCall.index] = {
@@ -380,6 +453,12 @@ router.post("/:chatId", async (req, res) => {
           }
         }
       }
+    }
+
+    // Complete any remaining reasoning step
+    if (currentReasoningStepId) {
+      completeStep(currentReasoningStepId);
+      currentReasoningStepId = null;
     }
 
     const responseTimeMs = Date.now() - requestStartTime;
@@ -421,10 +500,6 @@ router.post("/:chatId", async (req, res) => {
     const personalKeyTokens = usedDefaultKey ? 0 : totalTokens;
     const personalKeyCost = usedDefaultKey ? 0 : cost;
 
-    console.log(`Stats update: usedDefaultKey=${usedDefaultKey}, totalTokens=${totalTokens}, cost=${cost}`);
-    console.log(`  -> defaultKeyTokens=${defaultKeyTokens}, defaultKeyCost=${defaultKeyCost}`);
-    console.log(`  -> personalKeyTokens=${personalKeyTokens}, personalKeyCost=${personalKeyCost}`);
-
     try {
       db.prepare(
         `
@@ -461,7 +536,6 @@ router.post("/:chatId", async (req, res) => {
         personalKeyTokens,
         personalKeyCost,
       );
-      console.log(`Stats update successful for user ${req.user.id}`);
     } catch (statsError) {
       console.error(`Stats update failed:`, statsError);
     }
@@ -507,7 +581,27 @@ router.post("/:chatId", async (req, res) => {
       // Execute all tool calls and collect results (don't save to DB - internal only)
       const toolResults = [];
       for (const toolCall of currentToolCalls) {
+        // Start a tool_call step
+        const toolCallStepId = startStep("tool_call", {
+          tool_call_id: toolCall.id,
+          tool_name: toolCall.function.name,
+          tool_arguments: toolCall.function.arguments
+        });
+
+        const toolStartTime = Date.now();
         const result = await executeToolCall(toolCall, req.user.id);
+        const toolDuration = Date.now() - toolStartTime;
+
+        // Complete the tool_call step
+        completeStep(toolCallStepId);
+
+        // Start and complete a tool_result step
+        const toolResultStepId = startStep("tool_result", {
+          tool_call_id: toolCall.id,
+          tool_name: toolCall.function.name
+        });
+        appendStepContent(toolResultStepId, result);
+        completeStep(toolResultStepId);
 
         toolResults.push({
           tool_call_id: toolCall.id,
@@ -515,13 +609,13 @@ router.post("/:chatId", async (req, res) => {
           result,
         });
 
-        // Only notify client that tool completed (not the full result)
+        // Also send legacy event for backward compatibility
         res.write(
           `data: ${JSON.stringify({
             type: "tool_result",
             tool_call_id: toolCall.id,
             name: toolCall.function.name,
-            result: result // Send full result so client can display it immediately
+            result: result
           })}\n\n`,
         );
 
@@ -600,6 +694,7 @@ router.post("/:chatId", async (req, res) => {
       let synthesisReasoning = "";
       let synthesisUsage = null;
       let synthesisToolCalls = [];
+      let synthesisReasoningStepId = null;
 
       for await (const chunk of synthesisStream) {
         const delta = chunk.choices[0]?.delta;
@@ -614,13 +709,24 @@ router.post("/:chatId", async (req, res) => {
           delta.reasoning_content || delta.reasoning || delta.thought;
 
         if (reasoning) {
+          // Start a new reasoning step for post-tool synthesis if not already active
+          if (!synthesisReasoningStepId) {
+            synthesisReasoningStepId = startStep("reasoning");
+          }
           synthesisReasoning += reasoning;
+          appendStepContent(synthesisReasoningStepId, reasoning);
+          // Also send legacy event for backward compatibility
           res.write(
             `data: ${JSON.stringify({ type: "reasoning", content: reasoning })}\n\n`,
           );
         }
 
         if (delta.content) {
+          // Complete any active reasoning step before content starts
+          if (synthesisReasoningStepId) {
+            completeStep(synthesisReasoningStepId);
+            synthesisReasoningStepId = null;
+          }
           synthesisMessage += delta.content;
           res.write(
             `data: ${JSON.stringify({ type: "content", content: delta.content })}\n\n`,
@@ -629,6 +735,12 @@ router.post("/:chatId", async (req, res) => {
 
         // Check for more tool calls
         if (delta.tool_calls) {
+          // Complete any active reasoning step before tool calls
+          if (synthesisReasoningStepId) {
+            completeStep(synthesisReasoningStepId);
+            synthesisReasoningStepId = null;
+          }
+
           for (const toolCall of delta.tool_calls) {
             if (!synthesisToolCalls[toolCall.index]) {
               synthesisToolCalls[toolCall.index] = {
@@ -650,10 +762,16 @@ router.post("/:chatId", async (req, res) => {
         }
       }
 
+      // Complete any remaining reasoning step
+      if (synthesisReasoningStepId) {
+        completeStep(synthesisReasoningStepId);
+        synthesisReasoningStepId = null;
+      }
+
       const synthesisTimeMs = Date.now() - synthesisStartTime;
       totalResponseTime += synthesisTimeMs;
       console.log(
-        `Synthesis complete. ${synthesisMessage.length} chars, ${synthesisToolCalls.length} tool calls in ${synthesisTimeMs}ms`,
+        `Synthesis complete. ${synthesisMessage.length} content chars, ${synthesisReasoning.length} reasoning chars, ${synthesisToolCalls.length} tool calls in ${synthesisTimeMs}ms`,
       );
 
       // Update for next iteration or final save
@@ -666,30 +784,35 @@ router.post("/:chatId", async (req, res) => {
 
     // Track whether we went through the tool processing path
     const toolsWereProcessed = toolCalls.length > 0;
-    let finalMessageId = null;
 
-    // Save synthesis as separate message when tools were processed
-    if (finalMessage && toolsWereProcessed) {
-      // Generate a new ID for the synthesis message
-      finalMessageId = uuidv4();
+    // Update the original message with final content when tools were processed
+    // This keeps reasoning, tool_calls, and final response in a single message
+    if (toolsWereProcessed) {
+      // Store reasoning as structured JSON to show pre-tool and post-tool thinking separately
+      const structuredReasoning = JSON.stringify({
+        pre_tool: assistantReasoning || null,
+        post_tool: finalReasoning || null
+      });
 
-      db.prepare(
+      const updateResult = db.prepare(
         `
-        INSERT INTO messages (id, chat_id, role, content, reasoning_content, tool_calls, prompt_tokens, completion_tokens, response_time_ms, model, cost, used_default_key)
-        VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        UPDATE messages
+        SET content = ?,
+            reasoning_content = ?,
+            prompt_tokens = COALESCE(prompt_tokens, 0) + ?,
+            completion_tokens = COALESCE(completion_tokens, 0) + ?,
+            response_time_ms = ?,
+            cost = COALESCE(cost, 0) + ?
+        WHERE id = ?
       `,
       ).run(
-        finalMessageId,
-        chatId,
-        finalMessage,
-        finalReasoning || null,
-        null, // No tool_calls in synthesis message
-        finalUsage?.prompt_tokens || null,
-        finalUsage?.completion_tokens || null,
+        finalMessage || "",
+        structuredReasoning,
+        finalUsage?.prompt_tokens || 0,
+        finalUsage?.completion_tokens || 0,
         totalResponseTime,
-        chat.model,
         finalUsage?.cost || 0,
-        usedDefaultKey ? 1 : 0,
+        assistantMessageId,
       );
 
       // Update stats for final response
@@ -771,8 +894,32 @@ router.post("/:chatId", async (req, res) => {
     `,
     ).run(chatId);
 
-    // Use the correct message ID based on whether tools were processed
-    const savedMessageId = toolsWereProcessed ? finalMessageId : assistantMessageId;
+    // Always use the original assistant message ID (we update it in place when tools are used)
+    const savedMessageId = assistantMessageId;
+
+    // Save all steps to the database
+    if (steps.length > 0) {
+      const insertStep = db.prepare(`
+        INSERT INTO message_steps (id, message_id, chat_id, step_type, step_index, content, tool_call_id, tool_name, tool_arguments, duration_ms, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const step of steps) {
+        insertStep.run(
+          step.id,
+          savedMessageId,
+          chatId,
+          step.type,
+          step.index,
+          step.content || null,
+          step.tool_call_id || null,
+          step.tool_name || null,
+          step.tool_arguments || null,
+          step.duration_ms || null,
+          new Date().toISOString()
+        );
+      }
+    }
 
     res.write(
       `data: ${JSON.stringify({
@@ -825,7 +972,31 @@ router.get("/:chatId", (req, res) => {
       )
       .all(chatId);
 
-    res.json(messages);
+    // Fetch steps for all messages in this chat
+    const allSteps = db
+      .prepare(
+        `
+      SELECT * FROM message_steps WHERE chat_id = ? ORDER BY step_index ASC
+    `,
+      )
+      .all(chatId);
+
+    // Group steps by message_id
+    const stepsByMessage = {};
+    for (const step of allSteps) {
+      if (!stepsByMessage[step.message_id]) {
+        stepsByMessage[step.message_id] = [];
+      }
+      stepsByMessage[step.message_id].push(step);
+    }
+
+    // Attach steps to their respective messages
+    const messagesWithSteps = messages.map(msg => ({
+      ...msg,
+      steps: stepsByMessage[msg.id] || []
+    }));
+
+    res.json(messagesWithSteps);
   } catch (error) {
     console.error("Get messages error:", error);
     res.status(500).json({ error: "Failed to fetch messages" });

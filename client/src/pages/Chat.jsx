@@ -14,6 +14,7 @@ import TextToSpeech from '../components/TextToSpeech';
 import Canvas from '../components/Canvas';
 import InputBar, { THINKING_MODES } from '../components/InputBar';
 import ToolCallDisplay from '../components/ToolCallDisplay';
+import MessageSteps from '../components/MessageSteps';
 import { AuthContext } from '../contexts/AuthContext';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -104,8 +105,29 @@ const getHistoricalToolResults = (messages) => {
   return results;
 };
 
+// Helper: Parse reasoning content - handles both plain text and structured JSON
+const parseReasoningContent = (reasoningContent) => {
+  if (!reasoningContent) return { preToolReasoning: null, postToolReasoning: null, isStructured: false };
+
+  try {
+    const parsed = JSON.parse(reasoningContent);
+    if (parsed && (parsed.pre_tool !== undefined || parsed.post_tool !== undefined)) {
+      return {
+        preToolReasoning: parsed.pre_tool || null,
+        postToolReasoning: parsed.post_tool || null,
+        isStructured: true
+      };
+    }
+  } catch (e) {
+    // Not JSON, treat as plain text
+  }
+
+  // Plain text reasoning (no tool calls involved)
+  return { preToolReasoning: reasoningContent, postToolReasoning: null, isStructured: false };
+};
+
 // Memoized ThinkingSection component to prevent re-renders during streaming
-const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming, elapsedTime, stats }) => {
+const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming, elapsedTime }) => {
   const contentRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
 
@@ -129,9 +151,6 @@ const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming, el
 
   if (!reasoning && !isStreaming) return null;
 
-  const hasStats = stats && (stats.totalTokens > 0 || stats.duration > 0);
-  const cost = hasStats ? (stats.cost || (stats.promptTokens || 0) > 0 ? calculateCost(stats.promptTokens || 0, stats.completionTokens || 0, stats.model) : 0) : 0;
-
   return (
     <div className="mb-2 border-l-2 border-l-amber-500/50 bg-dark-800/30 rounded-r-lg">
       <div className="flex items-center justify-between">
@@ -153,37 +172,6 @@ const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming, el
           </span>
           <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
         </button>
-
-        {/* Details on hover - bottom right */}
-        {!isStreaming && hasStats && (
-          <div className="group relative">
-            <span className="text-[10px] text-dark-600 cursor-default">details</span>
-            <div className="absolute bottom-full right-0 mb-1 hidden group-hover:block z-10">
-              <div className="bg-dark-800/95 border border-dark-700/40 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
-                <div className="space-y-1">
-                  {stats.duration > 0 && (
-                    <div className="flex justify-between gap-4">
-                      <span className="text-dark-500">Time:</span>
-                      <span className="text-dark-300 font-mono">{formatThinkingTime(stats.duration)}</span>
-                    </div>
-                  )}
-                  {stats.totalTokens > 0 && (
-                    <div className="flex justify-between gap-4">
-                      <span className="text-dark-500">Tokens:</span>
-                      <span className="text-dark-300 font-mono">{stats.totalTokens.toLocaleString()}</span>
-                    </div>
-                  )}
-                  {cost > 0 && (
-                    <div className="flex justify-between gap-4">
-                      <span className="text-dark-500">Cost:</span>
-                      <span className="text-dark-400 font-mono">${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(3)}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
       {isExpanded && (
         <div
@@ -270,11 +258,17 @@ function Chat() {
     streaming: false,
     streamingMessage: '',
     streamingReasoning: '',
+    preToolReasoning: '',      // Reasoning before tool calls
+    postToolReasoning: '',     // Reasoning after tool calls (synthesis)
+    isPostToolPhase: false,    // Track if we're in post-tool synthesis phase
     thinkingStartTime: null,
     thinkingComplete: false,
     lastThinkingStats: null,
     toolCalls: [],
     toolResults: {},
+    // Step-based tracking for timeline display
+    steps: [],                 // Array of step objects
+    currentStepId: null,       // ID of currently active step
   }), []);
 
   // Update streaming state for a specific chat
@@ -321,11 +315,16 @@ function Chat() {
     streaming,
     streamingMessage,
     streamingReasoning,
+    preToolReasoning,
+    postToolReasoning,
+    isPostToolPhase,
     thinkingStartTime,
     thinkingComplete,
     lastThinkingStats,
     toolCalls,
-    toolResults
+    toolResults,
+    steps: streamingSteps,
+    currentStepId
   } = currentStreamState;
 
   // Check if current model supports reasoning
@@ -769,6 +768,9 @@ function Chat() {
       // Local accumulators to avoid stale closures with state
       let accumulatedMessage = '';
       let accumulatedReasoning = '';
+      let accumulatedPreToolReasoning = '';
+      let accumulatedPostToolReasoning = '';
+      let hasReceivedToolCalls = false;  // Track if we're in post-tool phase
 
       // Capture the specific controller for this stream
       const currentStreamController = abortController;
@@ -799,9 +801,22 @@ function Chat() {
               if (data.type === 'reasoning') {
                 // Accumulate locally to avoid stale closure
                 accumulatedReasoning += data.content;
-                updateStreamState(chatId, {
-                  streamingReasoning: accumulatedReasoning
-                });
+
+                // Route reasoning to pre-tool or post-tool based on phase
+                if (hasReceivedToolCalls) {
+                  accumulatedPostToolReasoning += data.content;
+                  updateStreamState(chatId, {
+                    streamingReasoning: accumulatedReasoning,
+                    postToolReasoning: accumulatedPostToolReasoning,
+                    isPostToolPhase: true
+                  });
+                } else {
+                  accumulatedPreToolReasoning += data.content;
+                  updateStreamState(chatId, {
+                    streamingReasoning: accumulatedReasoning,
+                    preToolReasoning: accumulatedPreToolReasoning
+                  });
+                }
               } else if (data.type === 'content') {
                 // Accumulate locally to avoid stale closure
                 accumulatedMessage += data.content;
@@ -855,9 +870,11 @@ function Chat() {
                 loadMessages(chatId);
                 loadChats();
               } else if (data.type === 'tool_calls') {
-                // AI is calling tools - update UI
+                // AI is calling tools - mark that we're entering post-tool phase
+                hasReceivedToolCalls = true;
                 updateStreamState(chatId, {
-                  toolCalls: data.tool_calls
+                  toolCalls: data.tool_calls,
+                  isPostToolPhase: true
                 });
               } else if (data.type === 'tool_result') {
                 // Tool execution completed - store result
@@ -867,6 +884,44 @@ function Chat() {
                     ...chatState.toolResults,
                     [data.tool_call_id]: data.result
                   }
+                });
+              } else if (data.type === 'step_start') {
+                // New step started - add to steps array
+                const chatState = streamingStates.get(chatId) || createInitialStreamState();
+                const newStep = {
+                  id: data.step_id,
+                  type: data.step_type,
+                  index: data.step_index,
+                  content: '',
+                  isComplete: false,
+                  toolName: data.tool_name || null,
+                  toolCallId: data.tool_call_id || null,
+                  toolArguments: data.tool_arguments || null
+                };
+                updateStreamState(chatId, {
+                  steps: [...chatState.steps, newStep],
+                  currentStepId: data.step_id
+                });
+              } else if (data.type === 'step_content') {
+                // Append content to specific step
+                const chatState = streamingStates.get(chatId) || createInitialStreamState();
+                const updatedSteps = chatState.steps.map(step =>
+                  step.id === data.step_id
+                    ? { ...step, content: step.content + data.content }
+                    : step
+                );
+                updateStreamState(chatId, { steps: updatedSteps });
+              } else if (data.type === 'step_complete') {
+                // Mark step as complete
+                const chatState = streamingStates.get(chatId) || createInitialStreamState();
+                const updatedSteps = chatState.steps.map(step =>
+                  step.id === data.step_id
+                    ? { ...step, isComplete: true, duration_ms: data.duration_ms }
+                    : step
+                );
+                updateStreamState(chatId, {
+                  steps: updatedSteps,
+                  currentStepId: null
                 });
               } else if (data.type === 'error') {
                 if (isActiveChat) {
@@ -1631,29 +1686,79 @@ function Chat() {
                           </span>
                         </div>
 
-                        {/* Thinking Section (Assistant only) */}
-                        {message.role === 'assistant' && message.reasoning_content && (
-                          <div className="mb-2 w-full max-w-[85%]">
-                            <ThinkingSection
-                              reasoning={message.reasoning_content}
-                              isExpanded={expandedThinkingSections.has(message.id)}
-                              onToggle={() => toggleThinkingSection(message.id)}
-                              isStreaming={false}
-                              elapsedTime={0}
-                              stats={null}
-                            />
-                          </div>
-                        )}
+                        {/* Thinking & Tool Calls Section (Assistant only) */}
+                        {message.role === 'assistant' && (() => {
+                          // NEW: Check if message has steps array (new format)
+                          if (message.steps && message.steps.length > 0) {
+                            return (
+                              <div className="mb-2 w-full max-w-[85%]">
+                                <MessageSteps steps={message.steps} isStreaming={false} />
+                              </div>
+                            );
+                          }
 
-                        {/* Historical Tool Calls */}
-                        {message.role === 'assistant' && parsedToolCalls.length > 0 && (
-                          <div className="mb-2 max-w-[85%]">
-                            <ToolCallDisplay
-                              toolCalls={parsedToolCalls}
-                              toolResults={historicalToolResults}
-                            />
-                          </div>
-                        )}
+                          // FALLBACK: Legacy format for messages without steps array
+                          const { preToolReasoning, postToolReasoning } = parseReasoningContent(message.reasoning_content);
+                          const hasToolCalls = parsedToolCalls.length > 0;
+
+                          // For messages WITHOUT tools: show all reasoning together
+                          if (!hasToolCalls && message.reasoning_content) {
+                            return (
+                              <div className="mb-2 w-full max-w-[85%]">
+                                <ThinkingSection
+                                  reasoning={preToolReasoning || message.reasoning_content}
+                                  isExpanded={expandedThinkingSections.has(`${message.id}`)}
+                                  onToggle={() => toggleThinkingSection(`${message.id}`)}
+                                  isStreaming={false}
+                                  elapsedTime={0}
+                                />
+                              </div>
+                            );
+                          }
+
+                          // For messages WITH tools: show pre-tool → tool calls → post-tool
+                          if (hasToolCalls) {
+                            return (
+                              <>
+                                {/* Pre-tool Thinking */}
+                                {preToolReasoning && (
+                                  <div className="mb-2 w-full max-w-[85%]">
+                                    <ThinkingSection
+                                      reasoning={preToolReasoning}
+                                      isExpanded={expandedThinkingSections.has(`${message.id}-pre`)}
+                                      onToggle={() => toggleThinkingSection(`${message.id}-pre`)}
+                                      isStreaming={false}
+                                      elapsedTime={0}
+                                    />
+                                  </div>
+                                )}
+
+                                {/* Tool Calls */}
+                                <div className="mb-2 max-w-[85%]">
+                                  <ToolCallDisplay
+                                    toolCalls={parsedToolCalls}
+                                    toolResults={historicalToolResults}
+                                  />
+                                </div>
+
+                                {/* Post-tool Thinking */}
+                                {postToolReasoning && (
+                                  <div className="mb-2 w-full max-w-[85%]">
+                                    <ThinkingSection
+                                      reasoning={postToolReasoning}
+                                      isExpanded={expandedThinkingSections.has(`${message.id}-post`)}
+                                      onToggle={() => toggleThinkingSection(`${message.id}-post`)}
+                                      isStreaming={false}
+                                      elapsedTime={0}
+                                    />
+                                  </div>
+                                )}
+                              </>
+                            );
+                          }
+
+                          return null;
+                        })()}
 
                         {/* Message Bubble */}
                         <div className={`inline-block max-w-[85%] ${message.role === 'user'
@@ -1815,26 +1920,46 @@ function Chat() {
                 })
               })()}
 
-              {(streaming || streamingMessage || streamingReasoning) && (
+              {(streaming || streamingMessage || streamingReasoning || streamingSteps?.length > 0) && (
                 <div className="pr-8">
-                  {/* Streaming Thinking Section */}
-                  {(streamingReasoning || (streaming && !streamingMessage)) && (
-                    <ThinkingSection
-                      reasoning={streamingReasoning}
-                      isExpanded={expandedThinkingSections.has('streaming')}
-                      onToggle={() => toggleThinkingSection('streaming')}
-                      isStreaming={!streamingMessage || (streamingReasoning && streaming)}
-                      elapsedTime={thinkingElapsedTime}
-                      stats={lastThinkingStats}
-                    />
-                  )}
+                  {/* NEW: Step-based timeline display */}
+                  {streamingSteps && streamingSteps.length > 0 ? (
+                    <div className="mb-2 max-w-[85%]">
+                      <MessageSteps steps={streamingSteps} isStreaming={streaming} />
+                    </div>
+                  ) : (
+                    <>
+                      {/* FALLBACK: Legacy display for compatibility */}
+                      {/* Pre-Tool Thinking Section */}
+                      {(preToolReasoning || (streaming && !streamingMessage && !isPostToolPhase && !toolCalls?.length)) && (
+                        <ThinkingSection
+                          reasoning={preToolReasoning}
+                          isExpanded={expandedThinkingSections.has('streaming-pre')}
+                          onToggle={() => toggleThinkingSection('streaming-pre')}
+                          isStreaming={streaming && !isPostToolPhase && !streamingMessage}
+                          elapsedTime={!isPostToolPhase ? thinkingElapsedTime : 0}
+                        />
+                      )}
 
-                  {/* Tool Call Indicators */}
-                  {toolCalls && toolCalls.length > 0 && (
-                    <ToolCallDisplay
-                      toolCalls={toolCalls}
-                      toolResults={toolResults}
-                    />
+                      {/* Tool Call Indicators */}
+                      {toolCalls && toolCalls.length > 0 && (
+                        <ToolCallDisplay
+                          toolCalls={toolCalls}
+                          toolResults={toolResults}
+                        />
+                      )}
+
+                      {/* Post-Tool Thinking Section (synthesis) */}
+                      {(postToolReasoning || (streaming && isPostToolPhase && !streamingMessage)) && (
+                        <ThinkingSection
+                          reasoning={postToolReasoning}
+                          isExpanded={expandedThinkingSections.has('streaming-post')}
+                          onToggle={() => toggleThinkingSection('streaming-post')}
+                          isStreaming={streaming && isPostToolPhase && !streamingMessage}
+                          elapsedTime={isPostToolPhase ? thinkingElapsedTime : 0}
+                        />
+                      )}
+                    </>
                   )}
 
                   {streamingMessage && (
