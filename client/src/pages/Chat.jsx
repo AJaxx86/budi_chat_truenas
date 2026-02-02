@@ -19,6 +19,10 @@ import { AuthContext } from '../contexts/AuthContext';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import ModelSelector, { DEFAULT_MODEL, RECENT_MODELS_KEY, MODELS_CACHE_KEY, modelSupportsReasoning } from '../components/ModelSelector';
+import WorkspaceSidebar from '../components/WorkspaceSidebar';
+import PersonaSelector from '../components/PersonaSelector';
+import { FolderOpen } from 'lucide-react';
+import ContextMenu, { ContextMenuItem } from '../components/ContextMenu';
 
 marked.setOptions({
   breaks: true,
@@ -183,6 +187,8 @@ const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming, el
           }}
         />
       )}
+      {/* Context Menu */}
+
     </div>
   );
 });
@@ -191,6 +197,9 @@ function Chat() {
   const { user, logout } = useContext(AuthContext);
   const navigate = useNavigate();
   const [chats, setChats] = useState([]);
+  const [workspaces, setWorkspaces] = useState([]);
+  const [activeWorkspace, setActiveWorkspace] = useState(null);
+  const [isWorkspacesExpanded, setIsWorkspacesExpanded] = useState(true);
   const [currentChat, setCurrentChat] = useState(() => ({
     title: 'New Chat',
     model: localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL,
@@ -244,14 +253,42 @@ function Chat() {
     code_interpreter: true
   });
   const [canvasState, setCanvasState] = useState({ isOpen: false, content: '', language: 'javascript', title: 'Canvas' });
+  const [selectedPersona, setSelectedPersona] = useState(null);
   const targetMessageRef = useRef(null);
 
   const [chatSettings, setChatSettings] = useState(() => ({
     model: localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL,
     temperature: 0.7,
+    depth: 'standard',
+    tone: 'friendly',
     system_prompt: '',
     agent_mode: false
   }));
+
+  // Context Menu State
+  const [contextMenu, setContextMenu] = useState({
+    isOpen: false,
+    x: 0,
+    y: 0,
+    chatId: null
+  });
+
+  const handleContextMenu = (e, chatId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      isOpen: true,
+      x: e.clientX,
+      y: e.clientY,
+      chatId
+    });
+  };
+
+  const closeContextMenu = () => {
+    if (contextMenu.isOpen) {
+      setContextMenu(prev => ({ ...prev, isOpen: false }));
+    }
+  };
 
   // Factory for initial stream state
   const createInitialStreamState = useCallback(() => ({
@@ -351,6 +388,11 @@ function Chat() {
     };
   }, [messages]);
 
+  // Get chats that are NOT in any workspace (shown in main chat list)
+  const uncategorizedChats = useMemo(() => {
+    return chats.filter(chat => !chat.workspace_id);
+  }, [chats]);
+
   // Cleanup on unmount - abort all active streams
   useEffect(() => {
     return () => {
@@ -431,6 +473,13 @@ function Chat() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Close context menu on any click
+  useEffect(() => {
+    const handleClick = () => closeContextMenu();
+    window.addEventListener('click', handleClick);
+    return () => window.removeEventListener('click', handleClick);
+  }, [contextMenu.isOpen]);
+
   // Scroll to target message when navigating from search
   useEffect(() => {
     if (targetMessageRef.current && messages.length > 0) {
@@ -481,11 +530,110 @@ function Chat() {
     }
   };
 
+  const loadWorkspaces = async () => {
+    try {
+      const res = await fetch('/api/workspaces', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      const data = await res.json();
+      setWorkspaces(data);
+    } catch (error) {
+      console.error('Failed to load workspaces:', error);
+    }
+  };
+
+  const createWorkspace = async (workspaceData) => {
+    try {
+      const res = await fetch('/api/workspaces', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(workspaceData)
+      });
+      const newWorkspace = await res.json();
+      setWorkspaces(prev => [...prev, newWorkspace]);
+      return newWorkspace;
+    } catch (error) {
+      console.error('Failed to create workspace:', error);
+    }
+  };
+
+  const updateWorkspace = async (workspaceData) => {
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceData.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(workspaceData)
+      });
+      const updated = await res.json();
+      setWorkspaces(prev => prev.map(w => w.id === updated.id ? updated : w));
+      return updated;
+    } catch (error) {
+      console.error('Failed to update workspace:', error);
+    }
+  };
+
+  const deleteWorkspace = async (workspaceId) => {
+    try {
+      await fetch(`/api/workspaces/${workspaceId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      setWorkspaces(prev => prev.filter(w => w.id !== workspaceId));
+      if (activeWorkspace === workspaceId) setActiveWorkspace(null);
+      loadChats(); // Reload chats to update uncategorized status
+    } catch (error) {
+      console.error('Failed to delete workspace:', error);
+    }
+  };
+
+  const moveChatsToWorkspace = async (chatIds, workspaceId) => {
+    try {
+      await fetch(`/api/workspaces/${workspaceId || 'remove'}/chats`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ chatIds })
+      });
+      loadChats(); // Reload chats to reflect new workspace
+      loadWorkspaces(); // Reload workspaces to update counts
+    } catch (error) {
+      console.error('Failed to move chats:', error);
+    }
+  };
+
+  // Initial load
+  useEffect(() => {
+    loadChats();
+    loadWorkspaces();
+  }, []);
+
   const loadMessages = async (chatId) => {
     try {
       const res = await fetch(`/api/chats/${chatId}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
+
+      if (!res.ok) {
+        if (res.status === 404) {
+          console.warn(`Chat ${chatId} not found`);
+          // If we're trying to load a chat that doesn't exist (e.g. valid ID but failed creation),
+          // fallback to new chat state to prevent error loops
+          if (chatId === currentChatIdRef.current) {
+            createNewChat();
+          }
+          return;
+        }
+        throw new Error(`Failed to load chat: ${res.status}`);
+      }
+
       const data = await res.json();
 
       // Only update state if this chat is still the active one
@@ -498,6 +646,8 @@ function Chat() {
       setChatSettings({
         model: data.model,
         temperature: data.temperature,
+        depth: data.depth || 'standard',
+        tone: data.tone || 'friendly',
         system_prompt: data.system_prompt || '',
         agent_mode: !!data.agent_mode
       });
@@ -531,6 +681,8 @@ function Chat() {
     setChatSettings({
       model: modelToUse,
       temperature: 0.7,
+      depth: 'standard',
+      tone: 'friendly',
       system_prompt: '',
       agent_mode: false
     });
@@ -588,6 +740,35 @@ function Chat() {
     }
   };
 
+  const handlePersonaSelect = (persona) => {
+    setSelectedPersona(persona);
+
+    if (!persona) {
+      setChatSettings(prev => ({
+        ...prev,
+        system_prompt: '',
+        temperature: 0.7,
+        depth: 'standard',
+        tone: 'friendly'
+      }));
+      return;
+    }
+
+    // Map creativity to temperature
+    let newTemp = 0.7;
+    if (persona.creativity === 'precise') newTemp = 0.2;
+    else if (persona.creativity === 'imaginative') newTemp = 1.0;
+    else newTemp = 0.7;
+
+    setChatSettings(prev => ({
+      ...prev,
+      system_prompt: persona.system_prompt || '',
+      temperature: newTemp,
+      depth: persona.depth || 'standard',
+      tone: persona.tone || 'friendly'
+    }));
+  };
+
   const deleteChat = async (chatId) => {
     // Abort any active stream for this chat
     const controller = abortControllersRef.current.get(chatId);
@@ -614,6 +795,7 @@ function Chat() {
         createNewChat();
       }
       setDeletingChatId(null);
+      closeContextMenu(); // Ensure menu is closed
     } catch (error) {
       console.error('Failed to delete chat:', error);
       alert('Failed to delete chat. Please try again.');
@@ -704,9 +886,14 @@ function Chat() {
             title: 'New Chat',
             model: chatSettings.model,
             temperature: chatSettings.temperature,
-            system_prompt: chatSettings.system_prompt,
+            // Combine persona prompt (if any) with custom system prompt
+            system_prompt: [
+              selectedPersona?.system_prompt,
+              chatSettings.system_prompt
+            ].filter(Boolean).join('\n\n'),
             agent_mode: chatSettings.agent_mode,
-            thinking_mode: thinkingMode || 'medium'
+            thinking_mode: thinkingMode || 'medium',
+            workspace_id: activeWorkspace || null
           })
         });
         const newChat = await createRes.json();
@@ -908,9 +1095,6 @@ function Chat() {
                   steps: accumulatedSteps,
                   currentStepId: null
                 });
-                if (isActiveChat) {
-                  alert('Error: ' + data.error);
-                }
               } else if (data.type === 'message_finalized') {
                 // Optimistic update to prevent UI flicker
                 // We use the accumulated steps and content to update the message list immediately
@@ -1240,16 +1424,33 @@ function Chat() {
         </div>
 
         <div className={`flex-1 overflow-y-auto ${showSidebar ? 'p-3 space-y-1' : 'p-2 space-y-1'}`}>
-          {chats.length === 0 && showSidebar && (
-            <div className="text-center py-8 px-4">
-              <div className="w-12 h-12 rounded-xl bg-dark-800 flex items-center justify-center mx-auto mb-3">
-                <MessageSquare className="w-6 h-6 text-dark-500" />
-              </div>
-              <p className="text-sm text-dark-400">No chats yet</p>
-              <p className="text-xs text-dark-500 mt-1">Create a new chat to get started</p>
+          {/* Workspace Sidebar - integrated at top */}
+          {showSidebar && (
+            <div className="mb-2">
+              <WorkspaceSidebar
+                workspaces={workspaces}
+                chats={chats}
+                activeWorkspace={activeWorkspace}
+                activeChatId={currentChat?.id}
+                streamingChatIds={streamingChatIds}
+                onSelectWorkspace={(id) => setActiveWorkspace(prev => prev === id ? null : id)}
+                onSelectChat={(chatId) => {
+                  const chat = chats.find(c => c.id === chatId);
+                  if (chat) setCurrentChat(chat);
+                }}
+                onCreateWorkspace={createWorkspace}
+                onUpdateWorkspace={updateWorkspace}
+                onDeleteWorkspace={deleteWorkspace}
+                onMoveChats={moveChatsToWorkspace}
+                models={[]}
+                onChatContextMenu={handleContextMenu}
+              />
+              {/* Divider between workspaces and chats */}
+              <div className="h-px bg-dark-700/30 my-2 mx-2" />
             </div>
           )}
-          {chats.map(chat => (
+
+          {uncategorizedChats.map(chat => (
             <div
               key={chat.id}
               className={`group ${showSidebar ? 'p-3' : 'p-2'} rounded-lg cursor-pointer transition-all duration-200 ${currentChat?.id === chat.id
@@ -1257,6 +1458,7 @@ function Chat() {
                 : 'hover:bg-dark-800/40 border-l-2 border-transparent'
                 }`}
               onClick={() => setCurrentChat(chat)}
+              onContextMenu={(e) => handleContextMenu(e, chat.id)}
               title={showSidebar ? undefined : chat.title}
             >
               {showSidebar ? (
@@ -1550,58 +1752,119 @@ function Chat() {
         {/* Settings Panel */}
         {showSettings && currentChat && (
           <div className="bg-dark-900/50 border-b border-dark-700/30 p-5 scale-in">
-            <div className="max-w-2xl mx-auto space-y-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="max-w-2xl mx-auto space-y-6">
+
+              {/* Persona Selector */}
+              <div>
+                <label className="block text-sm font-medium text-dark-300 mb-2">
+                  Persona
+                </label>
+                <PersonaSelector
+                  selectedPersona={selectedPersona}
+                  onSelect={handlePersonaSelect}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                {/* Creativity (Temperature) */}
                 <div>
                   <label className="block text-sm font-medium text-dark-300 mb-2">
-                    Model
+                    Creativity
                   </label>
-                  <ModelSelector
-                    selectedModel={chatSettings.model}
-                    onModelChange={handleModelChange}
-                    isDropdown={true}
-                  />
+                  <div className="flex bg-dark-800 rounded-lg p-1 border border-dark-700/50">
+                    {[
+                      { label: 'Precise', value: 0.2, id: 'precise' },
+                      { label: 'Balanced', value: 0.7, id: 'balanced' },
+                      { label: 'Creative', value: 1.0, id: 'imaginative' }
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        onClick={() => setChatSettings(s => ({ ...s, temperature: opt.value }))}
+                        className={`flex-1 px-1 py-1.5 rounded-md text-[11px] font-medium transition-all duration-200 truncate ${
+                          // Approximate match for float comparison
+                          Math.abs(chatSettings.temperature - opt.value) < 0.1
+                            ? 'bg-dark-600 text-white shadow-sm'
+                            : 'text-dark-400 hover:text-dark-200 hover:bg-dark-700/50'
+                          }`}
+                        title={opt.label}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
+                {/* Depth */}
                 <div>
                   <label className="block text-sm font-medium text-dark-300 mb-2">
-                    Temperature
-                    <span className="ml-2 px-2 py-0.5 bg-dark-800 rounded-md text-xs text-accent font-mono">
-                      {chatSettings.temperature}
-                    </span>
+                    Depth
                   </label>
-                  <div className="pt-2">
-                    <input
-                      type="range"
-                      min="0"
-                      max="2"
-                      step="0.1"
-                      value={chatSettings.temperature}
-                      onChange={(e) => setChatSettings({ ...chatSettings, temperature: parseFloat(e.target.value) })}
-                      className="w-full"
-                    />
-                    <div className="flex justify-between text-xs text-dark-500 mt-1">
-                      <span>Precise</span>
-                      <span>Creative</span>
-                    </div>
+                  <div className="flex bg-dark-800 rounded-lg p-1 border border-dark-700/50">
+                    {['concise', 'standard', 'detailed'].map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setChatSettings(s => ({ ...s, depth: d }))}
+                        className={`flex-1 px-1 py-1.5 rounded-md text-[11px] font-medium capitalize transition-all duration-200 truncate ${chatSettings.depth === d
+                          ? 'bg-dark-600 text-white shadow-sm'
+                          : 'text-dark-400 hover:text-dark-200 hover:bg-dark-700/50'
+                          }`}
+                        title={d}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Tone */}
+                <div>
+                  <label className="block text-sm font-medium text-dark-300 mb-2">
+                    Tone
+                  </label>
+                  <div className="flex bg-dark-800 rounded-lg p-1 border border-dark-700/50">
+                    {['professional', 'friendly', 'enthusiastic'].map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => setChatSettings(s => ({ ...s, tone: t }))}
+                        className={`flex-1 px-1 py-1.5 rounded-md text-[11px] font-medium capitalize transition-all duration-200 truncate ${chatSettings.tone === t
+                          ? 'bg-dark-600 text-white shadow-sm'
+                          : 'text-dark-400 hover:text-dark-200 hover:bg-dark-700/50'
+                          }`}
+                        title={t}
+                      >
+                        {t}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-dark-300 mb-2">
-                  System Prompt
-                </label>
-                <textarea
-                  value={chatSettings.system_prompt}
-                  onChange={(e) => setChatSettings({ ...chatSettings, system_prompt: e.target.value })}
-                  className="w-full px-4 py-3 rounded-xl glass-input outline-none resize-none text-dark-100 placeholder-dark-500 text-sm font-mono"
-                  rows="3"
-                  placeholder="Set a custom system prompt for this chat..."
-                />
+              {/* Advanced System Prompt */}
+              <div className="pt-2">
+                <details className="group">
+                  <summary className="flex items-center gap-2 text-xs font-medium text-dark-400 cursor-pointer hover:text-dataset-300 transition-colors select-none mb-2">
+                    <ChevronRight className="w-3 h-3 transition-transform group-open:rotate-90" />
+                    Advanced Controls
+                  </summary>
+                  <div className="pl-5 pt-2 space-y-3 animate-in fade-in slide-in-from-top-1">
+                    <div>
+                      <label className="block text-xs font-medium text-dark-400 mb-1.5">
+                        Custom System Prompt
+                      </label>
+                      <textarea
+                        value={chatSettings.system_prompt}
+                        onChange={(e) => setChatSettings({ ...chatSettings, system_prompt: e.target.value })}
+                        className="w-full px-4 py-3 rounded-xl glass-input outline-none resize-none text-dark-100 placeholder-dark-500 text-sm font-mono"
+                        rows="3"
+                        placeholder="Add custom instructions related to this chat..."
+                      />
+                      <p className="text-[10px] text-dark-500 mt-1.5">
+                        These instructions are combined with the selected persona and setting modifiers.
+                      </p>
+                    </div>
+                  </div>
+                </details>
               </div>
-
-
 
               <div className="flex justify-end pt-2">
                 <button
@@ -2031,6 +2294,9 @@ function Chat() {
             onOpenImageGeneration={(!user?.permissions || user.permissions.can_access_image_gen) ? () => setShowImageGeneration(true) : undefined}
             enabledTools={enabledTools}
             setEnabledTools={setEnabledTools}
+            selectedPersona={selectedPersona}
+            onPersonaSelect={handlePersonaSelect}
+            showRecentPersonas={user?.show_recent_personas}
           />
         )}
 
@@ -2125,6 +2391,27 @@ function Chat() {
         initialLanguage={canvasState.language}
         title={canvasState.title}
       />
+
+      {/* Context Menu */}
+      {contextMenu.isOpen && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={closeContextMenu}
+        >
+          <ContextMenuItem
+            icon={Trash2}
+            variant="danger"
+            onClick={() => {
+              if (confirm('Are you sure you want to delete this chat?')) {
+                deleteChat(contextMenu.chatId);
+              }
+            }}
+          >
+            Delete Chat
+          </ContextMenuItem>
+        </ContextMenu>
+      )}
 
     </div >
   );
