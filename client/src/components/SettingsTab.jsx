@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Key, Eye, EyeOff, Trash2, AlertTriangle, Shield, Save, ExternalLink, Palette } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Key, Eye, EyeOff, Trash2, AlertTriangle, Shield, Save, ExternalLink, Palette, User, ChevronRight } from 'lucide-react';
 
 const ACCENT_PRESETS = [
   { id: 'amber', name: 'Amber', color: 'hsl(38, 92%, 50%)' },
@@ -24,6 +24,7 @@ function SettingsTab({ user, logout }) {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
   const [accentColor, setAccentColor] = useState(user?.accent_color || 'amber');
+  const [showRecentPersonas, setShowRecentPersonas] = useState(user?.show_recent_personas || false);
 
   useEffect(() => {
     loadUserData();
@@ -43,6 +44,7 @@ function SettingsTab({ user, logout }) {
       if (data.accent_color) {
         setAccentColor(data.accent_color);
       }
+      setShowRecentPersonas(!!data.show_recent_personas);
     } catch (error) {
       console.error('Failed to load user data:', error);
     }
@@ -63,6 +65,23 @@ function SettingsTab({ user, logout }) {
       });
     } catch (error) {
       console.error('Failed to save accent color:', error);
+    }
+  };
+
+  const handleShowRecentPersonasChange = async (enabled) => {
+    setShowRecentPersonas(enabled);
+
+    try {
+      await fetch('/api/auth/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ show_recent_personas: enabled })
+      });
+    } catch (error) {
+      console.error('Failed to save personas setting:', error);
     }
   };
 
@@ -206,6 +225,48 @@ function SettingsTab({ user, logout }) {
           <p className="text-xs text-dark-600 mt-3">
             Changes the accent color used for buttons and highlights
           </p>
+        </div>
+      </section>
+
+      {/* Personas Section */}
+      <section className="border-b border-dark-700/50 pb-8">
+        <h3 className="text-xl font-semibold mb-4 flex items-center gap-2 text-dark-100">
+          <User className="w-5 h-5 text-dark-400" />
+          Personas
+        </h3>
+
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="block text-sm font-medium text-dark-300">
+                Show Recent Personas
+              </label>
+              <p className="text-xs text-dark-500 mt-1">
+                Display recently used personas at the top of the selector
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleShowRecentPersonasChange(!showRecentPersonas)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                showRecentPersonas ? 'bg-accent' : 'bg-dark-700'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  showRecentPersonas ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          <Link
+            to="/personas"
+            className="flex items-center justify-between px-4 py-3 rounded-xl glass-button text-dark-300 hover:text-dark-100 transition-colors"
+          >
+            <span className="font-medium">Manage Personas</span>
+            <ChevronRight className="w-4 h-4" />
+          </Link>
         </div>
       </section>
 

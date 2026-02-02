@@ -73,7 +73,7 @@ export async function generateChatTitle(userMessage, userId) {
   }
 }
 
-export async function executeToolCall(toolCall, userId = null) {
+export async function executeToolCall(toolCall, userId = null, workspaceId = null) {
   const { name, arguments: args } = toolCall.function;
   let parsedArgs;
 
@@ -88,11 +88,17 @@ export async function executeToolCall(toolCall, userId = null) {
       case 'web_search':
         return await executeWebSearch(parsedArgs.query, userId);
 
+      case 'web_fetch':
+        return await executeWebFetch(parsedArgs.url, userId);
+
       case 'calculator':
         return await executeCalculator(parsedArgs.expression);
 
       case 'code_interpreter':
         return await executeCodeInterpreter(parsedArgs.code);
+
+      case 'workspace_search':
+        return await executeWorkspaceSearch(parsedArgs.query, parsedArgs.limit, userId, workspaceId);
 
       default:
         return `Unknown tool: ${name}`;
@@ -180,6 +186,67 @@ async function executeWebSearch(query, userId) {
   }
 }
 
+async function executeWebFetch(url, userId) {
+  // Validate URL
+  if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+    return 'Invalid URL. Please provide a valid HTTP/HTTPS URL.';
+  }
+
+  // Rate limit (share with web_search)
+  if (userId && !checkRateLimit(userId)) {
+    return 'Rate limit exceeded. Please wait a moment before fetching again.';
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BudiChat/1.0)' },
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      return `Failed to fetch URL: HTTP ${response.status}`;
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('text/html') && !contentType.includes('text/plain') && !contentType.includes('application/json')) {
+      return `Cannot read this content type: ${contentType}`;
+    }
+
+    const html = await response.text();
+
+    // Convert HTML to readable text (strip tags, normalize whitespace)
+    const text = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const maxLength = 10000;
+    const truncated = text.length > maxLength
+      ? text.substring(0, maxLength) + '\n... (truncated)'
+      : text;
+
+    return `Content from ${url}:\n\n${truncated}`;
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return `Failed to fetch URL: Request timed out after 10 seconds`;
+    }
+    return `Failed to fetch URL: ${error.message}`;
+  }
+}
+
 async function executeCalculator(expression) {
   try {
     // Simple eval for basic math - in production, use a proper math parser
@@ -196,4 +263,76 @@ async function executeCodeInterpreter(code) {
   // This is a placeholder - implementing a safe code interpreter requires
   // running code in a sandboxed environment (Docker container, VM, etc.)
   return `Code execution result:\n\n[This is a placeholder. To enable code execution, implement a sandboxed execution environment in server/services/ai.js]\n\nCode:\n${code}`;
+}
+
+async function executeWorkspaceSearch(query, limit = 10, userId, workspaceId) {
+  // Validate workspace context
+  if (!workspaceId) {
+    return 'No workspace context available. Workspace search is only available when chatting within a workspace.';
+  }
+
+  if (!userId) {
+    return 'User context required for workspace search.';
+  }
+
+  // Clamp limit to reasonable bounds
+  const maxLimit = Math.min(Math.max(parseInt(limit) || 10, 1), 20);
+
+  try {
+    // Prepare FTS5 query - escape special characters and create OR-joined wildcards
+    const terms = query
+      .replace(/[*"]/g, '') // Remove FTS5 special chars
+      .split(/\s+/)
+      .filter(term => term.length > 0)
+      .map(term => `${term}*`)
+      .join(' OR ');
+
+    if (!terms) {
+      return 'Please provide a valid search query.';
+    }
+
+    // Search messages within workspace using FTS5
+    const results = db.prepare(`
+      SELECT 
+        m.content,
+        m.role,
+        m.created_at,
+        c.title as chat_title,
+        c.id as chat_id,
+        highlight(messages_fts, 0, '**', '**') as highlighted_content
+      FROM messages_fts mf
+      JOIN messages m ON m.rowid = mf.rowid
+      JOIN chats c ON c.id = m.chat_id
+      WHERE messages_fts MATCH ?
+        AND c.workspace_id = ?
+        AND c.user_id = ?
+      ORDER BY rank
+      LIMIT ?
+    `).all(terms, workspaceId, userId, maxLimit);
+
+    if (results.length === 0) {
+      return `No results found for "${query}" in this workspace.`;
+    }
+
+    // Format results in token-efficient format
+    const formattedResults = results.map((result, index) => {
+      // Parse date for friendlier display
+      const date = new Date(result.created_at);
+      const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const role = result.role === 'user' ? 'User' : 'AI';
+
+      // Truncate content if too long, prefer highlighted version
+      const content = result.highlighted_content || result.content;
+      const truncated = content.length > 200
+        ? content.substring(0, 200) + '...'
+        : content;
+
+      return `[${index + 1}] "${result.chat_title}" (${dateStr})\n${role}: ${truncated}`;
+    }).join('\n\n');
+
+    return `Found ${results.length} result(s) for "${query}":\n\n${formattedResults}`;
+  } catch (error) {
+    console.error('Workspace search error:', error);
+    return `Workspace search failed: ${error.message}`;
+  }
 }

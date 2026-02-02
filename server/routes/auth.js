@@ -122,7 +122,7 @@ router.post('/login', (req, res) => {
 // Get current user
 router.get('/me', authMiddleware, (req, res) => {
   const user = db.prepare(`
-    SELECT id, email, name, is_admin, use_default_key, user_group, accent_color,
+    SELECT id, email, name, is_admin, use_default_key, user_group, accent_color, show_recent_personas,
            CASE WHEN openai_api_key IS NOT NULL THEN 1 ELSE 0 END as has_api_key
     FROM users WHERE id = ?
   `).get(req.user.id);
@@ -142,7 +142,7 @@ router.get('/me', authMiddleware, (req, res) => {
 // Update user profile
 router.put('/profile', authMiddleware, (req, res) => {
   try {
-    const { name, password, openai_api_key, accent_color } = req.body;
+    const { name, password, openai_api_key, accent_color, show_recent_personas } = req.body;
     const updates = [];
     const values = [];
 
@@ -164,6 +164,11 @@ router.put('/profile', authMiddleware, (req, res) => {
     if (accent_color !== undefined) {
       updates.push('accent_color = ?');
       values.push(accent_color);
+    }
+
+    if (show_recent_personas !== undefined) {
+      updates.push('show_recent_personas = ?');
+      values.push(show_recent_personas ? 1 : 0);
     }
 
     if (updates.length === 0) {

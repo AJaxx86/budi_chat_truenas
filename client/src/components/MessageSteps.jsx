@@ -1,5 +1,5 @@
-import React, { memo, useState } from 'react';
-import { Brain, Wrench, CheckCircle, ChevronDown, Loader2, Globe, Calculator, Code } from 'lucide-react';
+import React, { memo, useState, useMemo } from 'react';
+import { Brain, Wrench, ChevronDown, Loader2, Globe, Calculator, Code, AlertCircle } from 'lucide-react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
@@ -7,7 +7,7 @@ import DOMPurify from 'dompurify';
  * Format duration in a human-readable way
  */
 const formatDuration = (ms) => {
-  if (!ms) return '';
+  if (ms === undefined || ms === null || ms <= 0) return null;
   if (ms < 1000) return `${ms}ms`;
   const seconds = Math.floor(ms / 1000);
   if (seconds < 60) return `${seconds}s`;
@@ -19,9 +19,11 @@ const formatDuration = (ms) => {
 /**
  * Get icon for tool type
  */
-const ToolIcon = ({ name, className = "w-3.5 h-3.5" }) => {
+const ToolIcon = ({ name, className = "w-2.5 h-2.5" }) => {
   switch (name) {
     case 'web_search':
+      return <Globe className={className} />;
+    case 'web_fetch':
       return <Globe className={className} />;
     case 'calculator':
       return <Calculator className={className} />;
@@ -50,6 +52,11 @@ const getToolDescription = (toolName, toolArguments) => {
     if (toolName === 'web_search' && args.query) {
       return `"${args.query}"`;
     }
+    if (toolName === 'web_fetch' && args.url) {
+      // Truncate long URLs
+      const url = args.url.length > 50 ? args.url.substring(0, 50) + '...' : args.url;
+      return url;
+    }
     if (toolName === 'calculator' && args.expression) {
       return args.expression;
     }
@@ -63,19 +70,55 @@ const getToolDescription = (toolName, toolArguments) => {
 };
 
 /**
+ * Check if result indicates an error
+ */
+const isErrorResult = (result) => {
+  if (!result) return false;
+  const lowerResult = result.toLowerCase();
+  return lowerResult.includes('error') ||
+         lowerResult.includes('failed') ||
+         lowerResult.includes('exception') ||
+         lowerResult.startsWith('{"error');
+};
+
+/**
+ * Format tool result for display - truncate if too long, indicate errors
+ */
+const formatToolResult = (result) => {
+  if (!result) return null;
+
+  // Check for error
+  if (isErrorResult(result)) {
+    return { type: 'error', content: result };
+  }
+
+  // Truncate if too long
+  const maxLength = 2000;
+  if (result.length > maxLength) {
+    return {
+      type: 'success',
+      content: result.substring(0, maxLength) + '\n... (truncated)'
+    };
+  }
+
+  return { type: 'success', content: result };
+};
+
+/**
  * Individual step component for reasoning
  */
 const ReasoningStep = memo(({ step, index, isExpanded, onToggle, isStreaming }) => {
-  const thinkingLabel = index > 0 ? `Thinking ${index + 1}` : 'Thinking';
+  const thinkingLabel = 'Thinking';
+  const duration = formatDuration(step.duration_ms);
 
   return (
     <div className="step-item step-reasoning">
       <div className="step-timeline">
         <div className={`step-dot step-dot-reasoning ${!step.isComplete ? 'step-dot-active' : ''}`}>
           {!step.isComplete ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
+            <Loader2 className="w-2.5 h-2.5 animate-spin" />
           ) : (
-            <Brain className="w-3 h-3" />
+            <Brain className="w-2.5 h-2.5" />
           )}
         </div>
         <div className="step-line" />
@@ -94,10 +137,10 @@ const ReasoningStep = memo(({ step, index, isExpanded, onToggle, isStreaming }) 
               thinkingLabel
             )}
           </span>
-          {step.duration_ms && (
-            <span className="step-duration">{formatDuration(step.duration_ms)}</span>
+          {duration && (
+            <span className="step-duration">{duration}</span>
           )}
-          <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`step-chevron ${isExpanded ? 'step-chevron-expanded' : ''}`} />
         </button>
 
         {isExpanded && step.content && (
@@ -116,19 +159,35 @@ const ReasoningStep = memo(({ step, index, isExpanded, onToggle, isStreaming }) 
 ReasoningStep.displayName = 'ReasoningStep';
 
 /**
- * Individual step component for tool call
+ * Unified tool step component that shows both call and result
  */
-const ToolCallStep = memo(({ step, isExpanded, onToggle }) => {
-  const description = getToolDescription(step.tool_name, step.tool_arguments);
+const ToolStep = memo(({ callStep, resultStep, isExpanded, onToggle }) => {
+  // Support both camelCase (from streaming) and snake_case (from DB)
+  const toolName = callStep.toolName || callStep.tool_name;
+  const toolArgs = callStep.toolArguments || callStep.tool_arguments;
+  const description = getToolDescription(toolName, toolArgs);
+
+  // Step is complete when both call and result are complete (or just call if no result expected)
+  const isComplete = resultStep ? resultStep.isComplete : callStep.isComplete;
+
+  // Use result step's duration if available, otherwise use call step's
+  const duration = formatDuration(resultStep?.duration_ms || callStep.duration_ms);
+
+  // Get the result content
+  const resultContent = resultStep?.content;
+  const formattedResult = formatToolResult(resultContent);
+  const hasError = formattedResult?.type === 'error';
 
   return (
-    <div className="step-item step-tool-call">
+    <div className={`step-item step-tool ${hasError ? 'step-tool-error' : ''}`}>
       <div className="step-timeline">
-        <div className={`step-dot step-dot-tool ${!step.isComplete ? 'step-dot-active' : ''}`}>
-          {!step.isComplete ? (
-            <Loader2 className="w-3 h-3 animate-spin" />
+        <div className={`step-dot step-dot-tool ${!isComplete ? 'step-dot-active' : ''} ${hasError ? 'step-dot-error' : ''}`}>
+          {!isComplete ? (
+            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+          ) : hasError ? (
+            <AlertCircle className="w-2.5 h-2.5" />
           ) : (
-            <ToolIcon name={step.tool_name} className="w-3 h-3" />
+            <ToolIcon name={toolName} className="w-2.5 h-2.5" />
           )}
         </div>
         <div className="step-line" />
@@ -138,28 +197,31 @@ const ToolCallStep = memo(({ step, isExpanded, onToggle }) => {
         <button
           type="button"
           onClick={onToggle}
-          className="step-header step-header-tool"
+          className={`step-header step-header-tool ${hasError ? 'step-header-error' : ''}`}
         >
           <span className="step-label">
-            {formatToolName(step.tool_name)}
+            {formatToolName(toolName)}
           </span>
           {description && (
             <span className="step-description">{description}</span>
           )}
-          {step.duration_ms && (
-            <span className="step-duration">{formatDuration(step.duration_ms)}</span>
+          {duration && (
+            <span className="step-duration">{duration}</span>
           )}
-          <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`step-chevron ${isExpanded ? 'step-chevron-expanded' : ''}`} />
         </button>
 
-        {isExpanded && step.tool_arguments && (
+        {isExpanded && (
           <div className="step-body">
-            <pre className="step-code">
-              {typeof step.tool_arguments === 'string'
-                ? JSON.stringify(JSON.parse(step.tool_arguments), null, 2)
-                : JSON.stringify(step.tool_arguments, null, 2)
-              }
-            </pre>
+            {formattedResult ? (
+              <pre className={`step-code step-result-content ${hasError ? 'step-result-error' : ''}`}>
+                {formattedResult.content}
+              </pre>
+            ) : !isComplete ? (
+              <p className="text-dark-500 text-xs italic">Waiting for result...</p>
+            ) : (
+              <p className="text-dark-500 text-xs italic">No result available</p>
+            )}
           </div>
         )}
       </div>
@@ -167,46 +229,7 @@ const ToolCallStep = memo(({ step, isExpanded, onToggle }) => {
   );
 });
 
-ToolCallStep.displayName = 'ToolCallStep';
-
-/**
- * Individual step component for tool result
- */
-const ToolResultStep = memo(({ step, isExpanded, onToggle }) => {
-  return (
-    <div className="step-item step-tool-result">
-      <div className="step-timeline">
-        <div className="step-dot step-dot-result">
-          <CheckCircle className="w-3 h-3" />
-        </div>
-        <div className="step-line" />
-      </div>
-
-      <div className="step-content">
-        <button
-          type="button"
-          onClick={onToggle}
-          className="step-header step-header-result"
-        >
-          <span className="step-label">
-            Result: {formatToolName(step.tool_name)}
-          </span>
-          <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
-        </button>
-
-        {isExpanded && step.content && (
-          <div className="step-body">
-            <pre className="step-code step-result-content">
-              {step.content}
-            </pre>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-});
-
-ToolResultStep.displayName = 'ToolResultStep';
+ToolStep.displayName = 'ToolStep';
 
 /**
  * Main component that renders all steps in a timeline
@@ -226,23 +249,64 @@ const MessageSteps = memo(({ steps = [], isStreaming = false }) => {
     });
   };
 
-  if (!steps || steps.length === 0) return null;
+  // Process steps to merge tool_call and tool_result pairs
+  const processedSteps = useMemo(() => {
+    if (!steps || steps.length === 0) return [];
 
-  // Count reasoning steps for labeling (Thinking 1, Thinking 2, etc.)
-  let reasoningCount = 0;
+    // First pass: collect all tool_results by their tool_call_id
+    const toolResults = {};
+    for (const step of steps) {
+      const stepType = step.type || step.step_type;
+      if (stepType === 'tool_result') {
+        const callId = step.toolCallId || step.tool_call_id;
+        if (callId) {
+          toolResults[callId] = step;
+        }
+      }
+    }
+
+    // Second pass: build output, merging tool_call with its result
+    const output = [];
+    let reasoningCount = 0;
+
+    for (const step of steps) {
+      const stepType = step.type || step.step_type;
+
+      // Skip tool_result steps - they're merged with tool_call
+      if (stepType === 'tool_result') continue;
+
+      if (stepType === 'reasoning') {
+        output.push({
+          ...step,
+          processedType: 'reasoning',
+          reasoningIndex: reasoningCount++
+        });
+      } else if (stepType === 'tool_call') {
+        const callId = step.toolCallId || step.tool_call_id;
+        output.push({
+          ...step,
+          processedType: 'tool',
+          resultStep: callId ? toolResults[callId] : null
+        });
+      }
+    }
+
+    return output;
+  }, [steps]);
+
+  if (processedSteps.length === 0) return null;
 
   return (
     <div className="message-steps-container">
-      {steps.map((step) => {
+      {processedSteps.map((step) => {
         const isExpanded = expandedSteps.has(step.id);
 
-        if (step.step_type === 'reasoning' || step.type === 'reasoning') {
-          const currentReasoningIndex = reasoningCount++;
+        if (step.processedType === 'reasoning') {
           return (
             <ReasoningStep
               key={step.id}
               step={step}
-              index={currentReasoningIndex}
+              index={step.reasoningIndex}
               isExpanded={isExpanded}
               onToggle={() => toggleStep(step.id)}
               isStreaming={isStreaming}
@@ -250,22 +314,12 @@ const MessageSteps = memo(({ steps = [], isStreaming = false }) => {
           );
         }
 
-        if (step.step_type === 'tool_call' || step.type === 'tool_call') {
+        if (step.processedType === 'tool') {
           return (
-            <ToolCallStep
+            <ToolStep
               key={step.id}
-              step={step}
-              isExpanded={isExpanded}
-              onToggle={() => toggleStep(step.id)}
-            />
-          );
-        }
-
-        if (step.step_type === 'tool_result' || step.type === 'tool_result') {
-          return (
-            <ToolResultStep
-              key={step.id}
-              step={step}
+              callStep={step}
+              resultStep={step.resultStep}
               isExpanded={isExpanded}
               onToggle={() => toggleStep(step.id)}
             />

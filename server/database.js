@@ -56,6 +56,25 @@ function initDatabase() {
     )
   `);
 
+  // Workspaces table (for organizing chats into projects)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS workspaces (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      icon TEXT DEFAULT 'Folder',
+      color TEXT DEFAULT '#f59e0b',
+      default_model TEXT,
+      default_system_prompt TEXT,
+      default_temperature REAL DEFAULT 0.7,
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
   // Chats table
   db.exec(`
     CREATE TABLE IF NOT EXISTS chats (
@@ -67,6 +86,8 @@ function initDatabase() {
       model TEXT DEFAULT 'moonshotai/kimi-k2-thinking',
       system_prompt TEXT,
       temperature REAL DEFAULT 0.7,
+      depth TEXT DEFAULT 'standard',
+      tone TEXT DEFAULT 'professional',
       agent_mode INTEGER DEFAULT 0,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -114,6 +135,28 @@ function initDatabase() {
       parameters TEXT NOT NULL,
       enabled INTEGER DEFAULT 1,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Personas table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS personas (
+      id TEXT PRIMARY KEY,
+      user_id INTEGER,
+      name TEXT NOT NULL,
+      description TEXT,
+      system_prompt TEXT NOT NULL,
+      icon TEXT DEFAULT 'User',
+      category TEXT DEFAULT 'general',
+      creativity TEXT DEFAULT 'balanced',
+      depth TEXT DEFAULT 'standard',
+      tone TEXT DEFAULT 'professional',
+      is_default INTEGER DEFAULT 0,
+      usage_count INTEGER DEFAULT 0,
+      last_used_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
 
@@ -427,6 +470,61 @@ function initDatabase() {
     console.error("Migration error:", e);
   }
 
+  // Migration: Add show_recent_personas column to users table
+  try {
+    const usersInfo = db.prepare("PRAGMA table_info(users)").all();
+    const hasShowRecentPersonas = usersInfo.some((col) => col.name === "show_recent_personas");
+    if (!hasShowRecentPersonas) {
+      db.exec("ALTER TABLE users ADD COLUMN show_recent_personas INTEGER DEFAULT 0");
+      console.log("✅ Migration: Added show_recent_personas column to users table");
+    }
+  } catch (e) {
+    console.error("Migration error:", e);
+  }
+
+  // Migration: Add workspace_id column to chats table
+  try {
+    const chatsInfo = db.prepare("PRAGMA table_info(chats)").all();
+    const hasWorkspaceId = chatsInfo.some((col) => col.name === "workspace_id");
+    if (!hasWorkspaceId) {
+      db.exec("ALTER TABLE chats ADD COLUMN workspace_id TEXT REFERENCES workspaces(id) ON DELETE SET NULL");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_chats_workspace ON chats(workspace_id)");
+      console.log("✅ Migration: Added workspace_id column and index to chats table");
+    }
+  } catch (e) {
+    console.error("Migration error:", e);
+  }
+
+  // Migration: Add specific persona settings to chats table
+  try {
+    const chatsInfo = db.prepare("PRAGMA table_info(chats)").all();
+    const hasDepth = chatsInfo.some((col) => col.name === "depth");
+
+    if (!hasDepth) {
+      db.exec("ALTER TABLE chats ADD COLUMN depth TEXT DEFAULT 'standard'");
+      db.exec("ALTER TABLE chats ADD COLUMN tone TEXT DEFAULT 'professional'");
+      console.log("✅ Migration: Added depth and tone columns to chats table");
+    }
+  } catch (e) {
+    console.error("Migration error:", e);
+  }
+
+  // Migration: Add creativity, depth, and tone columns to personas table
+  try {
+    const personasInfo = db.prepare("PRAGMA table_info(personas)").all();
+    const hasCreativity = personasInfo.some((col) => col.name === "creativity");
+
+    if (!hasCreativity) {
+      db.exec("ALTER TABLE personas ADD COLUMN creativity TEXT DEFAULT 'balanced'");
+      db.exec("ALTER TABLE personas ADD COLUMN depth TEXT DEFAULT 'standard'");
+      db.exec("ALTER TABLE personas ADD COLUMN tone TEXT DEFAULT 'professional'");
+      console.log("✅ Migration: Added creativity, depth, and tone columns to personas table");
+    }
+  } catch (e) {
+    console.error("Migration error:", e);
+  }
+
+
   // Initialize default user groups with permissions
   const defaultGroups = [
     {
@@ -564,6 +662,40 @@ function initDatabase() {
           required: ["code"],
         }),
       },
+      {
+        id: "web_fetch",
+        name: "web_fetch",
+        description: "Fetch and read the content of a specific web page URL",
+        parameters: JSON.stringify({
+          type: "object",
+          properties: {
+            url: {
+              type: "string",
+              description: "The URL of the web page to fetch",
+            },
+          },
+          required: ["url"],
+        }),
+      },
+      {
+        id: "workspace_search",
+        name: "workspace_search",
+        description: "Search messages and chats within the current workspace. Returns relevant snippets with chat title, role, and timestamp. Use this to find previous conversations and context within the project.",
+        parameters: JSON.stringify({
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description: "The search query to find relevant messages",
+            },
+            limit: {
+              type: "number",
+              description: "Maximum number of results to return (default 10, max 20)",
+            },
+          },
+          required: ["query"],
+        }),
+      },
     ];
 
     const insertTool = db.prepare(`
@@ -574,6 +706,107 @@ function initDatabase() {
     for (const tool of defaultTools) {
       insertTool.run(tool.id, tool.name, tool.description, tool.parameters);
     }
+  }
+
+  // Insert default personas
+  const defaultPersonas = [
+    {
+      id: "socratic-philosophy",
+      name: "Socratic Philosophy Tutor",
+      description: "Learn through questioning - never gives direct answers",
+      system_prompt: "You are a Socratic philosophy tutor. Never give direct answers. Instead, guide the student to discover truths through careful questioning. Ask probing questions that challenge assumptions and lead to deeper understanding. Use the Socratic method: ask clarifying questions, examine definitions, explore implications, and help the student arrive at their own insights. Be patient, encouraging, and intellectually rigorous.",
+      icon: "BookOpen",
+      category: "education",
+      creativity: "balanced",
+      depth: "detailed",
+      tone: "friendly"
+    },
+    {
+      id: "socratic-math",
+      name: "Socratic Math Coach",
+      description: "Discover mathematical concepts via guided inquiry",
+      system_prompt: "You are a Socratic math coach. Guide students to discover mathematical concepts through questions rather than direct instruction. When they're stuck, ask leading questions that help them see the next step. Break complex problems into smaller pieces through dialogue. Celebrate insights and gently redirect misconceptions with thoughtful questions. Help build mathematical intuition and problem-solving skills.",
+      icon: "Calculator",
+      category: "education",
+      creativity: "precise",
+      depth: "detailed",
+      tone: "friendly"
+    },
+    {
+      id: "socratic-science",
+      name: "Socratic Science Mentor",
+      description: "Scientific inquiry through the Socratic method",
+      system_prompt: "You are a Socratic science mentor. Help students understand scientific concepts by asking questions that guide them through the scientific method. Encourage hypothesis formation, prediction, and logical reasoning. When explaining phenomena, ask 'What do you think would happen if...?' and 'How might we test that?' Build scientific thinking through dialogue and discovery.",
+      icon: "Beaker",
+      category: "education",
+      creativity: "balanced",
+      depth: "detailed",
+      tone: "friendly"
+    },
+    {
+      id: "code-mentor",
+      name: "Patient Code Mentor",
+      description: "Programming with clear explanations and patience",
+      system_prompt: "You are a patient programming mentor. Explain coding concepts clearly without assuming prior knowledge. Use analogies to real-world concepts when helpful. When reviewing code, point out both strengths and areas for improvement. Provide working code examples with detailed comments. Anticipate common misconceptions and address them proactively. Be encouraging and supportive.",
+      icon: "Code",
+      category: "development",
+      creativity: "precise",
+      depth: "detailed",
+      tone: "friendly"
+    },
+    {
+      id: "creative-writing",
+      name: "Creative Writing Partner",
+      description: "Story and poetry collaboration",
+      system_prompt: "You are a creative writing partner. Help with brainstorming, plot development, character creation, dialogue, and prose refinement. Offer constructive feedback that respects the author's voice. Suggest alternatives without being prescriptive. When asked to write, match the requested style and tone. Be inspiring and help overcome writer's block with creative prompts and exercises.",
+      icon: "Feather",
+      category: "creative",
+      creativity: "imaginative",
+      depth: "standard",
+      tone: "enthusiastic"
+    },
+    {
+      id: "devils-advocate",
+      name: "Devil's Advocate",
+      description: "Challenge and strengthen ideas",
+      system_prompt: "You are a skilled devil's advocate. Your role is to strengthen ideas by challenging them rigorously but respectfully. Find weak points in arguments, suggest counterexamples, and push for deeper thinking. Play the opposing view convincingly without being dismissive. Help identify blind spots and assumptions. Your goal is to help refine ideas through constructive challenge, not to win debates.",
+      icon: "Scale",
+      category: "analytical",
+      creativity: "balanced",
+      depth: "detailed",
+      tone: "professional"
+    },
+    {
+      id: "eli5",
+      name: "ELI5 Explainer",
+      description: "Complex topics made simple",
+      system_prompt: "You explain complex topics as if to a curious 5-year-old. Use simple words, relatable analogies, and everyday examples. Break down complicated ideas into their most basic components. Be enthusiastic and make learning fun. Avoid jargon entirely. If a concept requires prerequisite knowledge, explain that first. Check understanding by asking simple follow-up questions.",
+      icon: "Lightbulb",
+      category: "education",
+      creativity: "imaginative",
+      depth: "concise",
+      tone: "friendly"
+    },
+    {
+      id: "brainstorm",
+      name: "Brainstorm Partner",
+      description: "Idea generation without judgment",
+      system_prompt: "You are an enthusiastic brainstorming partner. Generate ideas freely without judgment. Build on suggestions with 'Yes, and...' rather than 'No, but...'. Encourage wild ideas that can be refined later. Use techniques like mind mapping, random association, and perspective shifting. Help overcome creative blocks by approaching problems from unexpected angles. Quantity over quality initially - refinement comes later.",
+      icon: "Sparkles",
+      category: "creative",
+      creativity: "imaginative",
+      depth: "standard",
+      tone: "enthusiastic"
+    }
+  ];
+
+  const insertPersona = db.prepare(`
+    INSERT OR IGNORE INTO personas (id, name, description, system_prompt, icon, category, creativity, depth, tone, is_default)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+  `);
+
+  for (const persona of defaultPersonas) {
+    insertPersona.run(persona.id, persona.name, persona.description, persona.system_prompt, persona.icon, persona.category, persona.creativity, persona.depth, persona.tone);
   }
 
   console.log("✅ Database initialized successfully");

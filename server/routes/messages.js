@@ -149,6 +149,22 @@ router.post("/:chatId", async (req, res) => {
       });
     }
 
+    // Inject Depth modifiers
+    if (chat.depth === 'concise') {
+      openaiMessages.push({ role: "system", content: "Please provide concise, direct answers without unnecessary elaboration." });
+    } else if (chat.depth === 'detailed') {
+      openaiMessages.push({ role: "system", content: "Please provide comprehensive, detailed explanations covering all aspects of the topic." });
+    }
+
+    // Inject Tone modifiers
+    if (chat.tone === 'professional') {
+      openaiMessages.push({ role: "system", content: "Maintain a formal, professional, and objective tone." });
+    } else if (chat.tone === 'friendly') {
+      openaiMessages.push({ role: "system", content: "Be warm, friendly, and conversational." });
+    } else if (chat.tone === 'enthusiastic') {
+      openaiMessages.push({ role: "system", content: "Be energetic, enthusiastic, and encouraging in your responses." });
+    }
+
     // Get user memories for context
     const memories = db
       .prepare(
@@ -454,12 +470,10 @@ router.post("/:chatId", async (req, res) => {
 
           if (toolCall.function?.name) {
             toolCalls[toolCall.index].function.name = toolCall.function.name;
-            // Update step with name
+            // Update step with name (use snake_case to match save code)
             const step = steps.find(s => s.id === toolCalls[toolCall.index].stepId);
             if (step) {
-              step.toolName = toolCalls[toolCall.index].function.name;
-              // We don't send individual updates for name changes to client to save bandwidth, 
-              // the initial start or final complete is usually enough, or step_content if needed.
+              step.tool_name = toolCalls[toolCall.index].function.name;
             }
           }
 
@@ -467,10 +481,10 @@ router.post("/:chatId", async (req, res) => {
             toolCalls[toolCall.index].function.arguments +=
               toolCall.function.arguments;
 
-            // Update step with arguments
+            // Update step with arguments (use snake_case to match save code)
             const step = steps.find(s => s.id === toolCalls[toolCall.index].stepId);
             if (step) {
-              step.toolArguments = toolCalls[toolCall.index].function.arguments;
+              step.tool_arguments = toolCalls[toolCall.index].function.arguments;
               // For tool calls, we treat arguments as "content" for the step stream
               appendStepContent(step.id, toolCall.function.arguments);
             }
@@ -524,32 +538,8 @@ router.post("/:chatId", async (req, res) => {
         usedDefaultKey ? 1 : 0,
       );
 
-      // Save all fine-grained steps if available
-      if (steps.length > 0) {
-        const insertStep = db.prepare(`
-          INSERT INTO message_steps (id, message_id, chat_id, step_type, step_index, content, tool_call_id, tool_name, tool_arguments, duration_ms)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-
-        for (const step of steps) {
-          try {
-            insertStep.run(
-              step.id,
-              assistantMessageId,
-              chatId,
-              step.type,
-              step.index,
-              step.content || null,
-              step.toolCallId || null,
-              step.toolName || null,
-              step.toolArguments || null,
-              step.duration_ms || null
-            );
-          } catch (stepErr) {
-            console.error('Failed to save step:', stepErr);
-          }
-        }
-      }
+      // Note: Steps are saved at the end of the request to avoid duplicates
+      // when tool processing adds more steps
     }
 
     // Update persistent user stats (survives message/chat deletion)
@@ -649,7 +639,7 @@ router.post("/:chatId", async (req, res) => {
         });
 
         const toolStartTime = Date.now();
-        const result = await executeToolCall(toolCall, req.user.id);
+        const result = await executeToolCall(toolCall, req.user.id, chat.workspace_id);
         const toolDuration = Date.now() - toolStartTime;
 
         // Complete the tool_call step

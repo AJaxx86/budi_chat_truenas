@@ -14,6 +14,8 @@ import exportRoutes from './routes/export.js';
 import uploadsRoutes from './routes/uploads.js';
 import imagesRoutes from './routes/images.js';
 import shareRoutes from './routes/share.js';
+import personasRoutes from './routes/personas.js';
+import workspacesRoutes from './routes/workspaces.js';
 
 dotenv.config();
 
@@ -39,6 +41,8 @@ app.use('/api/export', exportRoutes);
 app.use('/api/uploads', uploadsRoutes);
 app.use('/api/images', imagesRoutes);
 app.use('/api/share', shareRoutes);
+app.use('/api/personas', personasRoutes);
+app.use('/api/workspaces', workspacesRoutes);
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {

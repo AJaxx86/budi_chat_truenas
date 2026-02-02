@@ -731,13 +731,13 @@ input[type="checkbox"]:focus {
   @apply text-[11px] text-dark-500 truncate max-w-[280px];
 }
 
-/* Message Steps Timeline */
+/* Message Steps Timeline - Minimal Inline Design */
 .message-steps-container {
   @apply flex flex-col;
 }
 
 .step-item {
-  @apply flex gap-3 relative;
+  @apply flex gap-2 relative;
 }
 
 .step-item:last-child .step-line {
@@ -746,30 +746,26 @@ input[type="checkbox"]:focus {
 
 .step-timeline {
   @apply flex flex-col items-center flex-shrink-0;
-  width: 24px;
+  width: 18px;
 }
 
 .step-dot {
-  @apply w-6 h-6 rounded-full flex items-center justify-center z-10;
-  flex-shrink: 0;
+  @apply w-4 h-4 rounded-full flex items-center justify-center z-10 flex-shrink-0;
 }
 
 .step-dot-reasoning {
-  background: rgba(245, 158, 11, 0.15);
+  background: rgba(245, 158, 11, 0.2);
   color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
 .step-dot-tool {
-  background: rgba(59, 130, 246, 0.15);
+  background: rgba(59, 130, 246, 0.2);
   color: #3b82f6;
-  border: 1px solid rgba(59, 130, 246, 0.3);
 }
 
 .step-dot-result {
-  background: rgba(16, 185, 129, 0.15);
+  background: rgba(16, 185, 129, 0.2);
   color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
 .step-dot-active {
@@ -777,49 +773,54 @@ input[type="checkbox"]:focus {
 }
 
 @keyframes stepPulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
+
+  0%,
+  100% {
+    opacity: 1;
   }
+
   50% {
-    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
+    opacity: 0.5;
   }
 }
 
 .step-line {
-  @apply w-0.5 flex-1 min-h-[12px];
-  background: linear-gradient(180deg, rgba(68, 64, 60, 0.5) 0%, rgba(68, 64, 60, 0.2) 100%);
+  @apply w-px flex-1;
+  min-height: 8px;
+  background: rgba(68, 64, 60, 0.3);
   margin: 2px 0;
 }
 
 .step-content {
-  @apply flex-1 min-w-0 pb-3;
+  @apply flex-1 min-w-0 pb-1;
 }
 
+/* Collapsed header - minimal inline, no background */
 .step-header {
-  @apply flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-all duration-200 w-full text-left;
-  background: rgba(41, 37, 36, 0.4);
-  border: 1px solid rgba(68, 64, 60, 0.3);
+  @apply flex items-center gap-2 py-0.5 cursor-pointer transition-all duration-150 w-full text-left;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
 }
 
 .step-header:hover {
-  background: rgba(41, 37, 36, 0.6);
-  border-color: rgba(68, 64, 60, 0.5);
+  background: rgba(255, 255, 255, 0.03);
 }
 
-.step-header-reasoning {
-  border-left: 2px solid rgba(245, 158, 11, 0.5);
+.step-header-reasoning:hover .step-label {
+  color: #fbbf24;
 }
 
-.step-header-tool {
-  border-left: 2px solid rgba(59, 130, 246, 0.5);
+.step-header-tool:hover .step-label {
+  color: #60a5fa;
 }
 
-.step-header-result {
-  border-left: 2px solid rgba(16, 185, 129, 0.5);
+.step-header-result:hover .step-label {
+  color: #34d399;
 }
 
 .step-label {
-  @apply text-xs font-medium text-dark-200 flex-shrink-0;
+  @apply text-xs font-medium text-dark-300 flex-shrink-0 transition-colors duration-150;
 }
 
 .step-description {
@@ -827,15 +828,59 @@ input[type="checkbox"]:focus {
 }
 
 .step-duration {
-  @apply text-[10px] text-dark-500 font-mono ml-auto flex-shrink-0;
+  @apply text-[10px] text-dark-600 font-mono ml-auto flex-shrink-0;
 }
 
+.step-chevron {
+  @apply w-3 h-3 text-dark-600 transition-all duration-200;
+  opacity: 0.5;
+}
+
+.step-header:hover .step-chevron {
+  opacity: 1;
+}
+
+.step-chevron-expanded {
+  transform: rotate(180deg);
+  opacity: 1;
+}
+
+/* Expanded body - subtle panel with accent border */
 .step-body {
-  @apply mt-2 px-3 py-2 rounded-lg text-sm;
-  background: rgba(28, 25, 23, 0.6);
-  border: 1px solid rgba(68, 64, 60, 0.2);
-  max-height: 250px;
+  @apply mt-1 px-3 py-2 rounded-md text-sm;
+  background: rgba(28, 25, 23, 0.4);
+  max-height: 200px;
   overflow-y: auto;
+}
+
+.step-reasoning .step-body {
+  border-left: 2px solid rgba(245, 158, 11, 0.4);
+}
+
+.step-tool .step-body {
+  border-left: 2px solid rgba(59, 130, 246, 0.4);
+}
+
+/* Error state for tool steps */
+.step-dot-error {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.step-header-error .step-label {
+  color: #f87171;
+}
+
+.step-header-error:hover .step-label {
+  color: #ef4444;
+}
+
+.step-tool-error .step-body {
+  border-left: 2px solid rgba(239, 68, 68, 0.4);
+}
+
+.step-result-error {
+  color: #f87171;
 }
 
 .step-body.markdown-content {
@@ -848,6 +893,39 @@ input[type="checkbox"]:focus {
 
 .step-result-content {
   @apply text-dark-300;
-  max-height: 200px;
+  max-height: 180px;
   overflow-y: auto;
+}
+
+/* Workspace Sidebar - Mission Control Aesthetic */
+.workspace-sidebar {
+  background: linear-gradient(180deg,
+      rgba(10, 10, 11, 0.98) 0%,
+      rgba(10, 10, 11, 0.99) 100%);
+  border-right: 1px solid rgba(42, 42, 46, 0.6);
+}
+
+.workspace-item-active {
+  border-left: 2px solid var(--accent);
+  margin-left: -2px;
+  padding-left: calc(0.5rem + 2px);
+}
+
+.workspace-item {
+  position: relative;
+}
+
+/* Workspace glow effect on active */
+.workspace-item-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  background: linear-gradient(90deg,
+      hsl(var(--accent-h), var(--accent-s), var(--accent-l), 0.05) 0%,
+      transparent 100%);
+  pointer-events: none;
+  border-radius: inherit;
 }

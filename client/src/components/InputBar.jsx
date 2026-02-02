@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Square, Lightbulb, Check, X } from 'lucide-react';
+import { Send, Square, Lightbulb } from 'lucide-react';
 import PlusMenu from './PlusMenu';
 import VoiceInput from './VoiceInput';
+import PersonaQuickSelect from './PersonaQuickSelect';
 
 // Thinking modes with effort levels for OpenRouter reasoning API
 export const THINKING_MODES = [
@@ -27,6 +28,9 @@ function InputBar({
   isReasoningSupported,
   chatId,
   onOpenImageGeneration,
+  selectedPersona,
+  onPersonaSelect,
+  showRecentPersonas,
 }) {
   const [showThinkingDropdown, setShowThinkingDropdown] = useState(false);
   const textareaRef = useRef(null);
@@ -165,6 +169,13 @@ function InputBar({
 
         {/* Main Input Pill */}
         <div className="flex items-center gap-2 px-3 py-2 rounded-3xl bg-dark-800/60 border border-dark-700/50 focus-within:border-dark-600/60 transition-colors">
+          {/* Persona Quick Select */}
+          <PersonaQuickSelect
+            selectedPersona={selectedPersona}
+            onSelect={onPersonaSelect}
+            showRecent={showRecentPersonas}
+          />
+
           {/* Plus Menu */}
           <PlusMenu
             onFilesSelected={setPendingAttachments}
