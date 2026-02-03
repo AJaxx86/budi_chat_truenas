@@ -11,15 +11,50 @@ export default function WorkspaceSidebar({
     streamingChatIds = new Set(),
     onSelectWorkspace,
     onSelectChat,
-    onChatContextMenu,
-    onCreateWorkspace,
-    onUpdateWorkspace,
-    onDeleteWorkspace,
     onMoveChats,
     onCreateNewChat,
     models = [],
+    onWorkspaceContextMenu, // Helper for context menu on workspaces
+    renamingId, // ID of workspace currently being renamed
+    onRenameSubmit, // Function(id, newName)
+    onRenameCancel, // Function()
+    renamingChatId, // ID of chat currently being renamed
+    onChatRenameSubmit, // Function(id, newName)
+    onChatRenameCancel, // Function()
+    editingSettingsId, // ID of workspace to edit settings for
+    onEditSettingsComplete, // Function()
 }) {
     const [expandedWorkspaces, setExpandedWorkspaces] = useState({});
+    const [editValue, setEditValue] = useState('');
+    const [editChatValue, setEditChatValue] = useState('');
+
+    // Listen for external editing settings request
+    React.useEffect(() => {
+        if (editingSettingsId) {
+            const ws = workspaces.find(w => w.id === editingSettingsId);
+            if (ws) {
+                setEditingWorkspace(ws);
+                setShowModal(true);
+            }
+            onEditSettingsComplete?.();
+        }
+    }, [editingSettingsId, workspaces]);
+
+    // Sync edit value when renamingId changes
+    React.useEffect(() => {
+        if (renamingId) {
+            const ws = workspaces.find(w => w.id === renamingId);
+            if (ws) setEditValue(ws.name);
+        }
+    }, [renamingId, workspaces]);
+
+    // Sync edit chat value when renamingChatId changes
+    React.useEffect(() => {
+        if (renamingChatId) {
+            const chat = chats.find(c => c.id === renamingChatId);
+            if (chat) setEditChatValue(chat.title);
+        }
+    }, [renamingChatId, chats]);
     const [showModal, setShowModal] = useState(false);
     const [editingWorkspace, setEditingWorkspace] = useState(null);
     const [dragOverWorkspace, setDragOverWorkspace] = useState(null);
@@ -108,7 +143,7 @@ export default function WorkspaceSidebar({
                         setEditingWorkspace(null);
                         setShowModal(true);
                     }}
-                    className="p-1 rounded-md text-dark-500 hover:text-accent hover:bg-dark-700/30 transition-colors"
+                    className="p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-md text-dark-500 hover:text-accent hover:bg-dark-700/30 transition-colors"
                     title="New Workspace"
                 >
                     <Plus className="w-3.5 h-3.5" />
@@ -131,11 +166,12 @@ export default function WorkspaceSidebar({
                         <div key={workspace.id}>
                             {/* Workspace Row */}
                             <div
-                                onClick={() => handleSelectWorkspace(workspace.id)}
+                                onClick={(e) => handleToggleExpand(e, workspace.id)}
+                                onContextMenu={(e) => onWorkspaceContextMenu && onWorkspaceContextMenu(e, workspace.id)}
                                 onDragOver={(e) => handleDragOver(e, workspace.id)}
                                 onDragLeave={handleDragLeave}
                                 onDrop={(e) => handleDrop(e, workspace.id)}
-                                className={`group flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-all duration-150 ${isActive
+                                className={`group flex items-center gap-2 px-2 py-2.5 md:py-1.5 rounded-lg cursor-pointer transition-all duration-150 min-h-[44px] md:min-h-0 ${isActive
                                     ? 'bg-dark-800/60'
                                     : 'hover:bg-dark-700/30'
                                     } ${isDragOver ? 'ring-1 ring-accent/40 bg-accent/5' : ''}`}
@@ -171,11 +207,32 @@ export default function WorkspaceSidebar({
                                 </div>
 
 
-                                {/* Name */}
-                                <span className={`flex-1 text-sm truncate ${isActive ? 'text-dark-100 font-medium' : 'text-dark-300'
-                                    }`}>
-                                    {workspace.name}
-                                </span>
+                                {/* Name or Input */}
+                                {renamingId === workspace.id ? (
+                                    <input
+                                        type="text"
+                                        value={editValue}
+                                        onChange={(e) => setEditValue(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.stopPropagation();
+                                                onRenameSubmit(workspace.id, editValue);
+                                            } else if (e.key === 'Escape') {
+                                                e.stopPropagation();
+                                                onRenameCancel();
+                                            }
+                                        }}
+                                        onBlur={() => onRenameSubmit(workspace.id, editValue)}
+                                        autoFocus
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="flex-1 min-w-0 bg-dark-900 text-sm text-dark-100 px-1.5 py-0.5 rounded border border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent"
+                                    />
+                                ) : (
+                                    <span className={`flex-1 text-sm truncate ${isActive ? 'text-dark-100 font-medium' : 'text-dark-300'
+                                        }`}>
+                                        {workspace.name}
+                                    </span>
+                                )}
 
                                 {/* Chat count */}
                                 <span className="text-[10px] text-dark-500">
@@ -205,12 +262,33 @@ export default function WorkspaceSidebar({
                                                         onSelectChat(chat.id);
                                                     }}
                                                     onContextMenu={(e) => onChatContextMenu && onChatContextMenu(e, chat.id)}
-                                                    className={`px-2 py-1.5 rounded-md cursor-pointer text-xs truncate transition-colors flex items-center justify-between group/chat ${activeChatId === chat.id
+                                                    className={`px-2 py-2.5 md:py-1.5 rounded-md cursor-pointer text-xs truncate transition-colors flex items-center justify-between group/chat min-h-[40px] md:min-h-0 ${activeChatId === chat.id
                                                         ? 'bg-dark-700/50 text-dark-100'
                                                         : 'text-dark-400 hover:text-dark-200 hover:bg-dark-700/20'
                                                         }`}
                                                 >
-                                                    <span className="truncate">{chat.title}</span>
+                                                    {renamingChatId === chat.id ? (
+                                                        <input
+                                                            type="text"
+                                                            value={editChatValue}
+                                                            onChange={(e) => setEditChatValue(e.target.value)}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    e.stopPropagation();
+                                                                    onChatRenameSubmit(chat.id, editChatValue);
+                                                                } else if (e.key === 'Escape') {
+                                                                    e.stopPropagation();
+                                                                    onChatRenameCancel();
+                                                                }
+                                                            }}
+                                                            onBlur={() => onChatRenameSubmit(chat.id, editChatValue)}
+                                                            autoFocus
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="flex-1 min-w-0 bg-dark-900 text-[11px] text-dark-100 px-1 py-0.5 rounded border border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent"
+                                                        />
+                                                    ) : (
+                                                        <span className="truncate">{chat.title}</span>
+                                                    )}
                                                     {isChatGenerating && (
                                                         <span className="flex h-1.5 w-1.5 relative flex-shrink-0 ml-2">
                                                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>

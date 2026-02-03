@@ -8,14 +8,36 @@ export async function getApiKey(userId) {
 
 export async function getApiKeyInfo(userId) {
   const user = db.prepare(`
-    SELECT openai_api_key, use_default_key FROM users WHERE id = ?
+    SELECT openai_api_key, use_default_key, user_group FROM users WHERE id = ?
   `).get(userId);
+
+  if (!user) return null;
 
   if (user.openai_api_key) {
     return { key: user.openai_api_key, isDefault: false };
   }
 
-  if (user.use_default_key) {
+  // Check if user is allowed to use default key
+  let canUseDefaultKey = !!user.use_default_key;
+
+  // If not explicitly allowed on user level, check group permissions
+  if (!canUseDefaultKey) {
+    const groupId = user.user_group || 'user';
+    const group = db.prepare('SELECT permissions FROM user_groups WHERE id = ?').get(groupId);
+
+    if (group && group.permissions) {
+      try {
+        const permissions = JSON.parse(group.permissions);
+        if (permissions.can_use_default_key) {
+          canUseDefaultKey = true;
+        }
+      } catch (e) {
+        console.error('Error parsing group permissions:', e);
+      }
+    }
+  }
+
+  if (canUseDefaultKey) {
     const defaultKey = db.prepare(`
       SELECT value FROM settings WHERE key = 'default_openai_api_key'
     `).get();
@@ -187,10 +209,22 @@ async function executeWebSearch(query, userId) {
 }
 
 async function executeWebFetch(url, userId) {
+  // Clean URL - remove any leading characters (like colons) before http
+  // This handles cases where models might output ":https://..." or "URL: https://..."
+  let cleanUrl = url ? url.trim() : '';
+  const urlMatch = cleanUrl.match(/(https?:\/\/[^\s]+)/);
+
+  if (urlMatch) {
+    cleanUrl = urlMatch[1];
+  }
+
   // Validate URL
-  if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+  if (!cleanUrl || (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://'))) {
     return 'Invalid URL. Please provide a valid HTTP/HTTPS URL.';
   }
+
+  // Use cleaned URL
+  url = cleanUrl;
 
   // Rate limit (share with web_search)
   if (userId && !checkRateLimit(userId)) {
@@ -279,27 +313,39 @@ async function executeWorkspaceSearch(query, limit = 10, userId, workspaceId) {
   const maxLimit = Math.min(Math.max(parseInt(limit) || 10, 1), 20);
 
   try {
-    // Prepare FTS5 query - escape special characters and create OR-joined wildcards
-    const terms = query
-      .replace(/[*"]/g, '') // Remove FTS5 special chars
-      .split(/\s+/)
-      .filter(term => term.length > 0)
-      .map(term => `${term}*`)
-      .join(' OR ');
-
-    if (!terms) {
+    if (!query || query.trim().length === 0) {
       return 'Please provide a valid search query.';
     }
 
+    // Robust FTS5 Query Construction
+    // 1. Split by whitespace to get individual terms
+    // 2. Remove any characters that aren't alphanumeric or safe punctuation
+    // 3. Wrap terms in quotes to treat them as literals
+    // 4. Join with OR for broad recall (ranked by relevance)
+
+    const terms = query
+      .replace(/[^\w\s\u00C0-\u00FF]/g, ' ') // Replace special chars with space to be safe
+      .split(/\s+/)
+      .filter(term => term.length > 0)
+      .map(term => `"${term}"*`); // Quote and prefix match
+
+    if (terms.length === 0) {
+      // Fallback for when stripping leaves nothing (e.g. search was just "???")
+      return `No valid search terms found in "${query}".`;
+    }
+
+    const searchQuery = terms.join(' OR ');
+
     // Search messages within workspace using FTS5
+    // Note: We avoid using FTS5 highlight() function as it causes SQL logic errors 
+    // with certain prefix queries. We fetch content and truncate manually.
     const results = db.prepare(`
       SELECT 
         m.content,
         m.role,
         m.created_at,
         c.title as chat_title,
-        c.id as chat_id,
-        highlight(messages_fts, 0, '**', '**') as highlighted_content
+        c.id as chat_id
       FROM messages_fts mf
       JOIN messages m ON m.rowid = mf.rowid
       JOIN chats c ON c.id = m.chat_id
@@ -308,7 +354,7 @@ async function executeWorkspaceSearch(query, limit = 10, userId, workspaceId) {
         AND c.user_id = ?
       ORDER BY rank
       LIMIT ?
-    `).all(terms, workspaceId, userId, maxLimit);
+    `).all(searchQuery, workspaceId, userId, maxLimit);
 
     if (results.length === 0) {
       return `No results found for "${query}" in this workspace.`;
@@ -321,13 +367,15 @@ async function executeWorkspaceSearch(query, limit = 10, userId, workspaceId) {
       const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       const role = result.role === 'user' ? 'User' : 'AI';
 
-      // Truncate content if too long, prefer highlighted version
-      const content = result.highlighted_content || result.content;
-      const truncated = content.length > 200
-        ? content.substring(0, 200) + '...'
-        : content;
+      // Clean up newlines for compact display
+      const cleanContent = result.content.replace(/\n+/g, ' ');
 
-      return `[${index + 1}] "${result.chat_title}" (${dateStr})\n${role}: ${truncated}`;
+      // Simple truncation (keeps start of message)
+      const truncated = cleanContent.length > 200
+        ? cleanContent.substring(0, 200) + '...'
+        : cleanContent;
+
+      return `[${index + 1}] "${result.chat_title}" (${dateStr}) - ${role}: ${truncated}`;
     }).join('\n\n');
 
     return `Found ${results.length} result(s) for "${query}":\n\n${formattedResults}`;

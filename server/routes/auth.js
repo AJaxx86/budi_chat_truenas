@@ -131,11 +131,30 @@ router.get('/me', authMiddleware, (req, res) => {
   const groupInfo = getGroupInfo(userGroup);
   const permissions = getGroupPermissions(userGroup);
 
+  // Determine if user is using the default API key (no personal key)
+  const hasPersonalKey = !!user.has_api_key;
+  const usingDefaultKey = !hasPersonalKey;
+
+  // Get model whitelist if user is using the default key (no personal API key)
+  let guestModelWhitelist = [];
+  if (usingDefaultKey) {
+    const whitelistSetting = db.prepare("SELECT value FROM settings WHERE key = 'guest_model_whitelist'").get();
+    if (whitelistSetting?.value) {
+      try {
+        guestModelWhitelist = JSON.parse(whitelistSetting.value);
+      } catch (e) {
+        console.error('Failed to parse guest_model_whitelist:', e);
+      }
+    }
+  }
+
   res.json({
     ...user,
     user_group: userGroup,
     group_info: groupInfo,
-    permissions
+    permissions,
+    usingDefaultKey,
+    guestModelWhitelist
   });
 });
 

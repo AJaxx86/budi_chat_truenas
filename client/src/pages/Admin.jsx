@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Users, Settings, Plus, Trash2, Edit2,
   Save, X, Shield, Key, Eye, EyeOff, CheckCircle, XCircle,
-  Zap, Coins, RotateCcw, UserCog
+  Zap, Coins, RotateCcw, UserCog, Search, Bot, Loader2
 } from 'lucide-react';
 
 function Admin() {
@@ -29,6 +29,14 @@ function Admin() {
   const [braveSearchApiKey, setBraveSearchApiKey] = useState('');
   const [showBraveKey, setShowBraveKey] = useState(false);
 
+  // Guest model whitelist state
+  const [guestModelWhitelist, setGuestModelWhitelist] = useState([]);
+  const [whitelistSearch, setWhitelistSearch] = useState('');
+  const [showWhitelistDropdown, setShowWhitelistDropdown] = useState(false);
+  const [availableModels, setAvailableModels] = useState([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const whitelistDropdownRef = useRef(null);
+
   // Groups state
   const [groups, setGroups] = useState([]);
   const [savingGroups, setSavingGroups] = useState(false);
@@ -37,6 +45,19 @@ function Admin() {
     loadUsers();
     loadSettings();
     loadGroups();
+    loadModels();
+  }, []);
+
+  // Close whitelist dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (whitelistDropdownRef.current && !whitelistDropdownRef.current.contains(event.target)) {
+        setShowWhitelistDropdown(false);
+        setWhitelistSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const loadUsers = async () => {
@@ -62,6 +83,14 @@ function Admin() {
       setTitleGenerationModel(data.title_generation_model || 'google/gemini-2.5-flash-lite');
       setGlobalSystemPrompt(data.global_system_prompt || '');
       setBraveSearchApiKey(data.brave_search_api_key || '');
+      // Parse guest model whitelist (stored as JSON string)
+      try {
+        const whitelist = data.guest_model_whitelist ? JSON.parse(data.guest_model_whitelist) : [];
+        setGuestModelWhitelist(Array.isArray(whitelist) ? whitelist : []);
+      } catch (e) {
+        console.error('Failed to parse guest_model_whitelist:', e);
+        setGuestModelWhitelist([]);
+      }
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
@@ -77,6 +106,108 @@ function Admin() {
     } catch (error) {
       console.error('Failed to load groups:', error);
     }
+  };
+
+  const loadModels = async () => {
+    setModelsLoading(true);
+    try {
+      // Check cache first (v3 includes pricing data)
+      const MODELS_CACHE_KEY = 'budi_chat_models_cache_v3';
+      const MODELS_CACHE_EXPIRY = 24 * 60 * 60 * 1000;
+      const cached = localStorage.getItem(MODELS_CACHE_KEY);
+
+      if (cached) {
+        try {
+          const { models, timestamp } = JSON.parse(cached);
+          // Only use cache if not expired AND has pricing data
+          if (Date.now() - timestamp < MODELS_CACHE_EXPIRY && models[0]?.pricing !== undefined) {
+            setAvailableModels(models);
+            setModelsLoading(false);
+            return;
+          }
+        } catch (e) {
+          console.error('Failed to parse cached models:', e);
+        }
+      }
+
+      // Fetch from OpenRouter
+      const response = await fetch('https://openrouter.ai/api/v1/models');
+      if (!response.ok) throw new Error('Failed to fetch models');
+
+      const data = await response.json();
+      const models = data.data
+        .filter(model => model.id && model.name)
+        .map(model => ({
+          id: model.id,
+          name: model.name,
+          description: model.description || '',
+          pricing: model.pricing,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      setAvailableModels(models);
+
+      // Cache the results
+      localStorage.setItem(MODELS_CACHE_KEY, JSON.stringify({
+        models,
+        timestamp: Date.now()
+      }));
+    } catch (error) {
+      console.error('Failed to load models:', error);
+    } finally {
+      setModelsLoading(false);
+    }
+  };
+
+  // Filter models for whitelist search
+  const filteredModels = useMemo(() => {
+    if (!whitelistSearch.trim()) return availableModels.slice(0, 50); // Show first 50 when no search
+    const query = whitelistSearch.toLowerCase();
+    return availableModels
+      .filter(model =>
+        model.id.toLowerCase().includes(query) ||
+        model.name.toLowerCase().includes(query)
+      )
+      .slice(0, 50);
+  }, [availableModels, whitelistSearch]);
+
+  // Get model info by ID
+  const getModelInfo = (modelId) => {
+    return availableModels.find(m => m.id === modelId) || { id: modelId, name: modelId };
+  };
+
+  // Save whitelist to server
+  const saveWhitelist = async (whitelist) => {
+    try {
+      await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ guest_model_whitelist: whitelist })
+      });
+    } catch (error) {
+      console.error('Failed to save whitelist:', error);
+    }
+  };
+
+  // Add model to whitelist
+  const addToWhitelist = (modelId) => {
+    if (!guestModelWhitelist.includes(modelId)) {
+      const newWhitelist = [...guestModelWhitelist, modelId];
+      setGuestModelWhitelist(newWhitelist);
+      saveWhitelist(newWhitelist);
+    }
+    setWhitelistSearch('');
+    setShowWhitelistDropdown(false);
+  };
+
+  // Remove model from whitelist
+  const removeFromWhitelist = (modelId) => {
+    const newWhitelist = guestModelWhitelist.filter(id => id !== modelId);
+    setGuestModelWhitelist(newWhitelist);
+    saveWhitelist(newWhitelist);
   };
 
   const handleSaveSettings = async () => {
@@ -306,6 +437,7 @@ function Admin() {
                   </button>
                 </div>
               </div>
+
             </div>
 
             <button
@@ -460,7 +592,7 @@ function Admin() {
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="font-semibold text-lg text-dark-100">{user.name}</h3>
                       {user.is_admin === 1 ? (
-                        <span className="flex items-center gap-1 px-2.5 py-1 bg-secondary-10 text-secondary rounded-full text-xs font-medium border border-secondary-20">
+                        <span className="flex items-center gap-1 px-2.5 py-1 bg-red-500/10 text-red-500 rounded-full text-xs font-medium border border-red-500/20">
                           <Shield className="w-3 h-3" />
                           Admin
                         </span>
@@ -675,6 +807,112 @@ function Admin() {
                     </label>
                   ))}
                 </div>
+
+                {/* Guest-specific: Model Whitelist */}
+                {group.id === 'guest' && (
+                  <div className="mt-6 pt-5 border-t border-dark-700/50">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Bot className="w-4 h-4 text-dark-400" />
+                      <h4 className="text-sm font-semibold text-dark-200">Allowed Models</h4>
+                      <span className="text-xs text-dark-500">
+                        ({guestModelWhitelist.length === 0 ? 'unrestricted' : `${guestModelWhitelist.length} model${guestModelWhitelist.length !== 1 ? 's' : ''}`})
+                      </span>
+                    </div>
+                    <p className="text-xs text-dark-500 mb-4">
+                      Restrict which models guests can use when accessing the default API key. Leave empty for no restrictions.
+                    </p>
+
+                    {/* Selected Models as Chips */}
+                    {guestModelWhitelist.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {guestModelWhitelist.map(modelId => {
+                          const model = getModelInfo(modelId);
+                          return (
+                            <div
+                              key={modelId}
+                              className="group flex items-center gap-2 pl-2.5 pr-1.5 py-1 bg-dark-700/60 border border-dark-600/50 rounded-lg text-xs hover:border-dark-500/50 transition-all"
+                            >
+                              <span className="text-dark-300 font-medium">{model.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => removeFromWhitelist(modelId)}
+                                className="p-0.5 rounded hover:bg-red-500/20 transition-colors"
+                              >
+                                <X className="w-3 h-3 text-dark-500 group-hover:text-red-400" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Model Search/Add */}
+                    <div className="relative" ref={whitelistDropdownRef}>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-dark-500" />
+                        <input
+                          type="text"
+                          value={whitelistSearch}
+                          onChange={(e) => {
+                            setWhitelistSearch(e.target.value);
+                            setShowWhitelistDropdown(true);
+                          }}
+                          onFocus={() => setShowWhitelistDropdown(true)}
+                          placeholder="Search models to add..."
+                          className="w-full pl-9 pr-4 py-2 rounded-lg bg-dark-900/50 border border-dark-700/50 outline-none text-sm text-dark-200 placeholder-dark-500 focus:border-dark-600 transition-colors"
+                        />
+                        {modelsLoading && (
+                          <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-dark-500 animate-spin" />
+                        )}
+                      </div>
+
+                      {showWhitelistDropdown && (
+                        <div className="absolute z-50 w-full mt-1.5 max-h-[240px] overflow-y-auto bg-dark-850 border border-dark-700 rounded-lg shadow-xl">
+                          {filteredModels.length === 0 ? (
+                            <div className="px-4 py-5 text-center text-dark-500 text-xs">
+                              {whitelistSearch ? 'No models found' : 'Type to search...'}
+                            </div>
+                          ) : (
+                            <div className="p-1.5">
+                              {filteredModels.map(model => {
+                                const isSelected = guestModelWhitelist.includes(model.id);
+                                return (
+                                  <button
+                                    key={model.id}
+                                    type="button"
+                                    onClick={() => !isSelected && addToWhitelist(model.id)}
+                                    disabled={isSelected}
+                                    className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-left transition-colors ${isSelected
+                                        ? 'bg-dark-700/30 cursor-default'
+                                        : 'hover:bg-dark-700/50'
+                                      }`}
+                                  >
+                                    <div className="flex-1 min-w-0">
+                                      <p className={`text-xs font-medium truncate ${isSelected ? 'text-dark-400' : 'text-dark-200'}`}>
+                                        {model.name}
+                                      </p>
+                                      <p className="text-[10px] text-dark-600 truncate">
+                                        {model.id}
+                                        {model.pricing && (
+                                          <span className="ml-1.5 text-emerald-500/70">
+                                            • ${(parseFloat(model.pricing.prompt) * 1000000).toFixed(2)} / ${(parseFloat(model.pricing.completion) * 1000000).toFixed(2)}
+                                          </span>
+                                        )}
+                                      </p>
+                                    </div>
+                                    {isSelected && (
+                                      <CheckCircle className="w-3.5 h-3.5 text-green-500/70 flex-shrink-0" />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

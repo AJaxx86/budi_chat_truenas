@@ -73,12 +73,31 @@ const getToolDescription = (toolName, toolArguments) => {
  * Check if result indicates an error
  */
 const isErrorResult = (result) => {
-  if (!result) return false;
-  const lowerResult = result.toLowerCase();
-  return lowerResult.includes('error') ||
-         lowerResult.includes('failed') ||
-         lowerResult.includes('exception') ||
-         lowerResult.startsWith('{"error');
+  if (!result || typeof result !== 'string') return false;
+
+  // Check for specific error prefixes returned by the server
+  const errorPrefixes = [
+    'Error parsing arguments:',
+    'Error executing',
+    'Unknown tool:',
+    'Web search failed:',
+    'Invalid URL.',
+    'Rate limit exceeded',
+    'Failed to fetch URL:',
+    'Cannot read this content type:',
+    'Error calculating:',
+    'Workspace search failed:',
+    'No workspace context'
+  ];
+
+  for (const prefix of errorPrefixes) {
+    if (result.startsWith(prefix)) return true;
+  }
+
+  // Check for JSON error object
+  if (result.startsWith('{"error')) return true;
+
+  return false;
 };
 
 /**

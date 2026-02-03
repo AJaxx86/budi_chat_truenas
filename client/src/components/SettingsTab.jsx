@@ -53,6 +53,8 @@ function SettingsTab({ user, logout }) {
   const handleAccentChange = async (presetId) => {
     setAccentColor(presetId);
     document.documentElement.setAttribute('data-accent', presetId);
+    // Cache to localStorage for instant apply on page load
+    localStorage.setItem('budi_accent_color_v2', presetId);
 
     try {
       await fetch('/api/auth/profile', {

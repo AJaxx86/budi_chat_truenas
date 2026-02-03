@@ -300,6 +300,13 @@ function initDatabase() {
     console.log("✅ Added default_image_model setting");
   }
 
+  // Add guest_model_whitelist setting if not exists
+  const guestWhitelistSetting = db.prepare("SELECT * FROM settings WHERE key = 'guest_model_whitelist'").get();
+  if (!guestWhitelistSetting) {
+    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?)").run('guest_model_whitelist', '[]');
+    console.log("✅ Added guest_model_whitelist setting");
+  }
+
   // FTS5 virtual table for full-text search on messages
   db.exec(`
     CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
@@ -706,6 +713,59 @@ function initDatabase() {
     for (const tool of defaultTools) {
       insertTool.run(tool.id, tool.name, tool.description, tool.parameters);
     }
+  }
+
+  // Migration: Add missing tools (web_fetch, workspace_search) if they don't exist
+  // This handles the case where the tools table exists (so the block above is skipped)
+  // but new tools have been added to the application
+  const searchTool = db.prepare("SELECT id FROM tools WHERE name = 'workspace_search'").get();
+  if (!searchTool) {
+    db.prepare(`
+      INSERT INTO tools (id, name, description, parameters)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      "workspace_search",
+      "workspace_search",
+      "Search messages and chats using keywords. Supports prefix matches automatically. Returns relevant snippets with chat title and timestamp. Use this to find previous conversations.",
+      JSON.stringify({
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "The search query to find relevant messages",
+          },
+          limit: {
+            type: "number",
+            description: "Maximum number of results to return (default 10, max 20)",
+          },
+        },
+        required: ["query"],
+      })
+    );
+    console.log("✅ Migration: Added workspace_search tool");
+  }
+
+  const fetchTool = db.prepare("SELECT id FROM tools WHERE name = 'web_fetch'").get();
+  if (!fetchTool) {
+    db.prepare(`
+      INSERT INTO tools (id, name, description, parameters)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      "web_fetch",
+      "web_fetch",
+      "Fetch and read the content of a specific web page URL",
+      JSON.stringify({
+        type: "object",
+        properties: {
+          url: {
+            type: "string",
+            description: "The URL of the web page to fetch",
+          },
+        },
+        required: ["url"],
+      })
+    );
+    console.log("✅ Migration: Added web_fetch tool");
   }
 
   // Insert default personas

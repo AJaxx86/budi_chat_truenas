@@ -23,6 +23,7 @@ import WorkspaceSidebar from '../components/WorkspaceSidebar';
 import PersonaSelector from '../components/PersonaSelector';
 import { FolderOpen } from 'lucide-react';
 import ContextMenu, { ContextMenuItem } from '../components/ContextMenu';
+import WorkspaceQuickSelect from '../components/WorkspaceQuickSelect';
 
 marked.setOptions({
   breaks: true,
@@ -214,7 +215,10 @@ function Chat() {
   // Per-chat streaming state: Map<chatId, { streaming, message, reasoning, ... }>
   const [streamingStates, setStreamingStates] = useState(new Map());
   const [showSettings, setShowSettings] = useState(false);
-  const [showSidebar, setShowSidebar] = useState(true);
+
+  // Mobile detection and responsive sidebar
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  const [showSidebar, setShowSidebar] = useState(() => window.innerWidth >= 768);
   const [showForkModal, setShowForkModal] = useState(false);
   const [deletingChatId, setDeletingChatId] = useState(null);
   const [forkMessageId, setForkMessageId] = useState(null);
@@ -270,17 +274,25 @@ function Chat() {
     isOpen: false,
     x: 0,
     y: 0,
-    chatId: null
+    chatId: null,
+    type: 'chat' // 'chat' | 'workspace'
   });
 
-  const handleContextMenu = (e, chatId) => {
+  // Rename state
+  const [renamingWorkspaceId, setRenamingWorkspaceId] = useState(null);
+  const [renamingChatId, setRenamingChatId] = useState(null);
+  const [editChatValue, setEditChatValue] = useState('');
+  const [wsSettingsId, setWsSettingsId] = useState(null);
+
+  const handleContextMenu = (e, chatId, type = 'chat') => {
     e.preventDefault();
     e.stopPropagation();
     setContextMenu({
       isOpen: true,
       x: e.clientX,
       y: e.clientY,
-      chatId
+      chatId,
+      type
     });
   };
 
@@ -402,6 +414,54 @@ function Chat() {
       abortControllersRef.current.clear();
     };
   }, []);
+
+  // Mobile detection and resize handling
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      // Auto-close sidebar when switching to mobile, auto-open on desktop
+      if (mobile !== isMobile) {
+        setShowSidebar(!mobile);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isMobile]);
+
+  // Manage body scroll lock when mobile sidebar is open
+  useEffect(() => {
+    if (isMobile && showSidebar) {
+      document.body.classList.add('sidebar-open');
+    } else {
+      document.body.classList.remove('sidebar-open');
+    }
+    return () => document.body.classList.remove('sidebar-open');
+  }, [isMobile, showSidebar]);
+
+  // Handle virtual keyboard on mobile
+  useEffect(() => {
+    if ('visualViewport' in window && isMobile) {
+      const handleViewportResize = () => {
+        const viewport = window.visualViewport;
+        const keyboardOffset = window.innerHeight - viewport.height;
+        document.documentElement.style.setProperty(
+          '--keyboard-offset',
+          `${Math.max(0, keyboardOffset)}px`
+        );
+      };
+
+      window.visualViewport.addEventListener('resize', handleViewportResize);
+      window.visualViewport.addEventListener('scroll', handleViewportResize);
+
+      return () => {
+        window.visualViewport.removeEventListener('resize', handleViewportResize);
+        window.visualViewport.removeEventListener('scroll', handleViewportResize);
+        document.documentElement.style.setProperty('--keyboard-offset', '0px');
+      };
+    }
+  }, [isMobile]);
 
   useEffect(() => {
     loadChats();
@@ -578,6 +638,45 @@ function Chat() {
     }
   };
 
+
+
+  const handleRenameClick = () => {
+    const chat = chats.find(c => c.id === contextMenu.chatId);
+    if (chat) {
+      setRenamingChatId(chat.id);
+      setEditChatValue(chat.title);
+      closeContextMenu();
+    }
+  };
+
+  const handleInlineChatRename = async (id, newName) => {
+    if (!newName || !newName.trim()) {
+      setRenamingChatId(null);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/chats/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ title: newName.trim() })
+      });
+      if (res.ok) {
+        setChats(prev => prev.map(c =>
+          c.id === id ? { ...c, title: newName.trim() } : c
+        ));
+        if (currentChat?.id === id) {
+          setCurrentChat(prev => ({ ...prev, title: newName.trim() }));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to rename chat:', e);
+    }
+    setRenamingChatId(null);
+  };
+
   const deleteWorkspace = async (workspaceId) => {
     try {
       await fetch(`/api/workspaces/${workspaceId}`, {
@@ -643,8 +742,52 @@ function Chat() {
       }
 
       setMessages(data.messages || []);
+
+      let modelToUse = data.model;
+
+      // Check if guest user needs model auto-switch (Admins are exempt)
+      if (user?.usingDefaultKey && !user?.is_admin) {
+        if (user?.guestModelWhitelist && user.guestModelWhitelist.length > 0) {
+          if (!user.guestModelWhitelist.includes(data.model)) {
+            // Auto-switch to first whitelisted model
+            modelToUse = user.guestModelWhitelist[0];
+
+            // Get model name for notification
+            const getModelName = (modelId) => {
+              try {
+                const cached = localStorage.getItem(MODELS_CACHE_KEY);
+                if (cached) {
+                  const { models } = JSON.parse(cached);
+                  const model = models.find(m => m.id === modelId);
+                  if (model?.name) return model.name;
+                }
+              } catch (e) { }
+              return modelId.split('/').pop();
+            };
+
+            const newModelName = getModelName(modelToUse);
+            alert(`Model switched to ${newModelName} (previous model not available for guest users)`);
+
+            // Update the chat model on the server
+            try {
+              await fetch(`/api/chats/${chatId}`, {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ model: modelToUse })
+              });
+            } catch (e) {
+              console.error('Failed to update chat model:', e);
+            }
+          }
+        }
+
+      }
+
       setChatSettings({
-        model: data.model,
+        model: modelToUse,
         temperature: data.temperature,
         depth: data.depth || 'standard',
         tone: data.tone || 'friendly',
@@ -654,14 +797,31 @@ function Chat() {
       setThinkingMode(data.thinking_mode || 'medium');
       // Update currentChat with latest data (including updated title)
       const { messages: _, ...chatData } = data;
-      setCurrentChat(prev => ({ ...prev, ...chatData }));
+      setCurrentChat(prev => ({ ...prev, ...chatData, model: modelToUse }));
     } catch (error) {
       console.error('Failed to load messages:', error);
     }
   };
 
   const createNewChat = () => {
-    const modelToUse = localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL;
+    // Preserve workspace context from current chat if it exists
+    const contextWorkspaceId = currentChat?.workspace_id || null;
+    setActiveWorkspace(contextWorkspaceId);
+
+    let modelToUse = localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL;
+
+    // For guest users using default key, ensure the model is whitelisted (Admins are exempt)
+    if (user?.usingDefaultKey && !user?.is_admin) {
+      if (user?.guestModelWhitelist && user.guestModelWhitelist.length > 0) {
+        if (!user.guestModelWhitelist.includes(modelToUse)) {
+          // Use first whitelisted model - ONLY if whitelist has items
+          modelToUse = user.guestModelWhitelist[0];
+        }
+      }
+      // If whitelist is empty, we don't change modelToUse here, 
+      // but ModelSelector will show "Add API Key" and backend will reject any model.
+    }
+
     // Clear all existing state
     setMessages([]);
     setExpandedThinkingSections(new Set());
@@ -1354,20 +1514,47 @@ function Chat() {
     }
   };
 
+  // Close sidebar when selecting a chat on mobile
+  const handleChatSelect = useCallback((chat) => {
+    setCurrentChat(chat);
+    if (isMobile) {
+      setShowSidebar(false);
+    }
+  }, [isMobile]);
+
   return (
     <div className="flex h-screen bg-dark-950 bg-mesh">
-      {/* Sidebar */}
-      <div className={`${showSidebar ? 'w-72' : 'w-16'} transition-all duration-300 ease-out glass-sidebar flex flex-col overflow-hidden`}>
-        <div className={`${showSidebar ? 'p-5' : 'p-2'} border-b border-dark-700/30`}>
-          <div className={`flex items-center ${showSidebar ? 'gap-3 mb-5' : 'justify-center mb-2'}`}>
-            {/* Toggle button - always on left */}
+      {/* Mobile Sidebar Overlay */}
+      {isMobile && showSidebar && (
+        <div
+          className="sidebar-mobile-overlay"
+          onClick={() => setShowSidebar(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Sidebar - responsive */}
+      <div className={`
+        ${isMobile
+          ? `sidebar-mobile glass-sidebar ${showSidebar ? 'open' : ''}`
+          : `${showSidebar ? 'w-72' : 'w-16'} transition-all duration-300 ease-out glass-sidebar`
+        }
+        flex flex-col overflow-hidden
+      `}>
+        <div className={`${showSidebar ? 'p-4 md:p-5' : 'p-2'} border-b border-dark-700/30 safe-area-inset-top`}>
+          <div className={`flex items-center ${showSidebar ? 'gap-3 mb-4 md:mb-5' : 'justify-center mb-2'}`}>
+            {/* Toggle button - always on left (desktop collapse, mobile close) */}
             <button
               onClick={() => setShowSidebar(!showSidebar)}
-              className="p-2 hover:bg-dark-700/30 rounded-lg transition-all duration-200 flex-shrink-0"
-              title={showSidebar ? "Collapse sidebar" : "Expand sidebar"}
+              className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-dark-700/30 rounded-lg transition-all duration-200 flex-shrink-0"
+              title={showSidebar ? (isMobile ? "Close menu" : "Collapse sidebar") : "Expand sidebar"}
             >
               {showSidebar ? (
-                <MessageSquare className="w-4 h-4 text-dark-300" />
+                isMobile ? (
+                  <X className="w-5 h-5 text-dark-300" />
+                ) : (
+                  <MessageSquare className="w-4 h-4 text-dark-300" />
+                )
               ) : (
                 <Menu className="w-4 h-4 text-dark-500" />
               )}
@@ -1381,7 +1568,7 @@ function Chat() {
                 </h1>
                 <div className="flex items-center gap-2 mt-0.5">
                   {user?.is_admin ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider bg-secondary-10 text-secondary border border-secondary-20">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider bg-red-500/10 text-red-500 border border-red-500/20">
                       <Shield className="w-3 h-3" />
                       Admin
                     </span>
@@ -1405,8 +1592,11 @@ function Chat() {
           <div className={`flex ${showSidebar ? 'gap-2' : 'flex-col gap-2'}`}>
             {(!user?.permissions || user.permissions.can_create_chats) && (
               <button
-                onClick={createNewChat}
-                className={`${showSidebar ? 'flex-1 py-3 gap-2' : 'w-10 h-10 mx-auto'} gradient-primary text-white rounded-xl font-semibold hover:shadow-glow transition-all duration-200 flex items-center justify-center shine active:scale-[0.98]`}
+                onClick={() => {
+                  createNewChat();
+                  if (isMobile) setShowSidebar(false);
+                }}
+                className={`${showSidebar ? 'flex-1 py-3 gap-2 min-h-[44px]' : 'w-11 h-11 mx-auto'} gradient-primary text-white rounded-xl font-semibold hover:shadow-glow transition-all duration-200 flex items-center justify-center shine active:scale-[0.98]`}
                 title={showSidebar ? undefined : "New Chat"}
               >
                 <Plus className="w-4 h-4" />
@@ -1414,8 +1604,11 @@ function Chat() {
               </button>
             )}
             <button
-              onClick={() => setShowSearch(true)}
-              className={`${showSidebar ? 'px-3 py-3' : 'w-10 h-10 mx-auto'} glass-button text-dark-400 hover:text-dark-200 rounded-xl transition-all duration-200 flex items-center justify-center`}
+              onClick={() => {
+                setShowSearch(true);
+                if (isMobile) setShowSidebar(false);
+              }}
+              className={`${showSidebar ? 'px-3 py-3 min-h-[44px]' : 'w-11 h-11 mx-auto'} glass-button text-dark-400 hover:text-dark-200 rounded-xl transition-all duration-200 flex items-center justify-center`}
               title={showSidebar ? "Search (Cmd+K)" : "Search"}
             >
               <Search className="w-4 h-4" />
@@ -1436,7 +1629,7 @@ function Chat() {
                 onSelectWorkspace={(id) => setActiveWorkspace(prev => prev === id ? null : id)}
                 onSelectChat={(chatId) => {
                   const chat = chats.find(c => c.id === chatId);
-                  if (chat) setCurrentChat(chat);
+                  if (chat) handleChatSelect(chat);
                 }}
                 onCreateWorkspace={createWorkspace}
                 onUpdateWorkspace={updateWorkspace}
@@ -1444,6 +1637,37 @@ function Chat() {
                 onMoveChats={moveChatsToWorkspace}
                 models={[]}
                 onChatContextMenu={handleContextMenu}
+                onWorkspaceContextMenu={(e, id) => handleContextMenu(e, id, 'workspace')}
+                editingSettingsId={wsSettingsId}
+                onEditSettingsComplete={() => setWsSettingsId(null)}
+                renamingId={renamingWorkspaceId}
+                onRenameCancel={() => setRenamingWorkspaceId(null)}
+                onRenameSubmit={async (id, newName) => {
+                  if (!newName || !newName.trim()) {
+                    setRenamingWorkspaceId(null);
+                    return;
+                  }
+                  try {
+                    const res = await fetch(`/api/workspaces/${id}`, {
+                      method: 'PUT',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                      },
+                      body: JSON.stringify({ name: newName.trim() })
+                    });
+                    if (res.ok) {
+                      const updated = await res.json();
+                      setWorkspaces(prev => prev.map(w => w.id === updated.id ? updated : w));
+                    }
+                  } catch (e) {
+                    console.error('Failed to rename workspace:', e);
+                  }
+                  setRenamingWorkspaceId(null);
+                }}
+                renamingChatId={renamingChatId}
+                onChatRenameCancel={() => setRenamingChatId(null)}
+                onChatRenameSubmit={handleInlineChatRename}
               />
               {/* Divider between workspaces and chats */}
               <div className="h-px bg-dark-700/30 my-2 mx-2" />
@@ -1457,26 +1681,43 @@ function Chat() {
                 ? 'bg-dark-800/80 border-l-2 border-accent/60'
                 : 'hover:bg-dark-800/40 border-l-2 border-transparent'
                 }`}
-              onClick={() => setCurrentChat(chat)}
+              onClick={() => handleChatSelect(chat)}
               onContextMenu={(e) => handleContextMenu(e, chat.id)}
               title={showSidebar ? undefined : chat.title}
             >
               {showSidebar ? (
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <p className={`font-medium text-sm truncate ${currentChat?.id === chat.id ? 'text-dark-50' : 'text-dark-200'}`}>{chat.title}</p>
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <span className="text-xs text-dark-500">
-                        {chat.message_count === 1 ? '1 message' : `${chat.message_count || 0} messages`}
-                      </span>
-                      {streamingChatIds.has(chat.id) && (
+                    {renamingChatId === chat.id ? (
+                      <input
+                        type="text"
+                        value={editChatValue}
+                        onChange={(e) => setEditChatValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.stopPropagation();
+                            handleInlineChatRename(chat.id, editChatValue);
+                          } else if (e.key === 'Escape') {
+                            e.stopPropagation();
+                            setRenamingChatId(null);
+                          }
+                        }}
+                        onBlur={() => handleInlineChatRename(chat.id, editChatValue)}
+                        autoFocus
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-full bg-dark-900 text-sm text-dark-100 px-1.5 py-0.5 rounded border border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent"
+                      />
+                    ) : (
+                      <p className={`font-medium text-sm truncate ${currentChat?.id === chat.id ? 'text-dark-50' : 'text-dark-200'}`}>{chat.title}</p>
+                    )}
+                    {streamingChatIds.has(chat.id) && (
+                      <div className="flex items-center gap-2 mt-1.5">
                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-accent/20 text-accent text-[10px] font-medium">
                           <span className="w-1.5 h-1.5 bg-accent rounded-full animate-pulse" />
                           Generating
                         </span>
-                      )}
-
-                    </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1">
@@ -1529,11 +1770,11 @@ function Chat() {
           ))}
         </div>
 
-        <div className={`${showSidebar ? 'p-3' : 'p-2'} border-t border-dark-700/30 space-y-1`}>
+        <div className={`${showSidebar ? 'p-3' : 'p-2'} border-t border-dark-700/30 space-y-1 safe-area-inset-bottom`}>
           {(!user?.permissions || user.permissions.can_access_memories) && (
             <button
               onClick={() => navigate('/memories')}
-              className={`${showSidebar ? 'w-full px-4 gap-3' : 'w-9 h-9 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-400 hover:text-dark-300`}
+              className={`${showSidebar ? 'w-full px-4 gap-3 min-h-[44px]' : 'w-11 h-11 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-400 hover:text-dark-300`}
               title={showSidebar ? undefined : "Memories"}
             >
               <Brain className="w-4 h-4" />
@@ -1543,7 +1784,7 @@ function Chat() {
           {(!user?.permissions || user.permissions.can_access_settings) && (
             <button
               onClick={() => navigate('/settings')}
-              className={`${showSidebar ? 'w-full px-4 gap-3' : 'w-9 h-9 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-400 hover:text-dark-300`}
+              className={`${showSidebar ? 'w-full px-4 gap-3 min-h-[44px]' : 'w-11 h-11 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-400 hover:text-dark-300`}
               title={showSidebar ? undefined : "Settings"}
             >
               <SettingsIcon className="w-4 h-4" />
@@ -1553,7 +1794,7 @@ function Chat() {
           {(!user?.permissions || user.permissions.can_access_admin) && (
             <button
               onClick={() => navigate('/admin')}
-              className={`${showSidebar ? 'w-full px-4 gap-3' : 'w-9 h-9 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-400 hover:text-dark-300`}
+              className={`${showSidebar ? 'w-full px-4 gap-3 min-h-[44px]' : 'w-11 h-11 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-400 hover:text-dark-300`}
               title={showSidebar ? undefined : "Admin"}
             >
               <Sparkles className="w-4 h-4" />
@@ -1563,7 +1804,7 @@ function Chat() {
           {showSidebar && <div className="divider-gradient my-2"></div>}
           <button
             onClick={logout}
-            className={`${showSidebar ? 'w-full px-4 gap-3' : 'w-9 h-9 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-500 hover:text-dark-400`}
+            className={`${showSidebar ? 'w-full px-4 gap-3 min-h-[44px]' : 'w-11 h-11 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-500 hover:text-dark-400`}
             title={showSidebar ? undefined : "Logout"}
           >
             <LogOut className="w-4 h-4" />
@@ -1575,13 +1816,25 @@ function Chat() {
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="bg-dark-900/50 border-b border-dark-700/30 px-4 py-3 flex items-center justify-between relative z-50 overflow-visible">
-          {/* Left - Chat Title */}
-          <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div className="bg-dark-900/50 border-b border-dark-700/30 px-3 md:px-4 py-2 md:py-3 flex items-center justify-between relative z-50 overflow-visible safe-area-inset-top">
+          {/* Left - Mobile Menu Button + Chat Title */}
+          <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
+            {/* Mobile menu button */}
+            <button
+              onClick={() => setShowSidebar(!showSidebar)}
+              className="mobile-only p-2 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-dark-700/30 rounded-lg transition-all duration-200"
+              aria-label={showSidebar ? "Close menu" : "Open menu"}
+            >
+              {showSidebar ? (
+                <X className="w-5 h-5 text-dark-400" />
+              ) : (
+                <Menu className="w-5 h-5 text-dark-400" />
+              )}
+            </button>
+
             {currentChat ? (
               <>
-                <h2 className="text-sm font-medium text-dark-200 truncate">{currentChat.title}</h2>
-
+                <h2 className="text-sm font-medium text-dark-200 truncate max-w-[150px] md:max-w-none">{currentChat.title}</h2>
               </>
             ) : (
               <p className="text-dark-500 text-sm">Select a chat or create a new one</p>
@@ -1595,16 +1848,20 @@ function Chat() {
                 selectedModel={chatSettings.model}
                 onModelChange={handleModelChange}
                 isDropdown={true}
+                guestWhitelist={(!user?.is_admin && user?.guestModelWhitelist) || []}
+                isGuestUsingDefaultKey={user?.usingDefaultKey && !user?.is_admin}
+                selectedPersona={selectedPersona}
+                onPersonaChange={handlePersonaSelect}
               />
             </div>
           )}
           {/* Right - Action Buttons */}
           {currentChat ? (
-            <div className="flex items-center gap-2 overflow-visible flex-1 justify-end">
+            <div className="flex items-center gap-1 md:gap-2 overflow-visible flex-1 justify-end">
               <div className="relative overflow-visible" ref={statsPopupRef}>
                 <button
                   onClick={() => setShowInfoModal(!showInfoModal)}
-                  className={`p-2 rounded-lg transition-all duration-200 ${showInfoModal
+                  className={`p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-all duration-200 ${showInfoModal
                     ? 'bg-dark-800 text-dark-300 border border-dark-700/50'
                     : 'hover:bg-dark-800/40 text-dark-500 hover:text-dark-400'
                     }`}
@@ -1721,7 +1978,7 @@ function Chat() {
               </div>
               <button
                 onClick={() => setShowSettings(!showSettings)}
-                className={`p-2 rounded-lg transition-all duration-200 ${showSettings
+                className={`p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-all duration-200 ${showSettings
                   ? 'bg-dark-800 text-dark-300 border border-dark-700/50'
                   : 'hover:bg-dark-800/40 text-dark-500 hover:text-dark-400'
                   }`}
@@ -1737,7 +1994,7 @@ function Chat() {
               {currentChat?.id && (
                 <button
                   onClick={() => setShowShareDialog(true)}
-                  className="p-2 rounded-lg transition-all duration-200 hover:bg-dark-800/40 text-dark-500 hover:text-dark-400"
+                  className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-all duration-200 hover:bg-dark-800/40 text-dark-500 hover:text-dark-400"
                   title="Share chat"
                 >
                   <Share2 className="w-4 h-4" />
@@ -1882,19 +2139,22 @@ function Chat() {
         <div
           ref={messagesContainerRef}
           onScroll={handleMessagesScroll}
-          className="flex-1 overflow-y-auto p-6 relative z-0"
+          className="flex-1 overflow-y-auto p-3 md:p-6 relative z-0"
         >
           {currentChat && (
             <div className="max-w-2xl mx-auto space-y-6">
               {messages.length === 0 && !streaming && (
-                <div className="text-center py-20 fade-in">
-                  <div className="relative inline-block mb-5">
-                    <div className="w-12 h-12 rounded-lg bg-dark-800/80 border border-dark-700/40 flex items-center justify-center">
-                      <Bot className="w-6 h-6 text-dark-500" />
-                    </div>
+                <div className="py-10 fade-in">
+                  <WorkspaceQuickSelect
+                    workspaces={workspaces}
+                    activeWorkspace={activeWorkspace}
+                    onSelect={setActiveWorkspace}
+                  />
+                  <div className="text-center mt-12">
+                    <p className="text-dark-500 text-sm max-w-xs mx-auto">
+                      Select a workspace or start typing to begin
+                    </p>
                   </div>
-                  <h3 className="text-lg font-medium text-dark-200 mb-2">Start a conversation</h3>
-                  <p className="text-dark-500 text-sm max-w-xs mx-auto">Type a message below to begin chatting with AI.</p>
                 </div>
               )}
 
@@ -2109,6 +2369,36 @@ function Chat() {
                           )}
                         </div>
 
+                        {/* Actions Row (User Only) */}
+                        {message.role === 'user' && (
+                          <div className="mt-1 flex gap-1 items-center justify-end opacity-0 group-hover:opacity-100 transition-opacity px-1">
+                            <button
+                              onClick={() => {
+                                setEditContent(message.content);
+                                setEditingMessageId(message.id);
+                              }}
+                              className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
+                              title="Edit message"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleCopy(message.id, message.content, 'raw')}
+                              className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
+                              title={copiedMessageId === `${message.id}-raw` ? 'Copied!' : 'Copy Raw'}
+                            >
+                              {copiedMessageId === `${message.id}-raw` ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                            <button
+                              onClick={() => handleCopy(message.id, message.content, 'markdown')}
+                              className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
+                              title={copiedMessageId === `${message.id}-markdown` ? 'Copied!' : 'Copy Markdown'}
+                            >
+                              {copiedMessageId === `${message.id}-markdown` ? <Check className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        )}
+
                         {/* Actions Row (Assistant Only) */}
                         {message.role === 'assistant' && (
                           <div className="mt-1 flex gap-1 items-center opacity-0 group-hover:opacity-100 transition-opacity px-1">
@@ -2159,6 +2449,14 @@ function Chat() {
                                         <div className="flex justify-between gap-4">
                                           <span className="text-dark-400">Time:</span>
                                           <span className="text-dark-200 font-mono">{formatThinkingTime(message.response_time_ms / 1000)}</span>
+                                        </div>
+                                      )}
+                                      {message.completion_tokens > 0 && message.response_time_ms > 0 && (
+                                        <div className="flex justify-between gap-4">
+                                          <span className="text-dark-400">Speed:</span>
+                                          <span className="text-dark-200 font-mono">
+                                            {(message.completion_tokens / (message.response_time_ms / 1000)).toFixed(1)} t/s
+                                          </span>
                                         </div>
                                       )}
                                       {(message.prompt_tokens || message.completion_tokens) && (
@@ -2279,25 +2577,25 @@ function Chat() {
 
         {/* Input */}
         {currentChat && (
-          <InputBar
-            inputMessage={inputMessage}
-            setInputMessage={setInputMessage}
-            onSendMessage={sendMessage}
-            onStopGeneration={stopGeneration}
-            streaming={streaming}
-            pendingAttachments={pendingAttachments}
-            setPendingAttachments={setPendingAttachments}
-            thinkingMode={thinkingMode}
-            setThinkingMode={setThinkingMode}
-            isReasoningSupported={isReasoningSupported}
-            chatId={currentChat?.id}
-            onOpenImageGeneration={(!user?.permissions || user.permissions.can_access_image_gen) ? () => setShowImageGeneration(true) : undefined}
-            enabledTools={enabledTools}
-            setEnabledTools={setEnabledTools}
-            selectedPersona={selectedPersona}
-            onPersonaSelect={handlePersonaSelect}
-            showRecentPersonas={user?.show_recent_personas}
-          />
+          <div className="keyboard-aware-input safe-area-inset-bottom">
+            <InputBar
+              inputMessage={inputMessage}
+              setInputMessage={setInputMessage}
+              onSendMessage={sendMessage}
+              onStopGeneration={stopGeneration}
+              streaming={streaming}
+              pendingAttachments={pendingAttachments}
+              setPendingAttachments={setPendingAttachments}
+              thinkingMode={thinkingMode}
+              setThinkingMode={setThinkingMode}
+              isReasoningSupported={isReasoningSupported}
+              chatId={currentChat?.id}
+              onOpenImageGeneration={(!user?.permissions || user.permissions.can_access_image_gen) ? () => setShowImageGeneration(true) : undefined}
+              enabledTools={enabledTools}
+              setEnabledTools={setEnabledTools}
+
+            />
+          </div>
         )}
 
         {/* Image Generation Modal */}
@@ -2344,6 +2642,8 @@ function Chat() {
                   selectedModel={forkModel}
                   onModelChange={setForkModel}
                   isDropdown={true}
+                  guestWhitelist={(!user?.is_admin && user?.guestModelWhitelist) || []}
+                  isGuestUsingDefaultKey={user?.usingDefaultKey && !user?.is_admin}
                 />
               </div>
 
@@ -2399,17 +2699,60 @@ function Chat() {
           y={contextMenu.y}
           onClose={closeContextMenu}
         >
-          <ContextMenuItem
-            icon={Trash2}
-            variant="danger"
-            onClick={() => {
-              if (confirm('Are you sure you want to delete this chat?')) {
-                deleteChat(contextMenu.chatId);
-              }
-            }}
-          >
-            Delete Chat
-          </ContextMenuItem>
+          {contextMenu.type === 'workspace' ? (
+            <>
+              <ContextMenuItem
+                icon={SettingsIcon}
+                onClick={() => {
+                  setWsSettingsId(contextMenu.chatId);
+                  closeContextMenu();
+                }}
+              >
+                Edit Settings
+              </ContextMenuItem>
+              <ContextMenuItem
+                icon={Pencil}
+                onClick={() => {
+                  setRenamingWorkspaceId(contextMenu.chatId);
+                  closeContextMenu();
+                }}
+              >
+                Rename Workspace
+              </ContextMenuItem>
+              <ContextMenuItem
+                icon={Trash2}
+                variant="danger"
+                onClick={() => {
+                  if (confirm('Are you sure you want to delete this workspace and all its chats?')) {
+                    deleteWorkspace(contextMenu.chatId);
+                    closeContextMenu();
+                  }
+                }}
+              >
+                Delete Workspace
+              </ContextMenuItem>
+            </>
+          ) : (
+            <>
+              <ContextMenuItem
+                icon={Pencil}
+                onClick={handleRenameClick}
+              >
+                Rename
+              </ContextMenuItem>
+              <ContextMenuItem
+                icon={Trash2}
+                variant="danger"
+                onClick={() => {
+                  if (confirm('Are you sure you want to delete this chat?')) {
+                    deleteChat(contextMenu.chatId);
+                  }
+                }}
+              >
+                Delete Chat
+              </ContextMenuItem>
+            </>
+          )}
         </ContextMenu>
       )}
 

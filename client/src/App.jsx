@@ -15,9 +15,6 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Clean up legacy localStorage accent color (now stored per-user in database)
-    localStorage.removeItem('budi_accent_color');
-
     const token = localStorage.getItem('token');
     if (token) {
       fetch('/api/auth/me', {
@@ -29,9 +26,10 @@ function App() {
         .then(data => {
           if (data.id) {
             setUser(data);
-            // Apply user's accent color
+            // Apply user's accent color and cache it
             if (data.accent_color) {
               document.documentElement.setAttribute('data-accent', data.accent_color);
+              localStorage.setItem('budi_accent_color_v2', data.accent_color);
             }
           } else {
             localStorage.removeItem('token');
@@ -51,15 +49,19 @@ function App() {
   const login = (token, userData) => {
     localStorage.setItem('token', token);
     setUser(userData);
-    // Apply user's accent color on login
+    // Apply user's accent color on login and cache it
     if (userData.accent_color) {
       document.documentElement.setAttribute('data-accent', userData.accent_color);
+      localStorage.setItem('budi_accent_color_v2', userData.accent_color);
     }
   };
 
   const logout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('budi_accent_color_v2');
     setUser(null);
+    // Reset to default accent color
+    document.documentElement.setAttribute('data-accent', 'amber');
   };
 
   if (loading) {

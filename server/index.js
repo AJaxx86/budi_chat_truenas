@@ -16,6 +16,7 @@ import imagesRoutes from './routes/images.js';
 import shareRoutes from './routes/share.js';
 import personasRoutes from './routes/personas.js';
 import workspacesRoutes from './routes/workspaces.js';
+import modelsRoutes from './routes/models.js';
 
 dotenv.config();
 
@@ -43,6 +44,7 @@ app.use('/api/images', imagesRoutes);
 app.use('/api/share', shareRoutes);
 app.use('/api/personas', personasRoutes);
 app.use('/api/workspaces', workspacesRoutes);
+app.use('/api/models', modelsRoutes);
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {

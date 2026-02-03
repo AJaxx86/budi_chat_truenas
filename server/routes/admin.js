@@ -204,7 +204,7 @@ router.get('/settings', (req, res) => {
 // Update system settings
 router.put('/settings', (req, res) => {
   try {
-    const { default_openai_api_key, title_generation_model, global_system_prompt, brave_search_api_key } = req.body;
+    const { default_openai_api_key, title_generation_model, global_system_prompt, brave_search_api_key, guest_model_whitelist } = req.body;
 
     const upsert = db.prepare(`
       INSERT INTO settings (key, value, updated_at)
@@ -226,6 +226,12 @@ router.put('/settings', (req, res) => {
 
     if (brave_search_api_key !== undefined) {
       upsert.run('brave_search_api_key', brave_search_api_key, brave_search_api_key);
+    }
+
+    if (guest_model_whitelist !== undefined) {
+      // Store as JSON string array
+      const whitelistJson = JSON.stringify(guest_model_whitelist);
+      upsert.run('guest_model_whitelist', whitelistJson, whitelistJson);
     }
 
     res.json({ message: 'Settings updated successfully' });

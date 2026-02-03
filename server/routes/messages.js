@@ -64,6 +64,27 @@ router.post("/:chatId", async (req, res) => {
     }
     const { key: apiKey, isDefault: usedDefaultKey } = apiKeyInfo;
 
+    // Validate model for users using the default key (no personal API key)
+    if (usedDefaultKey) {
+      // Get model whitelist
+      const whitelistSetting = db.prepare("SELECT value FROM settings WHERE key = 'guest_model_whitelist'").get();
+      let modelWhitelist = [];
+      if (whitelistSetting?.value) {
+        try {
+          modelWhitelist = JSON.parse(whitelistSetting.value);
+        } catch (e) {
+          console.error('Failed to parse guest_model_whitelist:', e);
+        }
+      }
+
+      // If whitelist check applies, strictly enforce it (empty whitelist = no models allowed)
+      if (!modelWhitelist.includes(chat.model)) {
+        return res.status(403).json({
+          error: "This model is not available when using the default API key. Please add your own API key in settings or ask an admin to whitelist models."
+        });
+      }
+    }
+
     // Generate title concurrently if chat has default name and this is the first message
     // Fire and forget - but we want to send the result down the stream
     if (chat.title === "New Chat" && chat.message_count === 0) {
