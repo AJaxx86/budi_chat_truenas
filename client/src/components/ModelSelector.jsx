@@ -518,6 +518,15 @@ function ModelSelector({
     return '';
   };
 
+  // Format model pricing for display (per million tokens)
+  const formatModelPrice = (pricing) => {
+    if (!pricing) return null;
+    const prompt = parseFloat(pricing.prompt);
+    const completion = parseFloat(pricing.completion);
+    if (isNaN(prompt) || isNaN(completion)) return null;
+    return `$${(prompt * 1000000).toFixed(2)} / $${(completion * 1000000).toFixed(2)}`;
+  };
+
   const getIcon = (iconName) => ICON_MAP[iconName] || User;
 
   if (!isDropdown) {
@@ -703,6 +712,9 @@ function ModelSelector({
                               {model.contextLength && (
                                 <span className="ml-1.5 text-dark-600">• {Math.round(model.contextLength / 1000)}k</span>
                               )}
+                              {model.pricing && formatModelPrice(model.pricing) && (
+                                <span className="ml-1.5 text-emerald-500/70">• {formatModelPrice(model.pricing)}</span>
+                              )}
                             </p>
                           </div>
                           {selectedModel === model.id && (
@@ -756,6 +768,9 @@ function ModelSelector({
                                 {getProvider(model.id)}
                                 {model.contextLength && (
                                   <span className="ml-1.5 text-dark-600">• {Math.round(model.contextLength / 1000)}k</span>
+                                )}
+                                {model.pricing && formatModelPrice(model.pricing) && (
+                                  <span className="ml-1.5 text-emerald-500/70">• {formatModelPrice(model.pricing)}</span>
                                 )}
                               </p>
                             </div>
