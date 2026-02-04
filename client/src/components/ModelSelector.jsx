@@ -45,7 +45,7 @@ const FALLBACK_MODELS = [
     id: 'anthropic/claude-sonnet-4',
     name: 'Claude Sonnet 4',
     description: 'Anthropic Claude Sonnet 4',
-    supportedParameters: ['reasoning', 'tools'],
+    supportedParameters: ['reasoning', 'tools', 'vision'],
     contextLength: 200000,
     pricing: { prompt: '0.000003', completion: '0.000015' }
   },
@@ -53,7 +53,7 @@ const FALLBACK_MODELS = [
     id: 'anthropic/claude-3.5-sonnet',
     name: 'Claude 3.5 Sonnet',
     description: 'Anthropic Claude 3.5 Sonnet',
-    supportedParameters: ['tools'],
+    supportedParameters: ['tools', 'vision'],
     contextLength: 200000,
     pricing: { prompt: '0.000003', completion: '0.000015' }
   },
@@ -61,7 +61,7 @@ const FALLBACK_MODELS = [
     id: 'openai/gpt-4o',
     name: 'GPT-4o',
     description: 'OpenAI GPT-4o',
-    supportedParameters: ['tools'],
+    supportedParameters: ['tools', 'vision'],
     contextLength: 128000,
     pricing: { prompt: '0.0000025', completion: '0.00001' }
   },
@@ -69,15 +69,15 @@ const FALLBACK_MODELS = [
     id: 'openai/gpt-4-turbo',
     name: 'GPT-4 Turbo',
     description: 'OpenAI GPT-4 Turbo',
-    supportedParameters: ['tools'],
+    supportedParameters: ['tools', 'vision'],
     contextLength: 128000,
-    pricing: { prompt: '0.00001', completion: '0.00003' }
+    pricing: { prompt: '0.00001', completion: '0.000003' }
   },
   {
     id: 'google/gemini-2.5-pro-preview',
     name: 'Gemini 2.5 Pro',
     description: 'Google Gemini 2.5 Pro',
-    supportedParameters: ['reasoning', 'tools'],
+    supportedParameters: ['reasoning', 'tools', 'vision'],
     contextLength: 2000000,
     pricing: { prompt: '0.00000125', completion: '0.000005' }
   },
@@ -85,7 +85,7 @@ const FALLBACK_MODELS = [
     id: 'google/gemini-2.5-flash-preview',
     name: 'Gemini 2.5 Flash',
     description: 'Google Gemini 2.5 Flash',
-    supportedParameters: ['reasoning', 'tools'],
+    supportedParameters: ['reasoning', 'tools', 'vision'],
     contextLength: 1000000,
     pricing: { prompt: '0.000000075', completion: '0.0000003' }
   },
@@ -140,14 +140,19 @@ const getModelCapabilitiesFromData = (model) => {
 
   // Check for reasoning-related parameters or model naming patterns
   const hasReasoningParams = params.includes('reasoning') || params.includes('include_reasoning');
+  // Updated o1 check to catch "openai/o1" and plain "o1" in addition to "o1-" variants
   const isReasoningModel = id.includes('thinking') || id.includes('-r1') || id.includes('deepseek-r1') ||
-    id.includes('qwq') || id.includes('o1-') || id.includes('o3-') || id.includes('o4-');
+    id.includes('qwq') || id.includes('o1-') || id.endsWith('/o1') || id === 'o1' ||
+    id.includes('o3-') || id.includes('o4-') || id.includes('gemini-3');
 
   // Check for vision-related parameters or model naming patterns
   const hasVisionParams = params.includes('vision') || params.includes('image_input');
+  // Updated Llama 3.2 check to exclude text-only models (1b and 3b)
+  const isLlamaVision = id.includes('llama-3.2') && !id.includes('1b') && !id.includes('3b');
+
   const isVisionModel = id.includes('vision') || id.includes('-4o') || id.includes('gpt-4o') ||
     id.includes('claude-3') || id.includes('gemini') || id.includes('llava') ||
-    id.includes('pixtral') || id.includes('qwen-vl') || id.includes('llama-3.2');
+    id.includes('pixtral') || id.includes('qwen-vl') || isLlamaVision;
 
   return {
     reasoning: hasReasoningParams || isReasoningModel,
@@ -590,8 +595,8 @@ function ModelSelector({
           }`}
       >
         <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${selectedPersona
-            ? (CATEGORIES[selectedPersona.category]?.bgColor || 'bg-accent/20') + ' ' + (CATEGORIES[selectedPersona.category]?.color || 'text-accent')
-            : 'bg-accent text-white'
+          ? (CATEGORIES[selectedPersona.category]?.bgColor || 'bg-accent/20') + ' ' + (CATEGORIES[selectedPersona.category]?.color || 'text-accent')
+          : 'bg-accent text-white'
           }`}>
           <ActivePersonaIcon className="w-4 h-4" />
         </div>
@@ -620,8 +625,8 @@ function ModelSelector({
             <button
               onClick={() => setActiveTab('model')}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-medium transition-all ${activeTab === 'model'
-                  ? 'bg-dark-700 text-white shadow-sm'
-                  : 'text-dark-400 hover:text-dark-200 hover:bg-dark-800'
+                ? 'bg-dark-700 text-white shadow-sm'
+                : 'text-dark-400 hover:text-dark-200 hover:bg-dark-800'
                 }`}
             >
               <Bot className="w-3.5 h-3.5" />
@@ -630,8 +635,8 @@ function ModelSelector({
             <button
               onClick={() => setActiveTab('persona')}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-xs font-medium transition-all ${activeTab === 'persona'
-                  ? 'bg-dark-700 text-white shadow-sm'
-                  : 'text-dark-400 hover:text-dark-200 hover:bg-dark-800'
+                ? 'bg-dark-700 text-white shadow-sm'
+                : 'text-dark-400 hover:text-dark-200 hover:bg-dark-800'
                 }`}
             >
               <User className="w-3.5 h-3.5" />

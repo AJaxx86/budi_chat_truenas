@@ -64,8 +64,8 @@ router.post("/:chatId", async (req, res) => {
     }
     const { key: apiKey, isDefault: usedDefaultKey } = apiKeyInfo;
 
-    // Validate model for users using the default key (no personal API key)
-    if (usedDefaultKey) {
+    // Validate model for non-admin users using the default key (no personal API key)
+    if (usedDefaultKey && !req.user.is_admin) {
       // Get model whitelist
       const whitelistSetting = db.prepare("SELECT value FROM settings WHERE key = 'guest_model_whitelist'").get();
       let modelWhitelist = [];
