@@ -343,8 +343,13 @@ router.post("/:chatId", async (req, res) => {
       )
       .all();
 
-    if (tools.length > 0) {
-      requestOptions.tools = tools.map((t) => ({
+    // Filter out workspace_search if not in a workspace
+    const filteredTools = tools.filter(t =>
+      t.name !== 'workspace_search' || chat.workspace_id
+    );
+
+    if (filteredTools.length > 0) {
+      requestOptions.tools = filteredTools.map((t) => ({
         type: "function",
         function: {
           name: t.name,
@@ -363,7 +368,9 @@ router.post("/:chatId", async (req, res) => {
     let assistantReasoning = "";
     let toolCalls = [];
     let usageData = null;
-    const assistantMessageId = uuidv4();
+    const responseGroupId = uuidv4();
+    let allAssistantMessageIds = [];
+    let currentAssistantMessageId = uuidv4();
 
     // Step-based tracking for timeline display
     let steps = [];
@@ -381,6 +388,7 @@ router.post("/:chatId", async (req, res) => {
         index: stepIndex++,
         content: "",
         startTime: Date.now(),
+        messageId: currentAssistantMessageId,
         ...extraData
       };
       steps.push(step);
@@ -540,27 +548,27 @@ router.post("/:chatId", async (req, res) => {
     // Save initial assistant message
     // When tools are involved, this preserves the initial reasoning before tool execution
     if (assistantMessage || assistantReasoning || toolCalls.length > 0) {
+      const hasTools = toolCalls.length > 0;
       db.prepare(
         `
-        INSERT INTO messages (id, chat_id, role, content, reasoning_content, tool_calls, prompt_tokens, completion_tokens, response_time_ms, model, cost, used_default_key)
-        VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO messages (id, chat_id, role, content, reasoning_content, tool_calls, prompt_tokens, completion_tokens, response_time_ms, model, cost, used_default_key, response_group_id)
+        VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       ).run(
-        assistantMessageId,
+        currentAssistantMessageId,
         chatId,
         assistantMessage || "",
         assistantReasoning || null,
-        toolCalls.length > 0 ? JSON.stringify(toolCalls) : null,
+        hasTools ? JSON.stringify(toolCalls) : null,
         usageData?.prompt_tokens || null,
         usageData?.completion_tokens || null,
         responseTimeMs,
         chat.model,
         usageData?.cost || 0,
         usedDefaultKey ? 1 : 0,
+        hasTools ? responseGroupId : null,
       );
-
-      // Note: Steps are saved at the end of the request to avoid duplicates
-      // when tool processing adds more steps
+      allAssistantMessageIds.push(currentAssistantMessageId);
     }
 
     // Update persistent user stats (survives message/chat deletion)
@@ -652,12 +660,17 @@ router.post("/:chatId", async (req, res) => {
       // Execute all tool calls and collect results (don't save to DB - internal only)
       const toolResults = [];
       for (const toolCall of currentToolCalls) {
-        // Start a tool_call step
-        const toolCallStepId = startStep("tool_call", {
-          tool_call_id: toolCall.id,
-          tool_name: toolCall.function.name,
-          tool_arguments: toolCall.function.arguments
-        });
+        // Reuse the streaming step if it exists; otherwise create a new one
+        let toolCallStepId;
+        if (toolCall.stepId) {
+          toolCallStepId = toolCall.stepId;
+        } else {
+          toolCallStepId = startStep("tool_call", {
+            tool_call_id: toolCall.id,
+            tool_name: toolCall.function.name,
+            tool_arguments: toolCall.function.arguments
+          });
+        }
 
         const toolStartTime = Date.now();
         const result = await executeToolCall(toolCall, req.user.id, chat.workspace_id);
@@ -693,15 +706,16 @@ router.post("/:chatId", async (req, res) => {
         // Save tool result to database
         const toolMessageId = uuidv4();
         db.prepare(`
-          INSERT INTO messages (id, chat_id, role, content, tool_call_id, name, created_at)
-          VALUES (?, ?, 'tool', ?, ?, ?, ?)
+          INSERT INTO messages (id, chat_id, role, content, tool_call_id, name, created_at, response_group_id)
+          VALUES (?, ?, 'tool', ?, ?, ?, ?, ?)
         `).run(
           toolMessageId,
           chatId,
           result,
           toolCall.id,
           toolCall.function.name,
-          new Date().toISOString()
+          new Date().toISOString(),
+          responseGroupId
         );
       }
 
@@ -742,8 +756,13 @@ router.post("/:chatId", async (req, res) => {
         )
         .all();
 
-      if (tools.length > 0) {
-        followUpOptions.tools = tools.map((t) => ({
+      // Filter out workspace_search if not in a workspace
+      const filteredTools = tools.filter(t =>
+        t.name !== 'workspace_search' || chat.workspace_id
+      );
+
+      if (filteredTools.length > 0) {
+        followUpOptions.tools = filteredTools.map((t) => ({
           type: "function",
           function: {
             name: t.name,
@@ -757,6 +776,15 @@ router.post("/:chatId", async (req, res) => {
       if (reasoning) {
         followUpOptions.reasoning = reasoning;
       }
+
+      // Emit new_assistant_turn event so the client can prepare for a new turn
+      res.write(`data: ${JSON.stringify({
+        type: "new_assistant_turn",
+        turn_index: allAssistantMessageIds.length
+      })}\n\n`);
+
+      // Create new message ID for this synthesis turn
+      currentAssistantMessageId = uuidv4();
 
       const synthesisStartTime = Date.now();
       const synthesisStream = await openai.chat.completions.create(followUpOptions);
@@ -819,15 +847,28 @@ router.post("/:chatId", async (req, res) => {
                 type: "function",
                 function: { name: "", arguments: "" },
               };
+              // Create step for this synthesis tool call
+              synthesisToolCalls[toolCall.index].stepId = startStep("tool_call", {
+                tool_call_id: toolCall.id,
+                tool_name: toolCall.function?.name || "",
+                tool_arguments: ""
+              });
             }
 
             if (toolCall.function?.name) {
               synthesisToolCalls[toolCall.index].function.name = toolCall.function.name;
+              const step = steps.find(s => s.id === synthesisToolCalls[toolCall.index].stepId);
+              if (step) step.tool_name = synthesisToolCalls[toolCall.index].function.name;
             }
 
             if (toolCall.function?.arguments) {
               synthesisToolCalls[toolCall.index].function.arguments +=
                 toolCall.function.arguments;
+              const step = steps.find(s => s.id === synthesisToolCalls[toolCall.index].stepId);
+              if (step) {
+                step.tool_arguments = synthesisToolCalls[toolCall.index].function.arguments;
+                appendStepContent(step.id, toolCall.function.arguments);
+              }
             }
           }
         }
@@ -839,56 +880,47 @@ router.post("/:chatId", async (req, res) => {
         synthesisReasoningStepId = null;
       }
 
+      // Complete any synthesis tool call steps
+      if (synthesisToolCalls.length > 0) {
+        for (const toolCall of synthesisToolCalls) {
+          if (toolCall && toolCall.stepId) {
+            completeStep(toolCall.stepId);
+          }
+        }
+      }
+
       const synthesisTimeMs = Date.now() - synthesisStartTime;
       totalResponseTime += synthesisTimeMs;
       console.log(
         `Synthesis complete. ${synthesisMessage.length} content chars, ${synthesisReasoning.length} reasoning chars, ${synthesisToolCalls.length} tool calls in ${synthesisTimeMs}ms`,
       );
 
-      // Update for next iteration or final save
-      finalMessage = synthesisMessage;
-      // Don't combine - synthesis gets its own reasoning
-      finalReasoning = synthesisReasoning;
-      finalUsage = synthesisUsage;
-      currentToolCalls = synthesisToolCalls.filter(tc => tc && tc.function.name);
-    }
-
-    // Track whether we went through the tool processing path
-    const toolsWereProcessed = toolCalls.length > 0;
-
-    // Update the original message with final content when tools were processed
-    // This keeps reasoning, tool_calls, and final response in a single message
-    if (toolsWereProcessed) {
-      // Store reasoning as structured JSON to show pre-tool and post-tool thinking separately
-      const structuredReasoning = JSON.stringify({
-        pre_tool: assistantReasoning || null,
-        post_tool: finalReasoning || null
-      });
-
-      const updateResult = db.prepare(
+      // INSERT a new assistant message for this synthesis turn (instead of updating the original)
+      const hasSynthToolCalls = synthesisToolCalls.filter(tc => tc && tc.function.name).length > 0;
+      db.prepare(
         `
-        UPDATE messages
-        SET content = ?,
-            reasoning_content = ?,
-            prompt_tokens = COALESCE(prompt_tokens, 0) + ?,
-            completion_tokens = COALESCE(completion_tokens, 0) + ?,
-            response_time_ms = ?,
-            cost = COALESCE(cost, 0) + ?
-        WHERE id = ?
+        INSERT INTO messages (id, chat_id, role, content, reasoning_content, tool_calls, prompt_tokens, completion_tokens, response_time_ms, model, cost, used_default_key, response_group_id)
+        VALUES (?, ?, 'assistant', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       ).run(
-        finalMessage || "",
-        structuredReasoning,
-        finalUsage?.prompt_tokens || 0,
-        finalUsage?.completion_tokens || 0,
-        totalResponseTime,
-        finalUsage?.cost || 0,
-        assistantMessageId,
+        currentAssistantMessageId,
+        chatId,
+        synthesisMessage || "",
+        synthesisReasoning || null,
+        hasSynthToolCalls ? JSON.stringify(synthesisToolCalls.filter(tc => tc && tc.function.name)) : null,
+        synthesisUsage?.prompt_tokens || null,
+        synthesisUsage?.completion_tokens || null,
+        synthesisTimeMs,
+        chat.model,
+        synthesisUsage?.cost || 0,
+        usedDefaultKey ? 1 : 0,
+        responseGroupId,
       );
+      allAssistantMessageIds.push(currentAssistantMessageId);
 
-      // Update stats for final response
-      const synthTokens = (finalUsage?.prompt_tokens || 0) + (finalUsage?.completion_tokens || 0);
-      const synthCost = finalUsage?.cost || 0;
+      // Update stats for synthesis response
+      const synthTokens = (synthesisUsage?.prompt_tokens || 0) + (synthesisUsage?.completion_tokens || 0);
+      const synthCost = synthesisUsage?.cost || 0;
 
       try {
         db.prepare(
@@ -909,18 +941,18 @@ router.post("/:chatId", async (req, res) => {
         `,
         ).run(
           req.user.id,
-          finalUsage?.prompt_tokens || 0,
-          finalUsage?.completion_tokens || 0,
+          synthesisUsage?.prompt_tokens || 0,
+          synthesisUsage?.completion_tokens || 0,
           synthCost,
-          finalReasoning?.length || 0,
+          synthesisReasoning?.length || 0,
           usedDefaultKey ? synthTokens : 0,
           usedDefaultKey ? synthCost : 0,
           usedDefaultKey ? 0 : synthTokens,
           usedDefaultKey ? 0 : synthCost,
-          finalUsage?.prompt_tokens || 0,
-          finalUsage?.completion_tokens || 0,
+          synthesisUsage?.prompt_tokens || 0,
+          synthesisUsage?.completion_tokens || 0,
           synthCost,
-          finalReasoning?.length || 0,
+          synthesisReasoning?.length || 0,
           usedDefaultKey ? synthTokens : 0,
           usedDefaultKey ? synthCost : 0,
           usedDefaultKey ? 0 : synthTokens,
@@ -930,7 +962,7 @@ router.post("/:chatId", async (req, res) => {
         console.error(`Stats update failed:`, statsError);
       }
 
-      // Update model stats
+      // Update model stats for synthesis
       if (chat.model) {
         db.prepare(
           `
@@ -946,16 +978,20 @@ router.post("/:chatId", async (req, res) => {
         ).run(
           req.user.id,
           chat.model,
-          finalUsage?.prompt_tokens || 0,
-          finalUsage?.completion_tokens || 0,
-          finalUsage?.cost || 0,
-          finalUsage?.prompt_tokens || 0,
-          finalUsage?.completion_tokens || 0,
-          finalUsage?.cost || 0,
+          synthesisUsage?.prompt_tokens || 0,
+          synthesisUsage?.completion_tokens || 0,
+          synthesisUsage?.cost || 0,
+          synthesisUsage?.prompt_tokens || 0,
+          synthesisUsage?.completion_tokens || 0,
+          synthesisUsage?.cost || 0,
         );
       }
 
-      usageData = finalUsage;
+      // Update for next iteration context (keep finalMessage for conversationMessages only)
+      finalMessage = synthesisMessage;
+      finalReasoning = synthesisReasoning;
+      finalUsage = synthesisUsage;
+      currentToolCalls = synthesisToolCalls.filter(tc => tc && tc.function.name);
     }
 
     // Update chat timestamp
@@ -965,10 +1001,7 @@ router.post("/:chatId", async (req, res) => {
     `,
     ).run(chatId);
 
-    // Always use the original assistant message ID (we update it in place when tools are used)
-    const savedMessageId = assistantMessageId;
-
-    // Save all steps to the database
+    // Save all steps to the database, each associated with its own message
     if (steps.length > 0) {
       const insertStep = db.prepare(`
         INSERT INTO message_steps (id, message_id, chat_id, step_type, step_index, content, tool_call_id, tool_name, tool_arguments, duration_ms, created_at)
@@ -978,7 +1011,7 @@ router.post("/:chatId", async (req, res) => {
       for (const step of steps) {
         insertStep.run(
           step.id,
-          savedMessageId,
+          step.messageId || allAssistantMessageIds[0] || currentAssistantMessageId,
           chatId,
           step.type,
           step.index,
@@ -992,19 +1025,26 @@ router.post("/:chatId", async (req, res) => {
       }
     }
 
-    // Send final message ID to client for optimistic update
+    // Send final message ID(s) to client for optimistic update
+    const lastMessageId = allAssistantMessageIds.length > 0
+      ? allAssistantMessageIds[allAssistantMessageIds.length - 1]
+      : currentAssistantMessageId;
+
     res.write(`data: ${JSON.stringify({
       type: "message_finalized",
-      message_id: savedMessageId
+      message_id: lastMessageId,
+      message_ids: allAssistantMessageIds,
+      response_group_id: allAssistantMessageIds.length > 1 ? responseGroupId : null
     })}\n\n`);
 
     res.write(
       `data: ${JSON.stringify({
         type: "done",
-        message_id: savedMessageId,
-        usage: usageData || null,
+        message_id: lastMessageId,
+        message_ids: allAssistantMessageIds,
+        usage: finalUsage || usageData || null,
         model: chat.model,
-        cost: usageData?.cost || 0,
+        cost: finalUsage?.cost || usageData?.cost || 0,
       })}\n\n`,
     );
     res.end();

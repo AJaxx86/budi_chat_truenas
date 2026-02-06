@@ -102,8 +102,8 @@ router.post('/', (req, res) => {
     }
 
     db.prepare(`
-      INSERT INTO chats(id, user_id, title, model, system_prompt, temperature, depth, tone, agent_mode, workspace_id)
-      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO chats(id, user_id, title, model, system_prompt, temperature, depth, tone, agent_mode, workspace_id, thinking_mode)
+      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
       id,
       req.user.id,
@@ -114,7 +114,8 @@ router.post('/', (req, res) => {
       depth || 'standard',
       tone || 'professional',
       agent_mode ? 1 : 0,
-      workspace_id || null
+      workspace_id || null,
+      req.body.thinking_mode || 'medium'
     );
 
     const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(id);
@@ -176,6 +177,11 @@ router.put('/:id', (req, res) => {
       values.push(tone);
     }
 
+    if (req.body.thinking_mode !== undefined) {
+      updates.push('thinking_mode = ?');
+      values.push(req.body.thinking_mode);
+    }
+
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No updates provided' });
     }
@@ -225,8 +231,8 @@ router.post('/:id/fork', (req, res) => {
     const newChatId = uuidv4();
     db.prepare(`
       INSERT INTO chats(id, user_id, title, parent_chat_id, fork_point_message_id,
-        model, system_prompt, temperature, depth, tone, agent_mode)
-      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        model, system_prompt, temperature, depth, tone, agent_mode, thinking_mode)
+      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
       newChatId,
       req.user.id,
@@ -238,7 +244,8 @@ router.post('/:id/fork', (req, res) => {
       originalChat.temperature,
       originalChat.depth,
       originalChat.tone,
-      originalChat.agent_mode
+      originalChat.agent_mode,
+      originalChat.thinking_mode || 'medium'
     );
 
     // Copy messages up to fork point
@@ -249,11 +256,21 @@ router.post('/:id/fork', (req, res) => {
       `).all(id, message_id);
 
     const insertMessage = db.prepare(`
-      INSERT INTO messages(id, chat_id, role, content, tool_calls, tool_call_id, name, created_at, prompt_tokens, completion_tokens, response_time_ms, model, cost)
-    VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO messages(id, chat_id, role, content, tool_calls, tool_call_id, name, created_at, prompt_tokens, completion_tokens, response_time_ms, model, cost, response_group_id)
+    VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
+    // Map old response_group_ids to new UUIDs so groups stay linked in the fork
+    const groupIdMap = {};
     for (const msg of messages) {
+      let newGroupId = null;
+      if (msg.response_group_id) {
+        if (!groupIdMap[msg.response_group_id]) {
+          groupIdMap[msg.response_group_id] = uuidv4();
+        }
+        newGroupId = groupIdMap[msg.response_group_id];
+      }
+
       insertMessage.run(
         uuidv4(),
         newChatId,
@@ -267,7 +284,8 @@ router.post('/:id/fork', (req, res) => {
         msg.completion_tokens,
         msg.response_time_ms,
         msg.model,
-        msg.cost
+        msg.cost,
+        newGroupId
       );
     }
 

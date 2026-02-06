@@ -32,6 +32,7 @@ marked.setOptions({
 
 
 const LAST_MODEL_KEY = 'budi_chat_last_model';
+const LAST_THINKING_MODE_KEY = 'budi_chat_last_thinking_mode';
 
 
 // Format time as seconds or minutes:seconds (integer display)
@@ -129,6 +130,25 @@ const parseReasoningContent = (reasoningContent) => {
 
   // Plain text reasoning (no tool calls involved)
   return { preToolReasoning: reasoningContent, postToolReasoning: null, isStructured: false };
+};
+
+// Group messages for display: consecutive non-user messages form response groups
+const groupMessagesForDisplay = (messages) => {
+  const groups = [];
+  let currentGroup = null;
+  for (const msg of messages) {
+    if (msg.role === 'user') {
+      if (currentGroup) groups.push(currentGroup);
+      groups.push({ type: 'user', messages: [msg] });
+      currentGroup = null;
+    } else {
+      // assistant or tool messages go into response groups
+      if (!currentGroup) currentGroup = { type: 'response', messages: [] };
+      currentGroup.messages.push(msg);
+    }
+  }
+  if (currentGroup) groups.push(currentGroup);
+  return groups;
 };
 
 // Memoized ThinkingSection component to prevent re-renders during streaming
@@ -245,7 +265,14 @@ function Chat() {
   }, [currentChat?.id]);
 
   // Thinking mode state for reasoning models (default to 'medium')
-  const [thinkingMode, setThinkingMode] = useState('medium');
+  const [thinkingMode, setThinkingMode] = useState(() => localStorage.getItem(LAST_THINKING_MODE_KEY) || 'medium');
+
+  // Persist thinking mode changes
+  useEffect(() => {
+    if (thinkingMode) {
+      localStorage.setItem(LAST_THINKING_MODE_KEY, thinkingMode);
+    }
+  }, [thinkingMode]);
 
   const [showSearch, setShowSearch] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
@@ -318,6 +345,8 @@ function Chat() {
     // Step-based tracking for timeline display
     steps: [],                 // Array of step objects
     currentStepId: null,       // ID of currently active step
+    // Multi-turn tracking for tool-use chains
+    completedTurns: [],        // Array of completed turn objects { message, reasoning, steps, toolCalls, toolResults }
   }), []);
 
   // Update streaming state for a specific chat
@@ -373,7 +402,8 @@ function Chat() {
     toolCalls,
     toolResults,
     steps: streamingSteps,
-    currentStepId
+    currentStepId,
+    completedTurns
   } = currentStreamState;
 
   // Check if current model supports reasoning
@@ -846,7 +876,7 @@ function Chat() {
       system_prompt: '',
       agent_mode: false
     });
-    setThinkingMode('medium');
+    setThinkingMode(localStorage.getItem(LAST_THINKING_MODE_KEY) || 'medium');
   };
 
   const updateChatSettings = async () => {
@@ -1092,12 +1122,12 @@ function Chat() {
         },
         body: JSON.stringify({
           content: userMessage,
-          reasoning: thinkingMode !== 'off' ? {
-            effort: THINKING_MODES.find(m => m.id === thinkingMode)?.effort || 'medium',
-            ...(THINKING_MODES.find(m => m.id === thinkingMode)?.max_tokens && {
-              max_tokens: THINKING_MODES.find(m => m.id === thinkingMode).max_tokens
-            })
-          } : undefined,
+          reasoning: thinkingMode !== 'off' ? (() => {
+            const mode = THINKING_MODES.find(m => m.id === thinkingMode);
+            // OpenRouter requires EITHER effort OR max_tokens, not both
+            if (mode?.max_tokens) return { max_tokens: mode.max_tokens };
+            return { effort: mode?.effort || 'medium' };
+          })() : undefined,
           attachment_ids: attachmentIds
         }),
         signal: abortController.signal
@@ -1120,6 +1150,9 @@ function Chat() {
       let hasReceivedToolCalls = false;
       let accumulatedSteps = []; // Track steps locally
       let currentLocalStepId = null;
+      let localCompletedTurns = []; // Track completed turns for multi-step tool use
+      let localToolCalls = [];
+      let localToolResults = {};
 
       // Capture the specific controller for this stream
       const currentStreamController = abortController;
@@ -1206,17 +1239,50 @@ function Chat() {
                 loadChats();
               } else if (data.type === 'tool_calls') {
                 hasReceivedToolCalls = true;
+                localToolCalls = data.tool_calls;
                 updateStreamState(chatId, {
                   toolCalls: data.tool_calls,
                   isPostToolPhase: true
                 });
               } else if (data.type === 'tool_result') {
-                const chatState = streamingStates.get(chatId) || createInitialStreamState();
+                localToolResults = {
+                  ...localToolResults,
+                  [data.tool_call_id]: data.result
+                };
                 updateStreamState(chatId, {
-                  toolResults: {
-                    ...chatState.toolResults,
-                    [data.tool_call_id]: data.result
-                  }
+                  toolResults: localToolResults
+                });
+              } else if (data.type === 'new_assistant_turn') {
+                // A new synthesis turn is starting - save current state as a completed turn
+                localCompletedTurns = [...localCompletedTurns, {
+                  message: accumulatedMessage,
+                  reasoning: accumulatedReasoning,
+                  steps: [...accumulatedSteps],
+                  toolCalls: [...localToolCalls],
+                  toolResults: { ...localToolResults }
+                }];
+                // Reset accumulators for the new turn
+                accumulatedMessage = '';
+                accumulatedReasoning = '';
+                accumulatedPreToolReasoning = '';
+                accumulatedPostToolReasoning = '';
+                hasReceivedToolCalls = false;
+                accumulatedSteps = [];
+                currentLocalStepId = null;
+                localToolCalls = [];
+                localToolResults = {};
+                updateStreamState(chatId, {
+                  completedTurns: localCompletedTurns,
+                  streamingMessage: '',
+                  streamingReasoning: '',
+                  preToolReasoning: '',
+                  postToolReasoning: '',
+                  isPostToolPhase: false,
+                  thinkingComplete: false,
+                  toolCalls: [],
+                  toolResults: {},
+                  steps: [],
+                  currentStepId: null
                 });
               } else if (data.type === 'step_start') {
                 const newStep = {
@@ -1257,26 +1323,26 @@ function Chat() {
                 });
               } else if (data.type === 'message_finalized') {
                 // Optimistic update to prevent UI flicker
-                // We use the accumulated steps and content to update the message list immediately
-                // This ensures that even if loadMessages is slow or races, the user sees the seamless state
-                const finalMessage = {
-                  id: data.message_id,
-                  role: 'assistant',
-                  content: accumulatedMessage,
-                  model: currentChat.model, // heuristic
-                  created_at: new Date().toISOString(),
-                  steps: accumulatedSteps,
-                  reasoning_content: accumulatedReasoning, // fallback
-                  tool_calls: hasReceivedToolCalls ? JSON.stringify(streamingStates.get(chatId)?.toolCalls || []) : null
-                };
+                // For multi-turn tool chains, skip optimistic update - loadMessages handles it
+                if (!data.message_ids || data.message_ids.length <= 1) {
+                  const finalMessage = {
+                    id: data.message_id,
+                    role: 'assistant',
+                    content: accumulatedMessage,
+                    model: currentChat.model,
+                    created_at: new Date().toISOString(),
+                    steps: accumulatedSteps,
+                    reasoning_content: accumulatedReasoning,
+                    tool_calls: hasReceivedToolCalls ? JSON.stringify(streamingStates.get(chatId)?.toolCalls || []) : null
+                  };
 
-                setMessages(prev => {
-                  // If we already have this message (rare race), update it
-                  if (prev.some(m => m.id === finalMessage.id)) {
-                    return prev.map(m => m.id === finalMessage.id ? finalMessage : m);
-                  }
-                  return [...prev, finalMessage];
-                });
+                  setMessages(prev => {
+                    if (prev.some(m => m.id === finalMessage.id)) {
+                      return prev.map(m => m.id === finalMessage.id ? finalMessage : m);
+                    }
+                    return [...prev, finalMessage];
+                  });
+                }
               }
             } catch (e) {
               console.error('Failed to parse SSE data:', e);
@@ -1391,8 +1457,21 @@ function Chat() {
     });
   };
 
+  // Ref to hold pending edit message that should be sent after state updates
+  const pendingEditMessageRef = useRef(null);
+
+  // Effect to send the pending edit message once inputMessage is set
+  useEffect(() => {
+    if (pendingEditMessageRef.current && inputMessage === pendingEditMessageRef.current) {
+      pendingEditMessageRef.current = null;
+      // Programmatically trigger send
+      const syntheticEvent = { preventDefault: () => {} };
+      sendMessage(syntheticEvent);
+    }
+  }, [inputMessage]);
+
   const handleEditSave = async (messageId) => {
-    if (!editContent.trim() || !currentChat) return;
+    if (!editContent.trim() || !currentChat?.id) return;
 
     try {
       // 1. Delete branch from this message onward
@@ -1405,112 +1484,20 @@ function Chat() {
 
       if (!res.ok) throw new Error('Failed to delete message branch');
 
-      // 2. Trigger new message with edited content
-      // We manually call sendMessage implementation
+      // 2. Save edited content and reset edit state
       const userMessage = editContent.trim();
       setEditingMessageId(null);
       setEditContent('');
-      setStreaming(true);
-      setStreamingMessage('');
-      setStreamingReasoning('');
-      abortControllerRef.current = new AbortController();
 
-      // Update UI: load messages again to show the deletion
+      // 3. Reload messages to reflect the deletion
       await loadMessages(currentChat.id);
 
-      // Add temporary user message to UI for responsiveness
-      const tempUserMessage = {
-        id: Date.now(),
-        role: 'user',
-        content: userMessage,
-        created_at: new Date().toISOString()
-      };
-      setMessages(prev => [...prev, tempUserMessage]);
-
-      // Trigger the API call to start regeneration
-      const sendRes = await fetch(`/api/messages/${currentChat.id}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ content: userMessage }),
-        signal: abortControllerRef.current.signal
-      });
-
-      if (!sendRes.ok) {
-        const errorData = await sendRes.json();
-        throw new Error(errorData.error || 'Failed to send message');
-      }
-
-      const reader = sendRes.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.type === 'reasoning') {
-                setStreamingReasoning(prev => prev + data.content);
-              } else if (data.type === 'content') {
-                setStreamingMessage(prev => prev + data.content);
-              } else if (data.type === 'done') {
-                // Calculate thinking duration
-                const thinkingDuration = thinkingStartTime ? (Date.now() - thinkingStartTime) / 1000 : 0;
-
-                if (data.usage) {
-                  const stats = {
-                    promptTokens: data.usage.prompt_tokens || 0,
-                    completionTokens: data.usage.completion_tokens || 0,
-                    totalTokens: data.usage.total_tokens || 0,
-                    model: data.model,
-                    duration: thinkingDuration,
-                    cost: data.cost || 0
-                  };
-                  setLastThinkingStats(stats);
-                  setUsageStats(prev => ({
-                    ...prev,
-                    lastMessage: stats,
-                    totalPromptTokens: (prev?.totalPromptTokens || 0) + (data.usage.prompt_tokens || 0),
-                    totalCompletionTokens: (prev?.totalCompletionTokens || 0) + (data.usage.completion_tokens || 0),
-                    totalTokens: (prev?.totalTokens || 0) + (data.usage.total_tokens || 0),
-                    messageCount: (prev?.messageCount || 0) + 1
-                  }));
-                } else {
-                  setLastThinkingStats({ duration: thinkingDuration, totalTokens: 0 });
-                }
-                loadMessages(currentChat.id);
-                loadChats();
-                setTimeout(() => {
-                  setStreamingMessage('');
-                  setStreamingReasoning('');
-                }, 100);
-              } else if (data.type === 'error') {
-                alert('Error: ' + data.error);
-              }
-            } catch (e) {
-              console.error('Failed to parse SSE data:', e);
-            }
-          }
-        }
-      }
+      // 4. Set input and trigger send via the effect
+      pendingEditMessageRef.current = userMessage;
+      setInputMessage(userMessage);
     } catch (error) {
-      if (error.name === 'AbortError') {
-        console.log('Generation aborted');
-      } else {
-        console.error('Failed to edit message:', error);
-        alert('Failed to edit message: ' + error.message);
-      }
-      setStreaming(false);
+      console.error('Failed to edit message:', error);
+      alert('Failed to edit message: ' + error.message);
     }
   };
 
@@ -2168,133 +2155,30 @@ function Chat() {
                   return acc;
                 }, {});
 
-                return messages.filter(m => {
-                  // Filter out tool messages
-                  if (m.role === 'tool') return false;
-                  // Filter out empty assistant messages with no reasoning or tool calls
-                  if (m.role === 'assistant' && !m.content?.trim() && !m.reasoning_content && !m.tool_calls) return false;
-                  return true;
-                }).map((message, index) => {
-                  // Get tool results for this message if it has tool calls
-                  let parsedToolCalls = [];
+                // Group messages into user messages and response groups
+                const displayGroups = groupMessagesForDisplay(messages);
 
-                  try {
-                    if (message.tool_calls) {
-                      parsedToolCalls = typeof message.tool_calls === 'string'
-                        ? JSON.parse(message.tool_calls)
-                        : message.tool_calls;
-                    }
-                  } catch (e) {
-                    console.error('Failed to parse tool calls:', e);
-                  }
-
-                  return (
-                    <div
-                      key={message.id}
-                      id={`message-${message.id}`}
-                      className={`flex gap-4 ${message.role === 'user' ? 'flex-row-reverse' : ''} group`}
-                    >
-                      {/* Avatar Column */}
-                      <div className="flex-shrink-0 flex flex-col items-center pt-1">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${message.role === 'user' ? 'bg-dark-700' : 'bg-dark-800'}`}>
-                          {message.role === 'user' ? (
+                return displayGroups.map((group, groupIndex) => {
+                  // USER MESSAGE GROUP
+                  if (group.type === 'user') {
+                    const message = group.messages[0];
+                    return (
+                      <div
+                        key={message.id}
+                        id={`message-${message.id}`}
+                        className="flex gap-4 flex-row-reverse group"
+                      >
+                        <div className="flex-shrink-0 flex flex-col items-center pt-1">
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-dark-700">
                             <UserIcon className="w-5 h-5 text-dark-400" />
-                          ) : (
-                            <Bot className="w-5 h-5 text-accent" />
-                          )}
+                          </div>
                         </div>
-                      </div>
-
-                      {/* Content Column */}
-                      <div className={`flex-1 min-w-0 flex flex-col ${message.role === 'user' ? 'items-end' : 'items-start'}`}>
-                        {/* Header: Name and Model */}
-                        <div className="flex items-center gap-2 mb-1 px-1">
-                          <span className="text-xs font-medium text-dark-400">
-                            {message.role === 'user' ? 'You' : formatModelName(message.model)}
-                          </span>
-                        </div>
-
-                        {/* Thinking & Tool Calls Section (Assistant only) */}
-                        {message.role === 'assistant' && (() => {
-                          // NEW: Check if message has steps array (new format)
-                          if (message.steps && message.steps.length > 0) {
-                            return (
-                              <div className="mb-2 w-full max-w-[85%]">
-                                <MessageSteps steps={message.steps} isStreaming={false} />
-                              </div>
-                            );
-                          }
-
-                          // FALLBACK: Legacy format for messages without steps array
-                          const { preToolReasoning, postToolReasoning } = parseReasoningContent(message.reasoning_content);
-                          const hasToolCalls = parsedToolCalls.length > 0;
-
-                          // For messages WITHOUT tools: show all reasoning together
-                          if (!hasToolCalls && message.reasoning_content) {
-                            return (
-                              <div className="mb-2 w-full max-w-[85%]">
-                                <ThinkingSection
-                                  reasoning={preToolReasoning || message.reasoning_content}
-                                  isExpanded={expandedThinkingSections.has(`${message.id}`)}
-                                  onToggle={() => toggleThinkingSection(`${message.id}`)}
-                                  isStreaming={false}
-                                  elapsedTime={0}
-                                />
-                              </div>
-                            );
-                          }
-
-                          // For messages WITH tools: show pre-tool → tool calls → post-tool
-                          if (hasToolCalls) {
-                            return (
-                              <>
-                                {/* Pre-tool Thinking */}
-                                {preToolReasoning && (
-                                  <div className="mb-2 w-full max-w-[85%]">
-                                    <ThinkingSection
-                                      reasoning={preToolReasoning}
-                                      isExpanded={expandedThinkingSections.has(`${message.id}-pre`)}
-                                      onToggle={() => toggleThinkingSection(`${message.id}-pre`)}
-                                      isStreaming={false}
-                                      elapsedTime={0}
-                                    />
-                                  </div>
-                                )}
-
-                                {/* Tool Calls */}
-                                <div className="mb-2 max-w-[85%]">
-                                  <ToolCallDisplay
-                                    toolCalls={parsedToolCalls}
-                                    toolResults={historicalToolResults}
-                                  />
-                                </div>
-
-                                {/* Post-tool Thinking */}
-                                {postToolReasoning && (
-                                  <div className="mb-2 w-full max-w-[85%]">
-                                    <ThinkingSection
-                                      reasoning={postToolReasoning}
-                                      isExpanded={expandedThinkingSections.has(`${message.id}-post`)}
-                                      onToggle={() => toggleThinkingSection(`${message.id}-post`)}
-                                      isStreaming={false}
-                                      elapsedTime={0}
-                                    />
-                                  </div>
-                                )}
-                              </>
-                            );
-                          }
-
-                          return null;
-                        })()}
-
-                        {/* Message Bubble */}
-                        <div className={`inline-block max-w-[85%] ${message.role === 'user'
-                          ? 'bg-dark-700/80 border border-dark-600 text-dark-100 rounded-2xl rounded-tr-sm px-4 py-3'
-                          : 'bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg'
-                          }`}>
-                          {message.role === 'user' ? (
-                            editingMessageId === message.id ? (
+                        <div className="flex-1 min-w-0 flex flex-col items-end">
+                          <div className="flex items-center gap-2 mb-1 px-1">
+                            <span className="text-xs font-medium text-dark-400">You</span>
+                          </div>
+                          <div className="inline-block max-w-[85%] bg-dark-700/80 border border-dark-600 text-dark-100 rounded-2xl rounded-tr-sm px-4 py-3">
+                            {editingMessageId === message.id ? (
                               <div className="space-y-2 text-left">
                                 <textarea
                                   value={editContent}
@@ -2304,24 +2188,13 @@ function Chat() {
                                   autoFocus
                                 />
                                 <div className="flex gap-2 justify-end">
-                                  <button
-                                    onClick={handleEditCancel}
-                                    className="px-3 py-1 text-xs rounded-lg bg-dark-700 hover:bg-dark-600 transition-colors"
-                                  >
-                                    Cancel
-                                  </button>
-                                  <button
-                                    onClick={() => handleEditSave(message.id)}
-                                    className="px-3 py-1 text-xs rounded-lg bg-primary-500 hover:bg-primary-400 transition-colors"
-                                  >
-                                    Save & Regenerate
-                                  </button>
+                                  <button onClick={handleEditCancel} className="px-3 py-1 text-xs rounded-lg bg-dark-700 hover:bg-dark-600 transition-colors">Cancel</button>
+                                  <button onClick={() => handleEditSave(message.id)} className="px-3 py-1 text-xs rounded-lg bg-primary-500 hover:bg-primary-400 transition-colors">Save & Regenerate</button>
                                 </div>
                               </div>
                             ) : (
                               <>
                                 {renderMessage(message.content)}
-                                {/* Display attachments */}
                                 {message.attachments && message.attachments.length > 0 && (
                                   <div className="flex flex-wrap gap-2 mt-2">
                                     {message.attachments.map((att) => {
@@ -2334,143 +2207,215 @@ function Chat() {
                                         if (att.mimetype === 'text/plain') return '📃';
                                         return '📎';
                                       };
-
                                       if (isImage) {
                                         return (
-                                          <img
-                                            key={att.id}
-                                            src={att.preview || `/api/uploads/${att.id}`}
-                                            alt={att.original_name}
+                                          <img key={att.id} src={att.preview || `/api/uploads/${att.id}`} alt={att.original_name}
                                             className="max-w-[200px] max-h-[150px] rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                            onClick={() => window.open(att.preview || `/api/uploads/${att.id}`, '_blank')}
-                                          />
+                                            onClick={() => window.open(att.preview || `/api/uploads/${att.id}`, '_blank')} />
                                         );
                                       }
-
                                       return (
-                                        <div
-                                          key={att.id}
-                                          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-dark-800/50 border border-white/[0.08]"
-                                        >
+                                        <div key={att.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-dark-800/50 border border-white/[0.08]">
                                           <span className="text-lg">{getIcon()}</span>
                                           <span className="text-xs text-dark-300 max-w-[150px] truncate">{att.original_name}</span>
-                                          {att.has_text && (
-                                            <span className="text-[10px] text-green-400">✓</span>
-                                          )}
+                                          {att.has_text && <span className="text-[10px] text-green-400">✓</span>}
                                         </div>
                                       );
                                     })}
                                   </div>
                                 )}
                               </>
-                            )
-                          ) : (
-                            renderMessage(message.content)
-                          )}
-                        </div>
-
-                        {/* Actions Row (User Only) */}
-                        {message.role === 'user' && (
+                            )}
+                          </div>
                           <div className="mt-1 flex gap-1 items-center justify-end opacity-0 group-hover:opacity-100 transition-opacity px-1">
-                            <button
-                              onClick={() => {
-                                setEditContent(message.content);
-                                setEditingMessageId(message.id);
-                              }}
-                              className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
-                              title="Edit message"
-                            >
+                            <button onClick={() => { setEditContent(message.content); setEditingMessageId(message.id); }}
+                              className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors" title="Edit message">
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
-                            <button
-                              onClick={() => handleCopy(message.id, message.content, 'raw')}
+                            <button onClick={() => handleCopy(message.id, message.content, 'raw')}
                               className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
-                              title={copiedMessageId === `${message.id}-raw` ? 'Copied!' : 'Copy Raw'}
-                            >
+                              title={copiedMessageId === `${message.id}-raw` ? 'Copied!' : 'Copy Raw'}>
                               {copiedMessageId === `${message.id}-raw` ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                             </button>
-                            <button
-                              onClick={() => handleCopy(message.id, message.content, 'markdown')}
+                            <button onClick={() => handleCopy(message.id, message.content, 'markdown')}
                               className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
-                              title={copiedMessageId === `${message.id}-markdown` ? 'Copied!' : 'Copy Markdown'}
-                            >
+                              title={copiedMessageId === `${message.id}-markdown` ? 'Copied!' : 'Copy Markdown'}>
                               {copiedMessageId === `${message.id}-markdown` ? <Check className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
                             </button>
                           </div>
-                        )}
+                        </div>
+                      </div>
+                    );
+                  }
 
-                        {/* Actions Row (Assistant Only) */}
-                        {message.role === 'assistant' && (
+                  // RESPONSE GROUP (assistant + tool messages)
+                  const assistantMsgs = group.messages.filter(m => m.role === 'assistant');
+                  const toolMsgs = group.messages.filter(m => m.role === 'tool');
+                  // Build tool results map for this group
+                  const groupToolResults = {};
+                  for (const tm of toolMsgs) {
+                    if (tm.tool_call_id) groupToolResults[tm.tool_call_id] = tm.content;
+                  }
+                  // Use last assistant message for actions (copy, fork, TTS)
+                  const lastAssistantMsg = assistantMsgs[assistantMsgs.length - 1];
+                  // Find the last assistant message that has content for display
+                  const lastContentMsg = [...assistantMsgs].reverse().find(m => m.content?.trim()) || lastAssistantMsg;
+                  if (!lastAssistantMsg) return null; // shouldn't happen
+
+                  return (
+                    <div
+                      key={`group-${groupIndex}`}
+                      id={`message-${lastAssistantMsg.id}`}
+                      className="flex gap-4 group"
+                    >
+                      {/* Single Avatar for the whole response group */}
+                      <div className="flex-shrink-0 flex flex-col items-center pt-1">
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-dark-800">
+                          <Bot className="w-5 h-5 text-accent" />
+                        </div>
+                      </div>
+
+                      <div className="flex-1 min-w-0 flex flex-col items-start">
+                        <div className="flex items-center gap-2 mb-1 px-1">
+                          <span className="text-xs font-medium text-dark-400">{formatModelName(lastAssistantMsg.model)}</span>
+                        </div>
+
+                        {/* Render each assistant message in the group */}
+                        {assistantMsgs.map((message, msgIdx) => {
+                          let parsedToolCalls = [];
+                          try {
+                            if (message.tool_calls) {
+                              parsedToolCalls = typeof message.tool_calls === 'string'
+                                ? JSON.parse(message.tool_calls) : message.tool_calls;
+                            }
+                          } catch (e) {
+                            console.error('Failed to parse tool calls:', e);
+                          }
+
+                          const isLastInGroup = msgIdx === assistantMsgs.length - 1;
+
+                          return (
+                            <React.Fragment key={message.id}>
+                              {/* Steps / Reasoning / Tool Calls */}
+                              {(() => {
+                                if (message.steps && message.steps.length > 0) {
+                                  return (
+                                    <div className="mb-2 w-full max-w-[85%]">
+                                      <MessageSteps steps={message.steps} isStreaming={false} />
+                                    </div>
+                                  );
+                                }
+
+                                const { preToolReasoning: ptr, postToolReasoning: potr } = parseReasoningContent(message.reasoning_content);
+                                const hasTC = parsedToolCalls.length > 0;
+
+                                if (!hasTC && message.reasoning_content) {
+                                  return (
+                                    <div className="mb-2 w-full max-w-[85%]">
+                                      <ThinkingSection
+                                        reasoning={ptr || message.reasoning_content}
+                                        isExpanded={expandedThinkingSections.has(`${message.id}`)}
+                                        onToggle={() => toggleThinkingSection(`${message.id}`)}
+                                        isStreaming={false} elapsedTime={0} />
+                                    </div>
+                                  );
+                                }
+
+                                if (hasTC) {
+                                  return (
+                                    <>
+                                      {ptr && (
+                                        <div className="mb-2 w-full max-w-[85%]">
+                                          <ThinkingSection reasoning={ptr}
+                                            isExpanded={expandedThinkingSections.has(`${message.id}-pre`)}
+                                            onToggle={() => toggleThinkingSection(`${message.id}-pre`)}
+                                            isStreaming={false} elapsedTime={0} />
+                                        </div>
+                                      )}
+                                      <div className="mb-2 max-w-[85%]">
+                                        <ToolCallDisplay toolCalls={parsedToolCalls} toolResults={{...historicalToolResults, ...groupToolResults}} />
+                                      </div>
+                                      {potr && (
+                                        <div className="mb-2 w-full max-w-[85%]">
+                                          <ThinkingSection reasoning={potr}
+                                            isExpanded={expandedThinkingSections.has(`${message.id}-post`)}
+                                            onToggle={() => toggleThinkingSection(`${message.id}-post`)}
+                                            isStreaming={false} elapsedTime={0} />
+                                        </div>
+                                      )}
+                                    </>
+                                  );
+                                }
+
+                                return null;
+                              })()}
+
+                              {/* Content bubble - only show if message has content */}
+                              {message.content?.trim() && (
+                                <div className="inline-block max-w-[85%] bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg mb-2">
+                                  {renderMessage(message.content)}
+                                </div>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+
+                        {/* Actions Row - applies to last assistant message with content */}
+                        {lastContentMsg && (
                           <div className="mt-1 flex gap-1 items-center opacity-0 group-hover:opacity-100 transition-opacity px-1">
-                            <button
-                              onClick={() => handleCopy(message.id, message.content, 'raw')}
+                            <button onClick={() => handleCopy(lastContentMsg.id, lastContentMsg.content, 'raw')}
                               className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
-                              title={copiedMessageId === `${message.id}-raw` ? 'Copied!' : 'Copy Raw'}
-                            >
-                              {copiedMessageId === `${message.id}-raw` ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                              title={copiedMessageId === `${lastContentMsg.id}-raw` ? 'Copied!' : 'Copy Raw'}>
+                              {copiedMessageId === `${lastContentMsg.id}-raw` ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                             </button>
-                            <button
-                              onClick={() => handleCopy(message.id, message.content, 'markdown')}
+                            <button onClick={() => handleCopy(lastContentMsg.id, lastContentMsg.content, 'markdown')}
                               className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
-                              title={copiedMessageId === `${message.id}-markdown` ? 'Copied!' : 'Copy Markdown'}
-                            >
-                              {copiedMessageId === `${message.id}-markdown` ? <Check className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
+                              title={copiedMessageId === `${lastContentMsg.id}-markdown` ? 'Copied!' : 'Copy Markdown'}>
+                              {copiedMessageId === `${lastContentMsg.id}-markdown` ? <Check className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
                             </button>
-                            <button
-                              onClick={() => openForkModal(message.id)}
-                              className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
-                              title="Fork from here"
-                            >
+                            <button onClick={() => openForkModal(lastAssistantMsg.id)}
+                              className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors" title="Fork from here">
                               <GitBranch className="w-3.5 h-3.5" />
                             </button>
-                            <TextToSpeech text={message.content} messageId={message.id} />
-                            {message.content.includes('```') && (
-                              <button
-                                onClick={() => openInCanvas(message.content, 'Edit Code')}
-                                className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
-                                title="Open in Canvas"
-                              >
+                            <TextToSpeech text={lastContentMsg.content} messageId={lastContentMsg.id} />
+                            {lastContentMsg.content?.includes('```') && (
+                              <button onClick={() => openInCanvas(lastContentMsg.content, 'Edit Code')}
+                                className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors" title="Open in Canvas">
                                 <Code className="w-3.5 h-3.5" />
                               </button>
                             )}
-
-                            {(message.prompt_tokens || message.response_time_ms || message.cost > 0) && (
+                            {(lastAssistantMsg.prompt_tokens || lastAssistantMsg.response_time_ms || lastAssistantMsg.cost > 0) && (
                               <div className="group/info relative">
-                                <button
-                                  className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
-                                  title="Message details"
-                                >
+                                <button className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors" title="Message details">
                                   <Info className="w-3.5 h-3.5" />
                                 </button>
                                 <div className="absolute bottom-full left-0 mb-1 hidden group-hover/info:block z-10">
                                   <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
                                     <div className="space-y-1">
-                                      {message.response_time_ms > 0 && (
+                                      {lastAssistantMsg.response_time_ms > 0 && (
                                         <div className="flex justify-between gap-4">
                                           <span className="text-dark-400">Time:</span>
-                                          <span className="text-dark-200 font-mono">{formatThinkingTime(message.response_time_ms / 1000)}</span>
+                                          <span className="text-dark-200 font-mono">{formatThinkingTime(lastAssistantMsg.response_time_ms / 1000)}</span>
                                         </div>
                                       )}
-                                      {message.completion_tokens > 0 && message.response_time_ms > 0 && (
+                                      {lastAssistantMsg.completion_tokens > 0 && lastAssistantMsg.response_time_ms > 0 && (
                                         <div className="flex justify-between gap-4">
                                           <span className="text-dark-400">Speed:</span>
                                           <span className="text-dark-200 font-mono">
-                                            {(message.completion_tokens / (message.response_time_ms / 1000)).toFixed(1)} t/s
+                                            {(lastAssistantMsg.completion_tokens / (lastAssistantMsg.response_time_ms / 1000)).toFixed(1)} t/s
                                           </span>
                                         </div>
                                       )}
-                                      {(message.prompt_tokens || message.completion_tokens) && (
+                                      {(lastAssistantMsg.prompt_tokens || lastAssistantMsg.completion_tokens) && (
                                         <div className="flex justify-between gap-4">
                                           <span className="text-dark-400">Tokens:</span>
-                                          <span className="text-dark-200 font-mono">{((message.prompt_tokens || 0) + (message.completion_tokens || 0)).toLocaleString()} tks</span>
+                                          <span className="text-dark-200 font-mono">{((lastAssistantMsg.prompt_tokens || 0) + (lastAssistantMsg.completion_tokens || 0)).toLocaleString()} tks</span>
                                         </div>
                                       )}
-                                      {message.cost > 0 && (
+                                      {lastAssistantMsg.cost > 0 && (
                                         <div className="flex justify-between gap-4">
                                           <span className="text-dark-400">Cost:</span>
-                                          <span className="text-accent-400 font-mono">
-                                            ${message.cost.toFixed(2)}
-                                          </span>
+                                          <span className="text-accent-400 font-mono">${lastAssistantMsg.cost.toFixed(2)}</span>
                                         </div>
                                       )}
                                     </div>
@@ -2482,91 +2427,96 @@ function Chat() {
                         )}
                       </div>
                     </div>
-                  )
+                  );
                 })
               })()}
 
-              {(streaming || streamingMessage || streamingReasoning || streamingSteps?.length > 0) && (
-                <div className="pr-8">
-                  {/* NEW: Step-based timeline display */}
-                  {streamingSteps && streamingSteps.length > 0 ? (
-                    <div className="mb-2 max-w-[85%]">
-                      <MessageSteps steps={streamingSteps} isStreaming={streaming} />
+              {(streaming || streamingMessage || streamingReasoning || streamingSteps?.length > 0 || completedTurns?.length > 0) && (
+                <div className="flex gap-4 group">
+                  {/* Single avatar for the entire streaming response group */}
+                  <div className="flex-shrink-0 flex flex-col items-center pt-1">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-dark-800">
+                      <Bot className="w-5 h-5 text-accent" />
                     </div>
-                  ) : (
-                    <>
-                      {/* FALLBACK: Legacy display for compatibility */}
-                      {/* Pre-Tool Thinking Section */}
-                      {(preToolReasoning || (streaming && !streamingMessage && !isPostToolPhase && !toolCalls?.length)) && (
-                        <ThinkingSection
-                          reasoning={preToolReasoning}
-                          isExpanded={expandedThinkingSections.has('streaming-pre')}
-                          onToggle={() => toggleThinkingSection('streaming-pre')}
-                          isStreaming={streaming && !isPostToolPhase && !streamingMessage}
-                          elapsedTime={!isPostToolPhase ? thinkingElapsedTime : 0}
-                        />
-                      )}
+                  </div>
 
-                      {/* Tool Call Indicators */}
-                      {toolCalls && toolCalls.length > 0 && (
-                        <ToolCallDisplay
-                          toolCalls={toolCalls}
-                          toolResults={toolResults}
-                        />
-                      )}
-
-                      {/* Post-Tool Thinking Section (synthesis) */}
-                      {(postToolReasoning || (streaming && isPostToolPhase && !streamingMessage)) && (
-                        <ThinkingSection
-                          reasoning={postToolReasoning}
-                          isExpanded={expandedThinkingSections.has('streaming-post')}
-                          onToggle={() => toggleThinkingSection('streaming-post')}
-                          isStreaming={streaming && isPostToolPhase && !streamingMessage}
-                          elapsedTime={isPostToolPhase ? thinkingElapsedTime : 0}
-                        />
-                      )}
-                    </>
-                  )}
-
-                  {streamingMessage && (
-                    <div className="flex gap-4 group fade-in">
-                      <div className="flex-shrink-0 flex flex-col items-center pt-1">
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-dark-800">
-                          <Bot className="w-5 h-5 text-accent" />
-                        </div>
-                      </div>
-                      <div className="flex-1 min-w-0 flex flex-col items-start">
-                        <div className="flex items-center gap-2 mb-1 px-1">
-                          <span className="text-xs font-medium text-dark-400">{formatModelName(chatSettings.model)}</span>
-                        </div>
-                        <div className="inline-block max-w-[85%] bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg">
-                          {renderMessage(streamingMessage)}
-                        </div>
-                      </div>
+                  <div className="flex-1 min-w-0 flex flex-col items-start">
+                    <div className="flex items-center gap-2 mb-1 px-1">
+                      <span className="text-xs font-medium text-dark-400">{formatModelName(chatSettings.model)}</span>
                     </div>
-                  )}
 
-                  {streaming && !streamingMessage && !streamingReasoning && (
-                    <div className="flex gap-4 group fade-in">
-                      <div className="flex-shrink-0 flex flex-col items-center pt-1">
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-dark-800">
-                          <Bot className="w-5 h-5 text-accent" />
-                        </div>
-                      </div>
-                      <div className="flex-1 min-w-0 flex flex-col items-start">
-                        <div className="flex items-center gap-2 mb-1 px-1">
-                          <span className="text-xs font-medium text-dark-400">{formatModelName(chatSettings.model)}</span>
-                        </div>
-                        <div className="inline-block bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg">
-                          <div className="flex gap-1">
-                            <div className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                            <div className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                            <div className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    {/* Render completed turns from multi-step tool chains */}
+                    {completedTurns && completedTurns.map((turn, turnIdx) => (
+                      <React.Fragment key={`turn-${turnIdx}`}>
+                        {/* Steps for this completed turn */}
+                        {turn.steps && turn.steps.length > 0 ? (
+                          <div className="mb-2 w-full max-w-[85%]">
+                            <MessageSteps steps={turn.steps} isStreaming={false} />
                           </div>
+                        ) : (
+                          /* Fallback: show ToolCallDisplay only when no steps exist */
+                          turn.toolCalls && turn.toolCalls.length > 0 && (
+                            <div className="mb-2 max-w-[85%]">
+                              <ToolCallDisplay toolCalls={turn.toolCalls} toolResults={turn.toolResults || {}} />
+                            </div>
+                          )
+                        )}
+                        {/* Content for this completed turn */}
+                        {turn.message && (
+                          <div className="inline-block max-w-[85%] bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg mb-2">
+                            {renderMessage(turn.message)}
+                          </div>
+                        )}
+                      </React.Fragment>
+                    ))}
+
+                    {/* Current turn: steps/reasoning + streaming content */}
+                    {streamingSteps && streamingSteps.length > 0 ? (
+                      <div className="mb-2 w-full max-w-[85%]">
+                        <MessageSteps steps={streamingSteps} isStreaming={streaming} />
+                      </div>
+                    ) : (
+                      <>
+                        {(preToolReasoning || (streaming && !streamingMessage && !isPostToolPhase && !toolCalls?.length)) && (
+                          <ThinkingSection
+                            reasoning={preToolReasoning}
+                            isExpanded={expandedThinkingSections.has('streaming-pre')}
+                            onToggle={() => toggleThinkingSection('streaming-pre')}
+                            isStreaming={streaming && !isPostToolPhase && !streamingMessage}
+                            elapsedTime={!isPostToolPhase ? thinkingElapsedTime : 0}
+                          />
+                        )}
+                        {toolCalls && toolCalls.length > 0 && (
+                          <ToolCallDisplay toolCalls={toolCalls} toolResults={toolResults} />
+                        )}
+                        {(postToolReasoning || (streaming && isPostToolPhase && !streamingMessage)) && (
+                          <ThinkingSection
+                            reasoning={postToolReasoning}
+                            isExpanded={expandedThinkingSections.has('streaming-post')}
+                            onToggle={() => toggleThinkingSection('streaming-post')}
+                            isStreaming={streaming && isPostToolPhase && !streamingMessage}
+                            elapsedTime={isPostToolPhase ? thinkingElapsedTime : 0}
+                          />
+                        )}
+                      </>
+                    )}
+
+                    {streamingMessage && (
+                      <div className="inline-block max-w-[85%] bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg fade-in">
+                        {renderMessage(streamingMessage)}
+                      </div>
+                    )}
+
+                    {streaming && !streamingMessage && !streamingReasoning && !(streamingSteps?.length > 0) && !(completedTurns?.length > 0) && (
+                      <div className="inline-block bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg fade-in">
+                        <div className="flex gap-1">
+                          <div className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                          <div className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                          <div className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               )}
 

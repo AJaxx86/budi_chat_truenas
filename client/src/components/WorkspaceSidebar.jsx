@@ -13,6 +13,9 @@ export default function WorkspaceSidebar({
     onSelectChat,
     onMoveChats,
     onCreateNewChat,
+    onCreateWorkspace,
+    onUpdateWorkspace,
+    onDeleteWorkspace,
     models = [],
     onWorkspaceContextMenu, // Helper for context menu on workspaces
     renamingId, // ID of workspace currently being renamed

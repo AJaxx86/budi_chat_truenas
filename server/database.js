@@ -512,6 +512,25 @@ function initDatabase() {
       db.exec("ALTER TABLE chats ADD COLUMN tone TEXT DEFAULT 'professional'");
       console.log("✅ Migration: Added depth and tone columns to chats table");
     }
+
+    const hasThinkingMode = chatsInfo.some((col) => col.name === "thinking_mode");
+    if (!hasThinkingMode) {
+      db.exec("ALTER TABLE chats ADD COLUMN thinking_mode TEXT DEFAULT 'medium'");
+      console.log("✅ Migration: Added thinking_mode column to chats table");
+    }
+  } catch (e) {
+    console.error("Migration error:", e);
+  }
+
+  // Migration: Add response_group_id to messages table (for multi-message tool-use chains)
+  try {
+    const messagesInfo = db.prepare("PRAGMA table_info(messages)").all();
+    const hasResponseGroupId = messagesInfo.some((col) => col.name === "response_group_id");
+    if (!hasResponseGroupId) {
+      db.exec("ALTER TABLE messages ADD COLUMN response_group_id TEXT");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_messages_response_group ON messages(response_group_id)");
+      console.log("✅ Migration: Added response_group_id column and index to messages table");
+    }
   } catch (e) {
     console.error("Migration error:", e);
   }
