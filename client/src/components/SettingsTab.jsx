@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Key, Eye, EyeOff, Trash2, AlertTriangle, Shield, Save, ExternalLink, Palette, User, ChevronRight } from 'lucide-react';
+import { AuthContext } from '../contexts/AuthContext';
 
 const ACCENT_PRESETS = [
   { id: 'amber', name: 'Amber', color: 'hsl(38, 92%, 50%)' },
@@ -12,6 +13,7 @@ const ACCENT_PRESETS = [
 ];
 
 function SettingsTab({ user, logout }) {
+  const { setUser } = React.useContext(AuthContext);
   const navigate = useNavigate();
   const [apiKey, setApiKey] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
@@ -43,6 +45,8 @@ function SettingsTab({ user, logout }) {
       setHasApiKey(!!data.has_api_key);
       if (data.accent_color) {
         setAccentColor(data.accent_color);
+        // Ensure DOM is updated with fresh data
+        document.documentElement.setAttribute('data-accent', data.accent_color);
       }
       setShowRecentPersonas(!!data.show_recent_personas);
     } catch (error) {
@@ -55,6 +59,11 @@ function SettingsTab({ user, logout }) {
     document.documentElement.setAttribute('data-accent', presetId);
     // Cache to localStorage for instant apply on page load
     localStorage.setItem('budi_accent_color_v2', presetId);
+
+    // Update global user state immediately
+    if (setUser && user) {
+      setUser({ ...user, accent_color: presetId });
+    }
 
     try {
       await fetch('/api/auth/profile', {
@@ -208,8 +217,8 @@ function SettingsTab({ user, logout }) {
                 key={preset.id}
                 onClick={() => handleAccentChange(preset.id)}
                 className={`group relative flex flex-col items-center gap-2 p-3 rounded-lg transition-all duration-200 ${accentColor === preset.id
-                    ? 'bg-dark-700/60 ring-1 ring-dark-600'
-                    : 'hover:bg-dark-800/40'
+                  ? 'bg-dark-700/60 ring-1 ring-dark-600'
+                  : 'hover:bg-dark-800/40'
                   }`}
               >
                 <div
@@ -250,14 +259,12 @@ function SettingsTab({ user, logout }) {
             <button
               type="button"
               onClick={() => handleShowRecentPersonasChange(!showRecentPersonas)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                showRecentPersonas ? 'bg-accent' : 'bg-dark-700'
-              }`}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${showRecentPersonas ? 'bg-accent' : 'bg-dark-700'
+                }`}
             >
               <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  showRecentPersonas ? 'translate-x-6' : 'translate-x-1'
-                }`}
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${showRecentPersonas ? 'translate-x-6' : 'translate-x-1'
+                  }`}
               />
             </button>
           </div>

@@ -311,6 +311,9 @@ function Chat() {
   const [editChatValue, setEditChatValue] = useState('');
   const [wsSettingsId, setWsSettingsId] = useState(null);
 
+  // Hover tooltip state for collapsed sidebar
+  const [hoverTooltip, setHoverTooltip] = useState({ visible: false, text: '', x: 0, y: 0 });
+
   const handleContextMenu = (e, chatId, type = 'chat') => {
     e.preventDefault();
     e.stopPropagation();
@@ -1465,7 +1468,7 @@ function Chat() {
     if (pendingEditMessageRef.current && inputMessage === pendingEditMessageRef.current) {
       pendingEditMessageRef.current = null;
       // Programmatically trigger send
-      const syntheticEvent = { preventDefault: () => {} };
+      const syntheticEvent = { preventDefault: () => { } };
       sendMessage(syntheticEvent);
     }
   }, [inputMessage]);
@@ -1526,7 +1529,7 @@ function Chat() {
           ? `sidebar-mobile glass-sidebar ${showSidebar ? 'open' : ''}`
           : `${showSidebar ? 'w-72' : 'w-16'} transition-all duration-300 ease-out glass-sidebar`
         }
-        flex flex-col overflow-hidden
+        flex flex-col overflow-hidden z-50
       `}>
         <div className={`${showSidebar ? 'p-4 md:p-5' : 'p-2'} border-b border-dark-700/30 safe-area-inset-top`}>
           <div className={`flex items-center ${showSidebar ? 'gap-3 mb-4 md:mb-5' : 'justify-center mb-2'}`}>
@@ -1670,7 +1673,6 @@ function Chat() {
                 }`}
               onClick={() => handleChatSelect(chat)}
               onContextMenu={(e) => handleContextMenu(e, chat.id)}
-              title={showSidebar ? undefined : chat.title}
             >
               {showSidebar ? (
                 <div className="flex items-start justify-between gap-2">
@@ -1746,7 +1748,19 @@ function Chat() {
                   </div>
                 </div>
               ) : (
-                <div className="flex justify-center relative">
+                <div
+                  className="flex justify-center relative"
+                  onMouseEnter={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setHoverTooltip({
+                      visible: true,
+                      text: chat.title,
+                      x: rect.right + 8,
+                      y: rect.top + rect.height / 2
+                    });
+                  }}
+                  onMouseLeave={() => setHoverTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                >
                   <MessageSquare className={`w-5 h-5 ${currentChat?.id === chat.id ? 'text-accent' : 'text-dark-400'}`} />
                   {streamingChatIds.has(chat.id) && (
                     <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-accent rounded-full animate-pulse" />
@@ -2333,7 +2347,7 @@ function Chat() {
                                         </div>
                                       )}
                                       <div className="mb-2 max-w-[85%]">
-                                        <ToolCallDisplay toolCalls={parsedToolCalls} toolResults={{...historicalToolResults, ...groupToolResults}} />
+                                        <ToolCallDisplay toolCalls={parsedToolCalls} toolResults={{ ...historicalToolResults, ...groupToolResults }} />
                                       </div>
                                       {potr && (
                                         <div className="mb-2 w-full max-w-[85%]">
@@ -2704,6 +2718,20 @@ function Chat() {
             </>
           )}
         </ContextMenu>
+      )}
+
+      {/* Hover tooltip for collapsed sidebar chats */}
+      {hoverTooltip.visible && (
+        <div
+          className="fixed z-[9999] px-2.5 py-1.5 text-xs text-dark-100 bg-dark-800 border border-dark-700/50 rounded-lg shadow-lg whitespace-nowrap pointer-events-none"
+          style={{
+            left: hoverTooltip.x,
+            top: hoverTooltip.y,
+            transform: 'translateY(-50%)'
+          }}
+        >
+          {hoverTooltip.text}
+        </div>
       )}
 
     </div >
