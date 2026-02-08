@@ -16,7 +16,6 @@ export default function WorkspaceSidebar({
     onCreateWorkspace,
     onUpdateWorkspace,
     onDeleteWorkspace,
-    models = [],
     onWorkspaceContextMenu, // Helper for context menu on workspaces
     renamingId, // ID of workspace currently being renamed
     onRenameSubmit, // Function(id, newName)
@@ -318,7 +317,6 @@ export default function WorkspaceSidebar({
                 }}
                 onSave={handleSaveWorkspace}
                 workspace={editingWorkspace}
-                models={models}
             />
         </>
     );

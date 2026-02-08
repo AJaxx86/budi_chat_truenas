@@ -550,6 +550,30 @@ function initDatabase() {
     console.error("Migration error:", e);
   }
 
+  // Migration: Add persona_id to chats table
+  try {
+    const chatsInfo = db.prepare("PRAGMA table_info(chats)").all();
+    const hasPersonaId = chatsInfo.some((col) => col.name === "persona_id");
+    if (!hasPersonaId) {
+      db.exec("ALTER TABLE chats ADD COLUMN persona_id TEXT REFERENCES personas(id) ON DELETE SET NULL");
+      console.log("✅ Migration: Added persona_id column to chats table");
+    }
+  } catch (e) {
+    console.error("Migration error:", e);
+  }
+
+  // Migration: Add default_persona_id to workspaces table
+  try {
+    const workspacesInfo = db.prepare("PRAGMA table_info(workspaces)").all();
+    const hasDefaultPersonaId = workspacesInfo.some((col) => col.name === "default_persona_id");
+    if (!hasDefaultPersonaId) {
+      db.exec("ALTER TABLE workspaces ADD COLUMN default_persona_id TEXT REFERENCES personas(id) ON DELETE SET NULL");
+      console.log("✅ Migration: Added default_persona_id column to workspaces table");
+    }
+  } catch (e) {
+    console.error("Migration error:", e);
+  }
+
 
   // Initialize default user groups with permissions
   const defaultGroups = [

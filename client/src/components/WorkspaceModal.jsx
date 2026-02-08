@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
     X, Folder, Code, BookOpen, Briefcase, Palette, Music,
     Gamepad2, Camera, Coffee, Star, Heart, Zap, Globe,
-    FileText, MessageSquare, Settings, GraduationCap
+    FileText, MessageSquare, Settings, GraduationCap,
+    User, Calculator, Feather, Scale, Lightbulb, Sparkles, Beaker
 } from 'lucide-react';
 
 const WORKSPACE_ICONS = [
@@ -36,6 +37,10 @@ const WORKSPACE_COLORS = [
     '#84cc16', // lime
 ];
 
+const PERSONA_ICON_MAP = {
+    User, BookOpen, Calculator, Code, Feather, Scale, Lightbulb, Sparkles, Beaker
+};
+
 export const getIconComponent = (iconName) => {
     const iconData = WORKSPACE_ICONS.find(i => i.name === iconName);
     return iconData?.icon || Folder;
@@ -46,16 +51,21 @@ export default function WorkspaceModal({
     onClose,
     onSave,
     workspace = null,
-    models = []
 }) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [icon, setIcon] = useState('Folder');
     const [color, setColor] = useState('#f59e0b');
-    const [defaultModel, setDefaultModel] = useState('');
+    const [defaultPersonaId, setDefaultPersonaId] = useState('');
     const [defaultSystemPrompt, setDefaultSystemPrompt] = useState('');
-    const [defaultTemperature, setDefaultTemperature] = useState(0.7);
+    const [personas, setPersonas] = useState([]);
     const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (isOpen) {
+            loadPersonas();
+        }
+    }, [isOpen]);
 
     useEffect(() => {
         if (workspace) {
@@ -63,19 +73,31 @@ export default function WorkspaceModal({
             setDescription(workspace.description || '');
             setIcon(workspace.icon || 'Folder');
             setColor(workspace.color || '#f59e0b');
-            setDefaultModel(workspace.default_model || '');
+            setDefaultPersonaId(workspace.default_persona_id || '');
             setDefaultSystemPrompt(workspace.default_system_prompt || '');
-            setDefaultTemperature(workspace.default_temperature ?? 0.7);
         } else {
             setName('');
             setDescription('');
             setIcon('Folder');
             setColor('#f59e0b');
-            setDefaultModel('');
+            setDefaultPersonaId('');
             setDefaultSystemPrompt('');
-            setDefaultTemperature(0.7);
         }
     }, [workspace, isOpen]);
+
+    const loadPersonas = async () => {
+        try {
+            const res = await fetch('/api/personas', {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setPersonas(data);
+            }
+        } catch (error) {
+            console.error('Failed to load personas:', error);
+        }
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -89,9 +111,8 @@ export default function WorkspaceModal({
                 description: description.trim() || null,
                 icon,
                 color,
-                default_model: defaultModel || null,
+                default_persona_id: defaultPersonaId || null,
                 default_system_prompt: defaultSystemPrompt.trim() || null,
-                default_temperature: defaultTemperature,
             });
             onClose();
         } catch (error) {
@@ -204,39 +225,26 @@ export default function WorkspaceModal({
                         </div>
                     </div>
 
-                    {/* Default Model */}
+                    {/* Default Persona */}
                     <div>
                         <label className="block text-sm font-medium text-dark-300 mb-1.5">
-                            Default Model <span className="text-dark-500">(optional)</span>
+                            Default Persona <span className="text-dark-500">(optional)</span>
                         </label>
                         <select
-                            value={defaultModel}
-                            onChange={(e) => setDefaultModel(e.target.value)}
+                            value={defaultPersonaId}
+                            onChange={(e) => setDefaultPersonaId(e.target.value)}
                             className="w-full px-3 py-2 glass-input rounded-lg text-dark-100"
                         >
-                            <option value="">Use global default</option>
-                            {models.map((model) => (
-                                <option key={model.id} value={model.id}>
-                                    {model.name || model.id}
-                                </option>
-                            ))}
+                            <option value="">Default Assistant</option>
+                            {personas.map((persona) => {
+                                const PersonaIcon = PERSONA_ICON_MAP[persona.icon] || User;
+                                return (
+                                    <option key={persona.id} value={persona.id}>
+                                        {persona.name}
+                                    </option>
+                                );
+                            })}
                         </select>
-                    </div>
-
-                    {/* Default Temperature */}
-                    <div>
-                        <label className="block text-sm font-medium text-dark-300 mb-1.5">
-                            Default Temperature: {defaultTemperature}
-                        </label>
-                        <input
-                            type="range"
-                            min="0"
-                            max="2"
-                            step="0.1"
-                            value={defaultTemperature}
-                            onChange={(e) => setDefaultTemperature(parseFloat(e.target.value))}
-                            className="w-full"
-                        />
                     </div>
 
                     {/* Default System Prompt */}

@@ -73,17 +73,18 @@ router.get('/:id', (req, res) => {
 // Create new chat
 router.post('/', (req, res) => {
   try {
-    const { title, model, system_prompt, temperature, agent_mode, workspace_id, depth, tone } = req.body;
+    const { title, model, system_prompt, temperature, agent_mode, workspace_id, depth, tone, persona_id } = req.body;
     const id = uuidv4();
 
     // If workspace_id provided, get workspace defaults
     let finalModel = model || 'moonshotai/kimi-k2-thinking';
     let finalSystemPrompt = system_prompt || null;
     let finalTemperature = temperature !== undefined ? temperature : 0.7;
+    let finalPersonaId = persona_id || null;
 
     if (workspace_id) {
       const workspace = db.prepare(`
-        SELECT default_model, default_system_prompt, default_temperature 
+        SELECT default_model, default_system_prompt, default_temperature, default_persona_id
         FROM workspaces WHERE id = ? AND user_id = ?
       `).get(workspace_id, req.user.id);
 
@@ -98,12 +99,23 @@ router.post('/', (req, res) => {
         if (temperature === undefined && workspace.default_temperature !== null) {
           finalTemperature = workspace.default_temperature;
         }
+        // Inherit workspace default persona if none explicitly provided
+        if (!persona_id && workspace.default_persona_id) {
+          finalPersonaId = workspace.default_persona_id;
+          // Look up persona settings to apply system_prompt, depth, tone, temperature
+          const persona = db.prepare('SELECT * FROM personas WHERE id = ?').get(workspace.default_persona_id);
+          if (persona) {
+            if (!system_prompt && persona.system_prompt) {
+              finalSystemPrompt = persona.system_prompt;
+            }
+          }
+        }
       }
     }
 
     db.prepare(`
-      INSERT INTO chats(id, user_id, title, model, system_prompt, temperature, depth, tone, agent_mode, workspace_id, thinking_mode)
-      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO chats(id, user_id, title, model, system_prompt, temperature, depth, tone, agent_mode, workspace_id, thinking_mode, persona_id)
+      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
       id,
       req.user.id,
@@ -115,7 +127,8 @@ router.post('/', (req, res) => {
       tone || 'professional',
       agent_mode ? 1 : 0,
       workspace_id || null,
-      req.body.thinking_mode || 'medium'
+      req.body.thinking_mode || 'medium',
+      finalPersonaId
     );
 
     const chat = db.prepare('SELECT * FROM chats WHERE id = ?').get(id);
@@ -137,7 +150,7 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const { title, model, system_prompt, temperature, agent_mode, depth, tone } = req.body;
+    const { title, model, system_prompt, temperature, agent_mode, depth, tone, persona_id } = req.body;
 
     const updates = [];
     const values = [];
@@ -180,6 +193,11 @@ router.put('/:id', (req, res) => {
     if (req.body.thinking_mode !== undefined) {
       updates.push('thinking_mode = ?');
       values.push(req.body.thinking_mode);
+    }
+
+    if (persona_id !== undefined) {
+      updates.push('persona_id = ?');
+      values.push(persona_id);
     }
 
     if (updates.length === 0) {
@@ -231,8 +249,8 @@ router.post('/:id/fork', (req, res) => {
     const newChatId = uuidv4();
     db.prepare(`
       INSERT INTO chats(id, user_id, title, parent_chat_id, fork_point_message_id,
-        model, system_prompt, temperature, depth, tone, agent_mode, thinking_mode)
-      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        model, system_prompt, temperature, depth, tone, agent_mode, thinking_mode, persona_id)
+      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
       newChatId,
       req.user.id,
@@ -245,7 +263,8 @@ router.post('/:id/fork', (req, res) => {
       originalChat.depth,
       originalChat.tone,
       originalChat.agent_mode,
-      originalChat.thinking_mode || 'medium'
+      originalChat.thinking_mode || 'medium',
+      originalChat.persona_id || null
     );
 
     // Copy messages up to fork point

@@ -39,6 +39,24 @@ router.get('/recent', (req, res) => {
   }
 });
 
+// Get single persona by ID
+router.get('/:id', (req, res) => {
+  try {
+    const persona = db.prepare(`
+      SELECT * FROM personas WHERE id = ? AND (user_id = ? OR is_default = 1)
+    `).get(req.params.id, req.user.id);
+
+    if (!persona) {
+      return res.status(404).json({ error: 'Persona not found' });
+    }
+
+    res.json(persona);
+  } catch (error) {
+    console.error('Get persona error:', error);
+    res.status(500).json({ error: 'Failed to fetch persona' });
+  }
+});
+
 // Create new persona
 router.post('/', (req, res) => {
   try {

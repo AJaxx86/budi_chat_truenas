@@ -4,7 +4,7 @@ import {
   MessageSquare, Plus, Settings as SettingsIcon, LogOut, Brain,
   Trash2, GitBranch, Bot, User as UserIcon,
   Sparkles, Zap, Menu, X, ChevronDown, ChevronRight,
-  Check, Trash, Copy, Pencil, Info, DollarSign, Hash, Search, Share2, Code, FileText, Shield
+  Check, Trash, Copy, Pencil, Info, DollarSign, Hash, Search, Share2, Code, FileText, Shield, RotateCcw
 } from 'lucide-react';
 import SearchModal from '../components/SearchModal';
 import ExportMenu from '../components/ExportMenu';
@@ -20,6 +20,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import ModelSelector, { DEFAULT_MODEL, RECENT_MODELS_KEY, MODELS_CACHE_KEY, modelSupportsReasoning } from '../components/ModelSelector';
 import WorkspaceSidebar from '../components/WorkspaceSidebar';
+import { getIconComponent } from '../components/WorkspaceModal';
 import PersonaSelector from '../components/PersonaSelector';
 import { FolderOpen } from 'lucide-react';
 import ContextMenu, { ContextMenuItem } from '../components/ContextMenu';
@@ -828,6 +829,27 @@ function Chat() {
         agent_mode: !!data.agent_mode
       });
       setThinkingMode(data.thinking_mode || 'medium');
+
+      // Restore persona from chat data
+      if (data.persona_id) {
+        try {
+          const personaRes = await fetch(`/api/personas/${data.persona_id}`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          });
+          if (personaRes.ok) {
+            const persona = await personaRes.json();
+            setSelectedPersona(persona);
+          } else {
+            setSelectedPersona(null);
+          }
+        } catch (e) {
+          console.error('Failed to load persona:', e);
+          setSelectedPersona(null);
+        }
+      } else {
+        setSelectedPersona(null);
+      }
+
       // Update currentChat with latest data (including updated title)
       const { messages: _, ...chatData } = data;
       setCurrentChat(prev => ({ ...prev, ...chatData, model: modelToUse }));
@@ -836,7 +858,7 @@ function Chat() {
     }
   };
 
-  const createNewChat = () => {
+  const createNewChat = async () => {
     // Preserve workspace context from current chat if it exists
     const contextWorkspaceId = currentChat?.workspace_id || null;
     setActiveWorkspace(contextWorkspaceId);
@@ -851,7 +873,7 @@ function Chat() {
           modelToUse = user.guestModelWhitelist[0];
         }
       }
-      // If whitelist is empty, we don't change modelToUse here, 
+      // If whitelist is empty, we don't change modelToUse here,
       // but ModelSelector will show "Add API Key" and backend will reject any model.
     }
 
@@ -861,22 +883,56 @@ function Chat() {
     setThinkingElapsedTime(0);
     setShowSettings(false);
     setUsageStats(null);
+
+    // Check if workspace has a default persona
+    let defaultPersona = null;
+    if (contextWorkspaceId) {
+      const ws = workspaces.find(w => w.id === contextWorkspaceId);
+      if (ws?.default_persona_id) {
+        try {
+          const personaRes = await fetch(`/api/personas/${ws.default_persona_id}`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          });
+          if (personaRes.ok) {
+            defaultPersona = await personaRes.json();
+          }
+        } catch (e) {
+          console.error('Failed to load workspace default persona:', e);
+        }
+      }
+    }
+
+    setSelectedPersona(defaultPersona);
+
+    // Apply persona settings if available
+    let temperature = 0.7;
+    let depth = 'standard';
+    let tone = 'friendly';
+    let systemPrompt = '';
+    if (defaultPersona) {
+      if (defaultPersona.creativity === 'precise') temperature = 0.2;
+      else if (defaultPersona.creativity === 'imaginative') temperature = 1.0;
+      depth = defaultPersona.depth || 'standard';
+      tone = defaultPersona.tone || 'friendly';
+      systemPrompt = defaultPersona.system_prompt || '';
+    }
+
     // Create a temporary chat object without an ID
     // The actual chat will be created when the first message is sent
     setCurrentChat({
       title: 'New Chat',
       model: modelToUse,
-      temperature: 0.7,
-      system_prompt: '',
+      temperature,
+      system_prompt: systemPrompt,
       agent_mode: false,
       thinking_mode: 'medium'
     });
     setChatSettings({
       model: modelToUse,
-      temperature: 0.7,
-      depth: 'standard',
-      tone: 'friendly',
-      system_prompt: '',
+      temperature,
+      depth,
+      tone,
+      system_prompt: systemPrompt,
       agent_mode: false
     });
     setThinkingMode(localStorage.getItem(LAST_THINKING_MODE_KEY) || 'medium');
@@ -933,7 +989,7 @@ function Chat() {
     }
   };
 
-  const handlePersonaSelect = (persona) => {
+  const handlePersonaSelect = async (persona) => {
     setSelectedPersona(persona);
 
     if (!persona) {
@@ -944,6 +1000,21 @@ function Chat() {
         depth: 'standard',
         tone: 'friendly'
       }));
+      // Persist null persona to chat
+      if (currentChat?.id) {
+        try {
+          await fetch(`/api/chats/${currentChat.id}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify({ persona_id: null })
+          });
+        } catch (e) {
+          console.error('Failed to update chat persona:', e);
+        }
+      }
       return;
     }
 
@@ -959,6 +1030,68 @@ function Chat() {
       temperature: newTemp,
       depth: persona.depth || 'standard',
       tone: persona.tone || 'friendly'
+    }));
+
+    // Persist persona_id to chat
+    if (currentChat?.id) {
+      try {
+        await fetch(`/api/chats/${currentChat.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({ persona_id: persona.id })
+        });
+      } catch (e) {
+        console.error('Failed to update chat persona:', e);
+      }
+    }
+  };
+
+  // Handle workspace selection: apply default persona (or reset to Default Assistant)
+  const handleWorkspaceSelect = async (workspaceId) => {
+    setActiveWorkspace(workspaceId);
+
+    // Only apply persona defaults for new chats (no ID yet)
+    if (currentChat?.id) return;
+
+    if (workspaceId) {
+      const ws = workspaces.find(w => w.id === workspaceId);
+      if (ws?.default_persona_id) {
+        try {
+          const personaRes = await fetch(`/api/personas/${ws.default_persona_id}`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          });
+          if (personaRes.ok) {
+            const persona = await personaRes.json();
+            setSelectedPersona(persona);
+            let newTemp = 0.7;
+            if (persona.creativity === 'precise') newTemp = 0.2;
+            else if (persona.creativity === 'imaginative') newTemp = 1.0;
+            setChatSettings(prev => ({
+              ...prev,
+              system_prompt: persona.system_prompt || '',
+              temperature: newTemp,
+              depth: persona.depth || 'standard',
+              tone: persona.tone || 'friendly'
+            }));
+            return;
+          }
+        } catch (e) {
+          console.error('Failed to load workspace default persona:', e);
+        }
+      }
+    }
+
+    // No workspace or no default persona → reset to Default Assistant
+    setSelectedPersona(null);
+    setChatSettings(prev => ({
+      ...prev,
+      system_prompt: '',
+      temperature: 0.7,
+      depth: 'standard',
+      tone: 'friendly'
     }));
   };
 
@@ -1086,7 +1219,8 @@ function Chat() {
             ].filter(Boolean).join('\n\n'),
             agent_mode: chatSettings.agent_mode,
             thinking_mode: thinkingMode || 'medium',
-            workspace_id: activeWorkspace || null
+            workspace_id: activeWorkspace || null,
+            persona_id: selectedPersona?.id || null
           })
         });
         const newChat = await createRes.json();
@@ -1504,6 +1638,24 @@ function Chat() {
     }
   };
 
+  const handleRetry = async (message) => {
+    if (!currentChat?.id || streaming) return;
+    try {
+      const res = await fetch(`/api/messages/${message.id}/branch`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (!res.ok) throw new Error('Failed to delete messages');
+      await loadMessages(currentChat.id);
+      pendingEditMessageRef.current = message.content;
+      setInputMessage(message.content);
+    } catch (error) {
+      console.error('Failed to retry message:', error);
+    }
+  };
+
   // Close sidebar when selecting a chat on mobile
   const handleChatSelect = useCallback((chat) => {
     setCurrentChat(chat);
@@ -1608,7 +1760,7 @@ function Chat() {
 
         <div className={`flex-1 overflow-y-auto ${showSidebar ? 'p-3 space-y-1' : 'p-2 space-y-1'}`}>
           {/* Workspace Sidebar - integrated at top */}
-          {showSidebar && (
+          {showSidebar ? (
             <div className="mb-2">
               <WorkspaceSidebar
                 workspaces={workspaces}
@@ -1616,7 +1768,11 @@ function Chat() {
                 activeWorkspace={activeWorkspace}
                 activeChatId={currentChat?.id}
                 streamingChatIds={streamingChatIds}
-                onSelectWorkspace={(id) => setActiveWorkspace(prev => prev === id ? null : id)}
+                onSelectWorkspace={(id) => {
+                  // Toggle: deselect if already active
+                  const newId = activeWorkspace === id ? null : id;
+                  handleWorkspaceSelect(newId);
+                }}
                 onSelectChat={(chatId) => {
                   const chat = chats.find(c => c.id === chatId);
                   if (chat) handleChatSelect(chat);
@@ -1625,7 +1781,6 @@ function Chat() {
                 onUpdateWorkspace={updateWorkspace}
                 onDeleteWorkspace={deleteWorkspace}
                 onMoveChats={moveChatsToWorkspace}
-                models={[]}
                 onChatContextMenu={handleContextMenu}
                 onWorkspaceContextMenu={(e, id) => handleContextMenu(e, id, 'workspace')}
                 editingSettingsId={wsSettingsId}
@@ -1661,6 +1816,51 @@ function Chat() {
               />
               {/* Divider between workspaces and chats */}
               <div className="h-px bg-dark-700/30 my-2 mx-2" />
+            </div>
+          ) : workspaces.length > 0 && (
+            /* Collapsed workspace icons */
+            <div className="space-y-1 mb-2">
+              {workspaces.map((workspace) => {
+                const IconComponent = getIconComponent(workspace.icon);
+                const isActive = activeWorkspace === workspace.id;
+                const workspaceChats = chats.filter(c => c.workspace_id === workspace.id);
+                const isGenerating = workspaceChats.some(chat => streamingChatIds.has(chat.id));
+
+                return (
+                  <div
+                    key={workspace.id}
+                    className={`p-2 rounded-lg cursor-pointer transition-all duration-200 ${isActive
+                      ? 'bg-dark-800/80 border-l-2 border-accent/60'
+                      : 'hover:bg-dark-800/40 border-l-2 border-transparent'
+                    }`}
+                    onClick={() => setActiveWorkspace(prev => prev === workspace.id ? null : workspace.id)}
+                    onContextMenu={(e) => handleContextMenu(e, workspace.id, 'workspace')}
+                  >
+                    <div
+                      className="flex justify-center relative"
+                      onMouseEnter={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setHoverTooltip({
+                          visible: true,
+                          text: workspace.name,
+                          x: rect.right + 8,
+                          y: rect.top + rect.height / 2
+                        });
+                      }}
+                      onMouseLeave={() => setHoverTooltip({ visible: false, text: '', x: 0, y: 0 })}
+                    >
+                      <IconComponent className="w-5 h-5" style={{ color: workspace.color }} />
+                      {isGenerating && (
+                        <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: workspace.color }}></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: workspace.color }}></span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="h-px bg-dark-700/30 my-1 mx-1" />
             </div>
           )}
 
@@ -2149,7 +2349,7 @@ function Chat() {
                   <WorkspaceQuickSelect
                     workspaces={workspaces}
                     activeWorkspace={activeWorkspace}
-                    onSelect={setActiveWorkspace}
+                    onSelect={handleWorkspaceSelect}
                   />
                   <div className="text-center mt-12">
                     <p className="text-dark-500 text-sm max-w-xs mx-auto">
@@ -2245,6 +2445,10 @@ function Chat() {
                             <button onClick={() => { setEditContent(message.content); setEditingMessageId(message.id); }}
                               className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors" title="Edit message">
                               <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => handleRetry(message)}
+                              className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors" title="Retry message">
+                              <RotateCcw className="w-3.5 h-3.5" />
                             </button>
                             <button onClick={() => handleCopy(message.id, message.content, 'raw')}
                               className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"

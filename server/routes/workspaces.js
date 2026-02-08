@@ -28,18 +28,18 @@ router.get('/', (req, res) => {
 // Create workspace
 router.post('/', (req, res) => {
     try {
-        const { name, description, icon, color, default_model, default_system_prompt, default_temperature } = req.body;
+        const { name, description, icon, color, default_model, default_system_prompt, default_temperature, default_persona_id } = req.body;
         const id = uuidv4();
 
         // Get the max sort_order for the user
         const maxOrder = db.prepare(`
-      SELECT COALESCE(MAX(sort_order), -1) + 1 as next_order 
+      SELECT COALESCE(MAX(sort_order), -1) + 1 as next_order
       FROM workspaces WHERE user_id = ?
     `).get(req.user.id);
 
         db.prepare(`
-      INSERT INTO workspaces(id, user_id, name, description, icon, color, default_model, default_system_prompt, default_temperature, sort_order)
-      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO workspaces(id, user_id, name, description, icon, color, default_model, default_system_prompt, default_temperature, sort_order, default_persona_id)
+      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
             id,
             req.user.id,
@@ -50,7 +50,8 @@ router.post('/', (req, res) => {
             default_model || null,
             default_system_prompt || null,
             default_temperature !== undefined ? default_temperature : 0.7,
-            maxOrder.next_order
+            maxOrder.next_order,
+            default_persona_id || null
         );
 
         const workspace = db.prepare('SELECT * FROM workspaces WHERE id = ?').get(id);
@@ -94,7 +95,7 @@ router.get('/:id', (req, res) => {
 router.put('/:id', (req, res) => {
     try {
         const { id } = req.params;
-        const { name, description, icon, color, default_model, default_system_prompt, default_temperature } = req.body;
+        const { name, description, icon, color, default_model, default_system_prompt, default_temperature, default_persona_id } = req.body;
 
         const updates = [];
         const values = [];
@@ -132,6 +133,11 @@ router.put('/:id', (req, res) => {
         if (default_temperature !== undefined) {
             updates.push('default_temperature = ?');
             values.push(default_temperature);
+        }
+
+        if (default_persona_id !== undefined) {
+            updates.push('default_persona_id = ?');
+            values.push(default_persona_id);
         }
 
         if (updates.length === 0) {
