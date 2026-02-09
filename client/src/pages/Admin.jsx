@@ -102,7 +102,14 @@ function Admin() {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
       });
       const data = await res.json();
-      setGroups(data);
+      // Ensure admin group uses the red color (hotfix until server restart/migration)
+      const patchedData = data.map(g => {
+        if (g.id === 'admin' && (g.color === '#a855f7' || !g.color)) {
+          return { ...g, color: '#ef4444' };
+        }
+        return g;
+      });
+      setGroups(patchedData);
     } catch (error) {
       console.error('Failed to load groups:', error);
     }
@@ -765,7 +772,7 @@ function Admin() {
                   >
                     {group.name}
                   </span>
-                  <span className="text-xs text-dark-500">({group.id})</span>
+
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -883,8 +890,8 @@ function Admin() {
                                     onClick={() => !isSelected && addToWhitelist(model.id)}
                                     disabled={isSelected}
                                     className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-left transition-colors ${isSelected
-                                        ? 'bg-dark-700/30 cursor-default'
-                                        : 'hover:bg-dark-700/50'
+                                      ? 'bg-dark-700/30 cursor-default'
+                                      : 'hover:bg-dark-700/50'
                                       }`}
                                   >
                                     <div className="flex-1 min-w-0">

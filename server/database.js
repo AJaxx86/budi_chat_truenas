@@ -638,7 +638,21 @@ function initDatabase() {
     VALUES (?, ?, ?, ?)
   `);
   for (const group of defaultGroups) {
+    if (group.id === 'admin' && group.color === '#a855f7') {
+      group.color = '#ef4444'; // Red-500 to match admin tag
+    }
     insertGroup.run(group.id, group.name, group.color, group.permissions);
+  }
+
+  // Migration: Update admin group color to red (if it is still the old purple)
+  try {
+    db.prepare("UPDATE user_groups SET color = '#ef4444' WHERE id = 'admin' AND color = '#a855f7'").run();
+    // Also strictly force it if it's not red? The user request implies it should be red.
+    // Let's just force update it to ensure it matches the request.
+    db.prepare("UPDATE user_groups SET color = '#ef4444' WHERE id = 'admin'").run();
+    console.log("✅ Migration: Updated admin group color to red");
+  } catch (e) {
+    console.error("Migration error:", e);
   }
 
   // Create default admin user if not exists

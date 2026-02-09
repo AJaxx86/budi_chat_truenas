@@ -17,6 +17,7 @@ export default function WorkspaceSidebar({
     onUpdateWorkspace,
     onDeleteWorkspace,
     onWorkspaceContextMenu, // Helper for context menu on workspaces
+    onChatContextMenu, // Helper for context menu on chats
     renamingId, // ID of workspace currently being renamed
     onRenameSubmit, // Function(id, newName)
     onRenameCancel, // Function()
