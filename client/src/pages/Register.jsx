@@ -60,7 +60,7 @@ function Register() {
 
   if (checkingRegistration) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-dark-950 bg-mesh p-4">
+      <div className="min-h-screen min-h-[100dvh] flex items-center justify-center bg-dark-950 bg-mesh p-4">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-accent border-t-transparent"></div>
           <p className="mt-4 text-dark-400">Loading...</p>
@@ -70,7 +70,7 @@ function Register() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-dark-950 bg-mesh p-4">
+    <div className="min-h-screen min-h-[100dvh] flex items-center justify-center bg-dark-950 bg-mesh p-4">
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-accent mb-4">

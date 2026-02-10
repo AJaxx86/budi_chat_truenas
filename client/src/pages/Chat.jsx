@@ -1885,7 +1885,7 @@ function Chat() {
   );
 
   return (
-    <div className="flex h-screen bg-dark-950 bg-mesh">
+    <div className="flex h-screen h-[100dvh] bg-dark-950 bg-mesh">
       {/* Mobile Sidebar Overlay */}
       {isMobile && showSidebar && (
         <div
@@ -1903,7 +1903,7 @@ function Chat() {
             ? `sidebar-mobile glass-sidebar ${showSidebar ? "open" : ""}`
             : `${showSidebar ? "w-72" : "w-16"} transition-all duration-300 ease-out glass-sidebar`
         }
-        flex flex-col overflow-hidden ${isMobile ? "z-[60]" : "z-50"} ${isMobile ? "max-h-screen" : ""}
+        flex flex-col overflow-hidden ${isMobile ? "z-[60]" : "z-50"} ${isMobile ? "max-h-screen max-h-[100dvh]" : ""}
       `}
       >
         <div

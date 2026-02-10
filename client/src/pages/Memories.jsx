@@ -108,7 +108,7 @@ function Memories() {
   };
 
   return (
-    <div className="min-h-screen bg-dark-950 bg-mesh">
+    <div className="min-h-screen min-h-[100dvh] bg-dark-950 bg-mesh">
       <div className="max-w-4xl mx-auto p-6">
         <button
           onClick={() => navigate('/')}
