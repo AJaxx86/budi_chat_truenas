@@ -689,7 +689,7 @@ function ModelSelector({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-1/2 mt-2 w-[400px] max-w-[calc(100vw-32px)] glass-dropdown rounded-2xl z-[100] overflow-hidden shadow-2xl scale-in-centered sm:left-1/2 sm:-translate-x-1/2 max-sm:left-0 max-sm:right-0 max-sm:translate-x-0 max-sm:fixed max-sm:top-auto max-sm:mt-0 max-sm:w-auto max-sm:mx-4">
+        <div className="absolute top-full left-1/2 mt-2 w-[400px] max-w-[calc(100vw-32px)] glass-dropdown rounded-2xl z-[100] overflow-hidden shadow-2xl scale-in-centered sm:left-1/2 sm:-translate-x-1/2 max-sm:fixed max-sm:top-auto max-sm:left-1/2 max-sm:-translate-x-1/2 max-sm:mt-2 max-sm:w-[calc(100vw-32px)]">
 
           {/* Tabs */}
           <div className="flex items-center p-1 bg-dark-800/50 border-b border-dark-700/50">

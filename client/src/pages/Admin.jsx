@@ -762,7 +762,7 @@ function Admin() {
         </div>
 
         {/* User Groups Management */}
-        <div className="glass-card rounded-2xl p-8 mt-6">
+        <div className="glass-card rounded-2xl p-8">
           <h2 className="text-2xl font-bold text-accent mb-6 flex items-center gap-3 tracking-tight">
             <UserCog className="w-7 h-7" />
             User Groups & Permissions

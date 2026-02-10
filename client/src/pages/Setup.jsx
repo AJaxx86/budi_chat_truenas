@@ -117,7 +117,7 @@ function Setup() {
       // Wait for animation then login and redirect
       setTimeout(() => {
         login(data.token, data.user);
-        navigate('/chat');
+        navigate('/');
       }, 1500);
     } catch (err) {
       setErrors({ submit: err.message });

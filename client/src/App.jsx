@@ -129,6 +129,7 @@ function App() {
 
           {/* Protected routes */}
           <Route path="/" element={user ? <Chat /> : <Navigate to="/login" />} />
+          <Route path="/chat" element={user ? <Chat /> : <Navigate to="/login" />} />
           <Route path="/admin" element={isAdmin() ? <Admin /> : <Navigate to="/" />} />
           <Route path="/settings" element={user ? <Profile /> : <Navigate to="/login" />} />
           <Route path="/memories" element={user ? <Memories /> : <Navigate to="/login" />} />

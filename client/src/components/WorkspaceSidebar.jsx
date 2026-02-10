@@ -194,8 +194,7 @@ export default function WorkspaceSidebar({
                                 {/* Icon with Color */}
                                 <div className="relative">
                                     <div
-                                        className={`flex items-center justify-center w-5 h-5 rounded-md transition-colors ${isActive ? 'bg-dark-700/50' : ''
-                                            }`}
+                                        className={`flex items-center justify-center w-5 h-5 rounded-md transition-colors`}
                                         style={{ color: workspace.color }}
                                     >
                                         <IconComponent className="w-4 h-4" />
