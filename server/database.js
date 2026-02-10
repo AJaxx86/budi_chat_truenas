@@ -28,12 +28,28 @@ function initDatabase() {
       password TEXT NOT NULL,
       name TEXT NOT NULL,
       is_admin INTEGER DEFAULT 0,
+      user_type TEXT DEFAULT 'user',
       openai_api_key TEXT,
       use_default_key INTEGER DEFAULT 0,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Migration: Add user_type column to users table if it doesn't exist
+  try {
+    const usersInfo = db.prepare("PRAGMA table_info(users)").all();
+    const hasUserType = usersInfo.some((col) => col.name === "user_type");
+    if (!hasUserType) {
+      db.exec("ALTER TABLE users ADD COLUMN user_type TEXT DEFAULT 'user'");
+      // Migrate existing admins to user_type='admin', others to 'user'
+      db.exec("UPDATE users SET user_type = 'admin' WHERE is_admin = 1");
+      db.exec("UPDATE users SET user_type = 'user' WHERE is_admin = 0 OR is_admin IS NULL");
+      console.log("✅ Migration: Added user_type column to users table and migrated existing users");
+    }
+  } catch (e) {
+    console.error("Migration error:", e);
+  }
 
   // Settings table (for default keys and system settings)
   db.exec(`
@@ -574,7 +590,6 @@ function initDatabase() {
     console.error("Migration error:", e);
   }
 
-
   // Initialize default user groups with permissions
   const defaultGroups = [
     {
@@ -655,26 +670,12 @@ function initDatabase() {
     console.error("Migration error:", e);
   }
 
-  // Create default admin user if not exists
-  const adminExists = db
-    .prepare("SELECT id FROM users WHERE is_admin = 1")
-    .get();
-  if (!adminExists) {
-    const adminEmail = process.env.ADMIN_EMAIL || "admin@example.com";
-    const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
-    const hashedPassword = bcrypt.hashSync(adminPassword, 10);
-
-    db.prepare(
-      `
-      INSERT INTO users (email, password, name, is_admin)
-      VALUES (?, ?, ?, 1)
-    `,
-    ).run(adminEmail, hashedPassword, "Admin");
-
-    console.log(`\n✅ Default admin created:`);
-    console.log(`   Email: ${adminEmail}`);
-    console.log(`   Password: ${adminPassword}`);
-    console.log(`   ⚠️  Please change the password after first login!\n`);
+  // REMOVED: Automatic admin creation from environment variables
+  // Master user must be created through the setup flow
+  // Check if master user exists and log status
+  const masterExists = db.prepare("SELECT id FROM users WHERE user_type = 'master' LIMIT 1").get();
+  if (!masterExists) {
+    console.log(`\n⚠️  No master user found. Please complete the setup flow to create a master user.\n`);
   }
 
   // Insert default tools
@@ -760,6 +761,52 @@ function initDatabase() {
           required: ["query"],
         }),
       },
+      {
+        id: "add_memory",
+        name: "add_memory",
+        description: "Store a memory about the user for future context. Use this when the user shares important personal information, preferences, facts, or context that would be useful to remember across conversations. Examples: user preferences, project details, personal facts, important dates, etc.",
+        parameters: JSON.stringify({
+          type: "object",
+          properties: {
+            content: {
+              type: "string",
+              description: "The content of the memory to store",
+            },
+            category: {
+              type: "string",
+              description: "Category for the memory (e.g., 'preference', 'fact', 'project', 'general'). Default is 'general'.",
+            },
+            importance: {
+              type: "number",
+              description: "Importance level 1-5 (1 = low, 5 = high). Default is 1.",
+            },
+          },
+          required: ["content"],
+        }),
+      },
+      {
+        id: "read_memories",
+        name: "read_memories",
+        description: "Retrieve stored memories about the user. Use this to recall relevant context before answering questions or to provide personalized responses. Can filter by category or search for specific topics.",
+        parameters: JSON.stringify({
+          type: "object",
+          properties: {
+            category: {
+              type: "string",
+              description: "Filter by category (e.g., 'preference', 'fact', 'project'). If not provided, retrieves all memories.",
+            },
+            query: {
+              type: "string",
+              description: "Optional search query to filter memories by content relevance",
+            },
+            limit: {
+              type: "number",
+              description: "Maximum number of memories to return (default 10, max 50)",
+            },
+          },
+          required: [],
+        }),
+      },
     ];
 
     const insertTool = db.prepare(`
@@ -823,6 +870,69 @@ function initDatabase() {
       })
     );
     console.log("✅ Migration: Added web_fetch tool");
+  }
+
+  // Migration: Add memory tools if they don't exist
+  const addMemoryTool = db.prepare("SELECT id FROM tools WHERE name = 'add_memory'").get();
+  if (!addMemoryTool) {
+    db.prepare(`
+      INSERT INTO tools (id, name, description, parameters)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      "add_memory",
+      "add_memory",
+      "Store a memory about the user for future context. Use this when the user shares important personal information, preferences, facts, or context that would be useful to remember across conversations. Examples: user preferences, project details, personal facts, important dates, etc.",
+      JSON.stringify({
+        type: "object",
+        properties: {
+          content: {
+            type: "string",
+            description: "The content of the memory to store",
+          },
+          category: {
+            type: "string",
+            description: "Category for the memory (e.g., 'preference', 'fact', 'project', 'general'). Default is 'general'.",
+          },
+          importance: {
+            type: "number",
+            description: "Importance level 1-5 (1 = low, 5 = high). Default is 1.",
+          },
+        },
+        required: ["content"],
+      })
+    );
+    console.log("✅ Migration: Added add_memory tool");
+  }
+
+  const readMemoriesTool = db.prepare("SELECT id FROM tools WHERE name = 'read_memories'").get();
+  if (!readMemoriesTool) {
+    db.prepare(`
+      INSERT INTO tools (id, name, description, parameters)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      "read_memories",
+      "read_memories",
+      "Retrieve stored memories about the user. Use this to recall relevant context before answering questions or to provide personalized responses. Can filter by category or search for specific topics.",
+      JSON.stringify({
+        type: "object",
+        properties: {
+          category: {
+            type: "string",
+            description: "Filter by category (e.g., 'preference', 'fact', 'project'). If not provided, retrieves all memories.",
+          },
+          query: {
+            type: "string",
+            description: "Optional search query to filter memories by content relevance",
+          },
+          limit: {
+            type: "number",
+            description: "Maximum number of memories to return (default 10, max 50)",
+          },
+        },
+        required: [],
+      })
+    );
+    console.log("✅ Migration: Added read_memories tool");
   }
 
   // Insert default personas
@@ -926,5 +1036,11 @@ function initDatabase() {
 }
 
 initDatabase();
+
+// Helper function to check if a master user exists
+export function hasMasterUser() {
+  const master = db.prepare("SELECT id FROM users WHERE user_type = 'master' LIMIT 1").get();
+  return !!master;
+}
 
 export default db;

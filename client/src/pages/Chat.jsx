@@ -153,9 +153,45 @@ const groupMessagesForDisplay = (messages) => {
 };
 
 // Memoized ThinkingSection component to prevent re-renders during streaming
+const ACCENT_COLORS = {
+  amber: 'hsl(38, 92%, 50%)',
+  blue: 'hsl(217, 91%, 60%)',
+  green: 'hsl(142, 71%, 45%)',
+  purple: 'hsl(262, 83%, 58%)',
+  rose: 'hsl(350, 89%, 60%)',
+  cyan: 'hsl(186, 94%, 42%)',
+};
+
 const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming, elapsedTime }) => {
   const contentRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
+  const [accentColor, setAccentColor] = useState(() => {
+    const accent = document.documentElement.getAttribute('data-accent') || 'amber';
+    return ACCENT_COLORS[accent] || ACCENT_COLORS.amber;
+  });
+
+  useEffect(() => {
+    const updateAccent = () => {
+      const accent = document.documentElement.getAttribute('data-accent') || 'amber';
+      setAccentColor(ACCENT_COLORS[accent] || ACCENT_COLORS.amber);
+    };
+
+    // Update on mount and when data-accent changes
+    updateAccent();
+
+    // Listen for attribute changes
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.attributeName === 'data-accent') {
+          updateAccent();
+        }
+      });
+    });
+
+    observer.observe(document.documentElement, { attributes: true });
+
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (isExpanded && isStreaming && shouldAutoScrollRef.current) {
@@ -178,7 +214,10 @@ const ThinkingSection = memo(({ reasoning, isExpanded, onToggle, isStreaming, el
   if (!reasoning && !isStreaming) return null;
 
   return (
-    <div className="mb-2 border-l-2 border-l-amber-500/50 bg-dark-800/30 rounded-r-lg">
+    <div 
+      className="mb-2 border-l-2 bg-dark-800/30 rounded-r-lg"
+      style={{ borderLeftColor: accentColor }}
+    >
       <div className="flex items-center justify-between">
         <button
           type="button"
@@ -779,8 +818,8 @@ function Chat() {
 
       let modelToUse = data.model;
 
-      // Check if guest user needs model auto-switch (Admins are exempt)
-      if (user?.usingDefaultKey && !user?.is_admin) {
+      // Check if guest user needs model auto-switch (Admins and users with can_use_default_key are exempt)
+      if (user?.usingDefaultKey && !user?.is_admin && !user?.permissions?.can_use_default_key) {
         if (user?.guestModelWhitelist && user.guestModelWhitelist.length > 0) {
           if (!user.guestModelWhitelist.includes(data.model)) {
             // Auto-switch to first whitelisted model
@@ -865,8 +904,8 @@ function Chat() {
 
     let modelToUse = localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL;
 
-    // For guest users using default key, ensure the model is whitelisted (Admins are exempt)
-    if (user?.usingDefaultKey && !user?.is_admin) {
+    // For guest users using default key, ensure the model is whitelisted (Admins and users with can_use_default_key are exempt)
+    if (user?.usingDefaultKey && !user?.is_admin && !user?.permissions?.can_use_default_key) {
       if (user?.guestModelWhitelist && user.guestModelWhitelist.length > 0) {
         if (!user.guestModelWhitelist.includes(modelToUse)) {
           // Use first whitelisted model - ONLY if whitelist has items
@@ -1681,7 +1720,7 @@ function Chat() {
           ? `sidebar-mobile glass-sidebar ${showSidebar ? 'open' : ''}`
           : `${showSidebar ? 'w-72' : 'w-16'} transition-all duration-300 ease-out glass-sidebar`
         }
-        flex flex-col overflow-hidden z-50
+        flex flex-col overflow-hidden ${isMobile ? 'z-[60]' : 'z-50'}
       `}>
         <div className={`${showSidebar ? 'p-4 md:p-5' : 'p-2'} border-b border-dark-700/30 safe-area-inset-top`}>
           <div className={`flex items-center ${showSidebar ? 'gap-3 mb-4 md:mb-5' : 'justify-center mb-2'}`}>
@@ -1709,7 +1748,12 @@ function Chat() {
                   {user?.name || 'User'}
                 </h1>
                 <div className="flex items-center gap-2 mt-0.5">
-                  {user?.is_admin ? (
+                  {user?.user_type === 'master' ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                      <Shield className="w-3 h-3" />
+                      Master
+                    </span>
+                  ) : user?.is_admin || user?.user_type === 'admin' ? (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider bg-red-500/10 text-red-500 border border-red-500/20">
                       <Shield className="w-3 h-3" />
                       Admin
@@ -1992,7 +2036,7 @@ function Chat() {
               {showSidebar && "Settings"}
             </button>
           )}
-          {(!user?.permissions || user.permissions.can_access_admin) && (
+          {(user?.is_admin || user?.user_type === 'admin' || user?.user_type === 'master') && (
             <button
               onClick={() => navigate('/admin')}
               className={`${showSidebar ? 'w-full px-4 gap-3 min-h-[44px]' : 'w-11 h-11 mx-auto'} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-400 hover:text-dark-300`}
@@ -2049,8 +2093,8 @@ function Chat() {
                 selectedModel={chatSettings.model}
                 onModelChange={handleModelChange}
                 isDropdown={true}
-                guestWhitelist={(!user?.is_admin && user?.guestModelWhitelist) || []}
-                isGuestUsingDefaultKey={user?.usingDefaultKey && !user?.is_admin}
+                guestWhitelist={(!user?.is_admin && !user?.permissions?.can_use_default_key && user?.guestModelWhitelist) || []}
+                isGuestUsingDefaultKey={user?.usingDefaultKey && !user?.is_admin && !user?.permissions?.can_use_default_key}
                 selectedPersona={selectedPersona}
                 onPersonaChange={handlePersonaSelect}
               />
@@ -2810,8 +2854,8 @@ function Chat() {
                   selectedModel={forkModel}
                   onModelChange={setForkModel}
                   isDropdown={true}
-                  guestWhitelist={(!user?.is_admin && user?.guestModelWhitelist) || []}
-                  isGuestUsingDefaultKey={user?.usingDefaultKey && !user?.is_admin}
+                  guestWhitelist={(!user?.is_admin && !user?.permissions?.can_use_default_key && user?.guestModelWhitelist) || []}
+                  isGuestUsingDefaultKey={user?.usingDefaultKey && !user?.is_admin && !user?.permissions?.can_use_default_key}
                 />
               </div>
 

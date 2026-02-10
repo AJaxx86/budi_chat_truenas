@@ -1,13 +1,15 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Users, Settings, Plus, Trash2, Edit2,
   Save, X, Shield, Key, Eye, EyeOff, CheckCircle, XCircle,
-  Zap, Coins, RotateCcw, UserCog, Search, Bot, Loader2
+  Zap, Coins, RotateCcw, UserCog, Search, Bot, Loader2, AlertTriangle
 } from 'lucide-react';
+import { AuthContext } from '../contexts/AuthContext';
 
 function Admin() {
   const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
   const [users, setUsers] = useState([]);
   const [settings, setSettings] = useState({});
   const [loading, setLoading] = useState(false);
@@ -15,6 +17,9 @@ function Admin() {
   const [editingUser, setEditingUser] = useState(null);
   const [showDefaultKey, setShowDefaultKey] = useState(false);
   const [defaultApiKey, setDefaultApiKey] = useState('');
+  const [showFactoryReset, setShowFactoryReset] = useState(false);
+  const [factoryResetConfirm, setFactoryResetConfirm] = useState('');
+  const [factoryResetLoading, setFactoryResetLoading] = useState(false);
 
   const [userForm, setUserForm] = useState({
     email: '',
@@ -28,6 +33,9 @@ function Admin() {
   const [globalSystemPrompt, setGlobalSystemPrompt] = useState('');
   const [braveSearchApiKey, setBraveSearchApiKey] = useState('');
   const [showBraveKey, setShowBraveKey] = useState(false);
+
+  // Registration setting state
+  const [registrationEnabled, setRegistrationEnabled] = useState(false);
 
   // Guest model whitelist state
   const [guestModelWhitelist, setGuestModelWhitelist] = useState([]);
@@ -83,6 +91,8 @@ function Admin() {
       setTitleGenerationModel(data.title_generation_model || 'google/gemini-2.5-flash-lite');
       setGlobalSystemPrompt(data.global_system_prompt || '');
       setBraveSearchApiKey(data.brave_search_api_key || '');
+      // Load registration enabled setting (defaults to false if not set)
+      setRegistrationEnabled(data.registration_enabled === 'true');
       // Parse guest model whitelist (stored as JSON string)
       try {
         const whitelist = data.guest_model_whitelist ? JSON.parse(data.guest_model_whitelist) : [];
@@ -230,7 +240,8 @@ function Admin() {
           default_openai_api_key: defaultApiKey,
           title_generation_model: titleGenerationModel,
           global_system_prompt: globalSystemPrompt,
-          brave_search_api_key: braveSearchApiKey
+          brave_search_api_key: braveSearchApiKey,
+          registration_enabled: registrationEnabled
         })
       });
       alert('Settings saved successfully!');
@@ -598,7 +609,12 @@ function Admin() {
                   <div className="flex-shrink-0 min-w-0">
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="font-semibold text-lg text-dark-100">{user.name}</h3>
-                      {user.is_admin === 1 ? (
+                      {user.user_type === 'master' ? (
+                        <span className="flex items-center gap-1 px-2.5 py-1 bg-purple-500/10 text-purple-400 rounded-full text-xs font-medium border border-purple-500/20">
+                          <Shield className="w-3 h-3" />
+                          Master
+                        </span>
+                      ) : user.is_admin === 1 ? (
                         <span className="flex items-center gap-1 px-2.5 py-1 bg-red-500/10 text-red-500 rounded-full text-xs font-medium border border-red-500/20">
                           <Shield className="w-3 h-3" />
                           Admin
@@ -924,6 +940,158 @@ function Admin() {
             ))}
           </div>
         </div>
+
+        {/* Registration Settings */}
+        <div className="glass-card rounded-2xl p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
+              <UserCog className="w-6 h-6 text-accent" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-accent flex items-center gap-3 tracking-tight">
+                User Registration
+              </h2>
+              <p className="text-dark-400 text-sm mt-1">Control new user sign-ups</p>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="flex items-center justify-between p-4 bg-dark-800/50 border border-dark-700/50 rounded-xl">
+              <div>
+                <label className="block text-sm font-medium text-dark-200 mb-1">
+                  Allow New User Registrations
+                </label>
+                <p className="text-sm text-dark-400">
+                  When disabled, new users cannot sign up. Existing users can still log in.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={registrationEnabled}
+                  onChange={(e) => setRegistrationEnabled(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-dark-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-accent/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
+              </label>
+            </div>
+
+            <div className={`p-4 rounded-xl border ${registrationEnabled ? 'bg-green-500/10 border-green-500/20' : 'bg-red-500/10 border-red-500/20'}`}>
+              <p className={`text-sm ${registrationEnabled ? 'text-green-400' : 'text-red-400'}`}>
+                {registrationEnabled 
+                  ? '✓ New users can register and create accounts' 
+                  : '✗ New user registration is currently disabled'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Factory Reset - Master Only */}
+        {user?.user_type === 'master' && (
+          <div className="glass-card rounded-2xl p-8 border-red-500/20">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-12 h-12 bg-red-500/10 rounded-xl flex items-center justify-center">
+                <AlertTriangle className="w-6 h-6 text-red-500" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-red-400 flex items-center gap-3 tracking-tight">
+                  Factory Reset
+                </h2>
+                <p className="text-dark-400 text-sm mt-1">Danger Zone - This action cannot be undone</p>
+              </div>
+            </div>
+
+            {!showFactoryReset ? (
+              <div className="space-y-4">
+                <p className="text-dark-300">
+                  Reset Budi Chat to its initial state. This will permanently delete:
+                </p>
+                <ul className="list-disc list-inside text-dark-400 space-y-1 ml-2">
+                  <li>All user accounts and data</li>
+                  <li>All chats, messages, and workspaces</li>
+                  <li>All memories and personas</li>
+                  <li>All settings and API keys</li>
+                </ul>
+                <p className="text-dark-300 mt-4">
+                  After reset, you'll be redirected to the setup page to create a new master account.
+                </p>
+                <button
+                  onClick={() => setShowFactoryReset(true)}
+                  className="mt-6 px-6 py-3 bg-red-500/10 border border-red-500/50 text-red-400 hover:bg-red-500/20 rounded-xl font-semibold transition-all duration-200 flex items-center gap-2"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Initiate Factory Reset
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+                  <p className="text-red-300 font-medium mb-2">Are you absolutely sure?</p>
+                  <p className="text-dark-400 text-sm">
+                    This will delete all data permanently. Type <strong className="text-red-300">RESET</strong> to confirm:
+                  </p>
+                </div>
+                <input
+                  type="text"
+                  value={factoryResetConfirm}
+                  onChange={(e) => setFactoryResetConfirm(e.target.value)}
+                  placeholder="Type RESET to confirm"
+                  className="w-full px-4 py-3 rounded-xl bg-dark-900/50 border border-red-500/30 outline-none text-dark-100 placeholder-dark-600 focus:border-red-500/50 transition-colors"
+                />
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowFactoryReset(false);
+                      setFactoryResetConfirm('');
+                    }}
+                    className="flex-1 px-6 py-3 rounded-xl bg-dark-800 text-dark-300 hover:bg-dark-700 font-semibold transition-all duration-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (factoryResetConfirm !== 'RESET') return;
+                      setFactoryResetLoading(true);
+                      try {
+                        const res = await fetch('/api/admin/factory-reset', {
+                          method: 'POST',
+                          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                        });
+                        if (res.ok) {
+                          localStorage.removeItem('token');
+                          localStorage.removeItem('budi_accent_color_v2');
+                          window.location.href = '/setup';
+                        } else {
+                          const data = await res.json();
+                          alert(data.error || 'Factory reset failed');
+                          setFactoryResetLoading(false);
+                        }
+                      } catch (error) {
+                        console.error('Factory reset error:', error);
+                        alert('Failed to perform factory reset');
+                        setFactoryResetLoading(false);
+                      }
+                    }}
+                    disabled={factoryResetConfirm !== 'RESET' || factoryResetLoading}
+                    className="flex-1 px-6 py-3 bg-red-500 hover:bg-red-600 disabled:bg-red-500/50 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-all duration-200 flex items-center justify-center gap-2"
+                  >
+                    {factoryResetLoading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                        Resetting...
+                      </>
+                    ) : (
+                      <>
+                        <RotateCcw className="w-4 h-4" />
+                        Confirm Reset
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

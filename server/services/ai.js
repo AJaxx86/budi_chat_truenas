@@ -122,6 +122,12 @@ export async function executeToolCall(toolCall, userId = null, workspaceId = nul
       case 'workspace_search':
         return await executeWorkspaceSearch(parsedArgs.query, parsedArgs.limit, userId, workspaceId);
 
+      case 'add_memory':
+        return await executeAddMemory(parsedArgs.content, parsedArgs.category, parsedArgs.importance, userId);
+
+      case 'read_memories':
+        return await executeReadMemories(parsedArgs.category, parsedArgs.query, parsedArgs.limit, userId);
+
       default:
         return `Unknown tool: ${name}`;
     }
@@ -382,5 +388,103 @@ async function executeWorkspaceSearch(query, limit = 10, userId, workspaceId) {
   } catch (error) {
     console.error('Workspace search error:', error);
     return `Workspace search failed: ${error.message}`;
+  }
+}
+
+async function executeAddMemory(content, category = 'general', importance = 1, userId) {
+  if (!userId) {
+    return 'Error: User context required to store memories.';
+  }
+
+  if (!content || content.trim().length === 0) {
+    return 'Error: Memory content cannot be empty.';
+  }
+
+  // Validate and clamp importance
+  const validImportance = Math.min(Math.max(parseInt(importance) || 1, 1), 5);
+
+  // Validate category
+  const validCategory = category && category.trim() ? category.trim().toLowerCase() : 'general';
+
+  try {
+    const result = db.prepare(`
+      INSERT INTO memories (user_id, content, category, importance, created_at, updated_at)
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `).run(userId, content.trim(), validCategory, validImportance);
+
+    if (result.changes > 0) {
+      return `Memory stored successfully (ID: ${result.lastInsertRowid}, category: ${validCategory}, importance: ${validImportance}/5)`;
+    } else {
+      return 'Error: Failed to store memory.';
+    }
+  } catch (error) {
+    console.error('Add memory error:', error);
+    return `Error storing memory: ${error.message}`;
+  }
+}
+
+async function executeReadMemories(category = null, query = null, limit = 10, userId) {
+  if (!userId) {
+    return 'Error: User context required to read memories.';
+  }
+
+  try {
+    const maxLimit = Math.min(Math.max(parseInt(limit) || 10, 1), 50);
+
+    let sql = `
+      SELECT id, content, category, importance, created_at
+      FROM memories
+      WHERE user_id = ?
+    `;
+    const params = [userId];
+
+    // Filter by category if provided
+    if (category && category.trim()) {
+      sql += ` AND category = ?`;
+      params.push(category.trim().toLowerCase());
+    }
+
+    // Search by query if provided
+    if (query && query.trim()) {
+      sql += ` AND content LIKE ?`;
+      params.push(`%${query.trim()}%`);
+    }
+
+    // Order by importance (highest first), then by creation date (newest first)
+    sql += ` ORDER BY importance DESC, created_at DESC LIMIT ?`;
+    params.push(maxLimit);
+
+    const memories = db.prepare(sql).all(...params);
+
+    if (memories.length === 0) {
+      if (category && query) {
+        return `No memories found for category '${category}' matching '${query}'.`;
+      } else if (category) {
+        return `No memories found for category '${category}'.`;
+      } else if (query) {
+        return `No memories found matching '${query}'.`;
+      } else {
+        return 'No memories found. The user has not stored any memories yet.';
+      }
+    }
+
+    // Format results
+    const formattedMemories = memories.map((mem, index) => {
+      const date = new Date(mem.created_at);
+      const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const importanceStars = '★'.repeat(mem.importance) + '☆'.repeat(5 - mem.importance);
+
+      return `[${index + 1}] ${importanceStars} [${mem.category}] (${dateStr})\n    ${mem.content}`;
+    }).join('\n\n');
+
+    const filterInfo = [];
+    if (category) filterInfo.push(`category: '${category}'`);
+    if (query) filterInfo.push(`query: '${query}'`);
+    const filterStr = filterInfo.length > 0 ? ` (${filterInfo.join(', ')})` : '';
+
+    return `Found ${memories.length} memory/memories${filterStr}:\n\n${formattedMemories}`;
+  } catch (error) {
+    console.error('Read memories error:', error);
+    return `Error reading memories: ${error.message}`;
   }
 }

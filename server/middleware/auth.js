@@ -14,7 +14,7 @@ export function authMiddleware(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const user = db.prepare('SELECT id, email, name, is_admin FROM users WHERE id = ?').get(decoded.userId);
+    const user = db.prepare('SELECT id, email, name, is_admin, user_type FROM users WHERE id = ?').get(decoded.userId);
     
     if (!user) {
       return res.status(401).json({ error: 'User not found' });
@@ -28,12 +28,38 @@ export function authMiddleware(req, res, next) {
 }
 
 export function adminMiddleware(req, res, next) {
-  if (!req.user || !req.user.is_admin) {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const hasAdminFlag = req.user.is_admin === 1;
+  const hasAdminType = req.user.user_type === 'admin' || req.user.user_type === 'master';
+
+  if (!hasAdminFlag && !hasAdminType) {
     return res.status(403).json({ error: 'Admin access required' });
   }
+
   next();
 }
 
-export function generateToken(userId) {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
+export function masterMiddleware(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  if (req.user.user_type !== 'master') {
+    return res.status(403).json({ error: 'Master access required' });
+  }
+
+  next();
+}
+
+export function generateToken(userId, userType) {
+  const payload = { userId };
+  
+  if (userType) {
+    payload.userType = userType;
+  }
+
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
 }

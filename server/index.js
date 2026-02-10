@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import authRoutes from './routes/auth.js';
+import setupRoutes from './routes/setup.js';
 import adminRoutes from './routes/admin.js';
 import chatsRoutes from './routes/chats.js';
 import messagesRoutes from './routes/messages.js';
@@ -32,6 +33,7 @@ app.use(express.json());
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/setup', setupRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/chats', chatsRoutes);
 app.use('/api/messages', messagesRoutes);

@@ -36,6 +36,16 @@ function getGroupInfo(groupId) {
 // Register
 router.post('/register', (req, res) => {
   try {
+    // Check if registration is enabled
+    const registrationSetting = db.prepare("SELECT value FROM settings WHERE key = 'registration_enabled'").get();
+    if (registrationSetting && registrationSetting.value === 'false') {
+      return res.status(403).json({ error: 'New registrations are currently disabled' });
+    }
+    // If setting doesn't exist, treat as disabled by default
+    if (!registrationSetting) {
+      return res.status(403).json({ error: 'New registrations are currently disabled' });
+    }
+
     const { email, password, name } = req.body;
 
     if (!email || !password || !name) {
@@ -53,8 +63,8 @@ router.post('/register', (req, res) => {
 
     // Create user with default 'user' group and accent color
     const result = db.prepare(`
-      INSERT INTO users (email, password, name, user_group, accent_color)
-      VALUES (?, ?, ?, 'user', 'amber')
+      INSERT INTO users (email, password, name, is_admin, user_type, user_group, accent_color)
+      VALUES (?, ?, ?, 0, 'user', 'user', 'amber')
     `).run(email, hashedPassword, name);
 
     const token = generateToken(result.lastInsertRowid);
@@ -68,6 +78,7 @@ router.post('/register', (req, res) => {
         email,
         name,
         is_admin: false,
+        user_type: 'user',
         user_group: 'user',
         accent_color: 'amber',
         group_info: groupInfo,
@@ -107,6 +118,7 @@ router.post('/login', (req, res) => {
         email: user.email,
         name: user.name,
         is_admin: !!user.is_admin,
+        user_type: user.user_type || 'user',
         user_group: userGroup,
         accent_color: user.accent_color || 'amber',
         group_info: groupInfo,
@@ -122,7 +134,7 @@ router.post('/login', (req, res) => {
 // Get current user
 router.get('/me', authMiddleware, (req, res) => {
   const user = db.prepare(`
-    SELECT id, email, name, is_admin, use_default_key, user_group, accent_color, show_recent_personas,
+    SELECT id, email, name, is_admin, user_type, use_default_key, user_group, accent_color, show_recent_personas,
            CASE WHEN openai_api_key IS NOT NULL THEN 1 ELSE 0 END as has_api_key
     FROM users WHERE id = ?
   `).get(req.user.id);
@@ -135,9 +147,9 @@ router.get('/me', authMiddleware, (req, res) => {
   const hasPersonalKey = !!user.has_api_key;
   const usingDefaultKey = !hasPersonalKey;
 
-  // Get model whitelist if user is using the default key (no personal API key)
+  // Get model whitelist only if user is using default key AND doesn't have can_use_default_key permission
   let guestModelWhitelist = [];
-  if (usingDefaultKey) {
+  if (usingDefaultKey && !permissions.can_use_default_key) {
     const whitelistSetting = db.prepare("SELECT value FROM settings WHERE key = 'guest_model_whitelist'").get();
     if (whitelistSetting?.value) {
       try {

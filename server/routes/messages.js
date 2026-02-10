@@ -64,24 +64,42 @@ router.post("/:chatId", async (req, res) => {
     }
     const { key: apiKey, isDefault: usedDefaultKey } = apiKeyInfo;
 
-    // Validate model for non-admin users using the default key (no personal API key)
+    // Validate model for users using the default key who don't have can_use_default_key permission
     if (usedDefaultKey && !req.user.is_admin) {
-      // Get model whitelist
-      const whitelistSetting = db.prepare("SELECT value FROM settings WHERE key = 'guest_model_whitelist'").get();
-      let modelWhitelist = [];
-      if (whitelistSetting?.value) {
+      // Check if user's group has can_use_default_key permission
+      const user = db.prepare('SELECT user_group FROM users WHERE id = ?').get(req.user.id);
+      const groupId = user?.user_group || 'user';
+      const group = db.prepare('SELECT permissions FROM user_groups WHERE id = ?').get(groupId);
+
+      let hasDefaultKeyPermission = false;
+      if (group?.permissions) {
         try {
-          modelWhitelist = JSON.parse(whitelistSetting.value);
+          const permissions = JSON.parse(group.permissions);
+          hasDefaultKeyPermission = permissions.can_use_default_key === true;
         } catch (e) {
-          console.error('Failed to parse guest_model_whitelist:', e);
+          console.error('Error parsing group permissions:', e);
         }
       }
 
-      // If whitelist check applies, strictly enforce it (empty whitelist = no models allowed)
-      if (!modelWhitelist.includes(chat.model)) {
-        return res.status(403).json({
-          error: "This model is not available when using the default API key. Please add your own API key in settings or ask an admin to whitelist models."
-        });
+      // Only apply whitelist if user doesn't have can_use_default_key permission
+      if (!hasDefaultKeyPermission) {
+        // Get model whitelist
+        const whitelistSetting = db.prepare("SELECT value FROM settings WHERE key = 'guest_model_whitelist'").get();
+        let modelWhitelist = [];
+        if (whitelistSetting?.value) {
+          try {
+            modelWhitelist = JSON.parse(whitelistSetting.value);
+          } catch (e) {
+            console.error('Failed to parse guest_model_whitelist:', e);
+          }
+        }
+
+        // If whitelist check applies, strictly enforce it (empty whitelist = no models allowed)
+        if (!modelWhitelist.includes(chat.model)) {
+          return res.status(403).json({
+            error: "This model is not available when using the default API key. Please add your own API key in settings or ask an admin to whitelist models."
+          });
+        }
       }
     }
 

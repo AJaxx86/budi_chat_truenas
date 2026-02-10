@@ -1,19 +1,48 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import db from '../database.js';
-import { authMiddleware, adminMiddleware } from '../middleware/auth.js';
+import { authMiddleware, adminMiddleware, masterMiddleware } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// All routes require auth and admin
+// All routes require auth
 router.use(authMiddleware);
+
+// Factory reset - requires master user (must be before adminMiddleware)
+router.post('/factory-reset', masterMiddleware, (req, res) => {
+  try {
+    // Delete all data except user_groups table
+    // Order matters for foreign key constraints
+    db.prepare('DELETE FROM message_steps').run();
+    db.prepare('DELETE FROM generated_images').run();
+    db.prepare('DELETE FROM file_uploads').run();
+    db.prepare('DELETE FROM shared_chats').run();
+    db.prepare('DELETE FROM messages').run();
+    db.prepare('DELETE FROM chats').run();
+    db.prepare('DELETE FROM workspaces').run();
+    db.prepare('DELETE FROM memories').run();
+    db.prepare('DELETE FROM user_model_stats').run();
+    db.prepare('DELETE FROM user_stats').run();
+    db.prepare('DELETE FROM personas').run();
+    db.prepare('DELETE FROM tools').run();
+    db.prepare('DELETE FROM settings').run();
+    db.prepare('DELETE FROM users').run();
+
+    res.json({ message: 'Factory reset completed successfully' });
+  } catch (error) {
+    console.error('Factory reset error:', error);
+    res.status(500).json({ error: 'Failed to perform factory reset' });
+  }
+});
+
+// All other admin routes require admin
 router.use(adminMiddleware);
 
 // Get all users with usage stats
 router.get('/users', (req, res) => {
   try {
     const users = db.prepare(`
-      SELECT id, email, name, is_admin, use_default_key, user_group, created_at,
+      SELECT id, email, name, is_admin, user_type, use_default_key, user_group, created_at,
              CASE WHEN openai_api_key IS NOT NULL THEN 1 ELSE 0 END as has_api_key
       FROM users
       ORDER BY created_at DESC
@@ -204,7 +233,7 @@ router.get('/settings', (req, res) => {
 // Update system settings
 router.put('/settings', (req, res) => {
   try {
-    const { default_openai_api_key, title_generation_model, global_system_prompt, brave_search_api_key, guest_model_whitelist } = req.body;
+    const { default_openai_api_key, title_generation_model, global_system_prompt, brave_search_api_key, guest_model_whitelist, registration_enabled } = req.body;
 
     const upsert = db.prepare(`
       INSERT INTO settings (key, value, updated_at)
@@ -232,6 +261,12 @@ router.put('/settings', (req, res) => {
       // Store as JSON string array
       const whitelistJson = JSON.stringify(guest_model_whitelist);
       upsert.run('guest_model_whitelist', whitelistJson, whitelistJson);
+    }
+
+    if (registration_enabled !== undefined) {
+      // Store as string 'true' or 'false'
+      const value = registration_enabled ? 'true' : 'false';
+      upsert.run('registration_enabled', value, value);
     }
 
     res.json({ message: 'Settings updated successfully' });
