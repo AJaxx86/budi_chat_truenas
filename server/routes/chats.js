@@ -80,6 +80,8 @@ router.post('/', (req, res) => {
     let finalModel = model || 'moonshotai/kimi-k2-thinking';
     let finalSystemPrompt = system_prompt || null;
     let finalTemperature = temperature !== undefined ? temperature : 0.7;
+    let finalDepth = depth || 'standard';
+    let finalTone = tone || 'professional';
     let finalPersonaId = persona_id || null;
 
     if (workspace_id) {
@@ -102,13 +104,25 @@ router.post('/', (req, res) => {
         // Inherit workspace default persona if none explicitly provided
         if (!persona_id && workspace.default_persona_id) {
           finalPersonaId = workspace.default_persona_id;
-          // Look up persona settings to apply system_prompt, depth, tone, temperature
-          const persona = db.prepare('SELECT * FROM personas WHERE id = ?').get(workspace.default_persona_id);
-          if (persona) {
-            if (!system_prompt && persona.system_prompt) {
-              finalSystemPrompt = persona.system_prompt;
-            }
-          }
+        }
+      }
+    }
+
+    // Look up persona settings to apply system_prompt, depth, tone, temperature
+    if (finalPersonaId) {
+      const persona = db.prepare('SELECT * FROM personas WHERE id = ? AND (user_id = ? OR is_default = 1)').get(finalPersonaId, req.user.id);
+      if (persona) {
+        if (!system_prompt && persona.system_prompt) {
+          finalSystemPrompt = persona.system_prompt;
+        }
+        if (temperature === undefined && persona.temperature !== undefined && persona.temperature !== null) {
+          finalTemperature = persona.temperature;
+        }
+        if (!depth && persona.depth) {
+          finalDepth = persona.depth;
+        }
+        if (!tone && persona.tone) {
+          finalTone = persona.tone;
         }
       }
     }
@@ -123,8 +137,8 @@ router.post('/', (req, res) => {
       finalModel,
       finalSystemPrompt,
       finalTemperature,
-      depth || 'standard',
-      tone || 'professional',
+      finalDepth,
+      finalTone,
       agent_mode ? 1 : 0,
       workspace_id || null,
       req.body.thinking_mode || 'medium',
