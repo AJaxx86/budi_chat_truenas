@@ -1,364 +1,512 @@
-# 🚀 TrueNAS Scale Deployment Guide
+# 🚀 TrueNAS Scale 25.10.1 Deployment Guide
 
-This guide will walk you through deploying AI Chat Hub on TrueNAS Scale using the Custom App feature.
+This guide covers deploying AI Chat Hub on TrueNAS Scale 25.10.1 (Goldeye) using **Dockge** and Docker Compose - the recommended modern approach.
 
 ## 📋 Prerequisites
 
-1. TrueNAS Scale installed and running
-2. OpenRouter API key ([Get one here](https://openrouter.ai/keys))
-3. Basic familiarity with TrueNAS Scale Apps
+1. TrueNAS Scale 25.10.1 (Goldeye) installed and running
+2. Storage pool created (e.g., `/mnt/ARK/`)
+3. Nginx Proxy Manager already installed as TrueNAS App
+4. Docker Hub account (free)
+5. Domain configured (e.g., `chat.ajaxx.uk`)
+6. OpenRouter API key ([Get one here](https://openrouter.ai/keys))
 
-## 🔧 Step-by-Step Deployment
+---
 
-### Step 1: Prepare the Docker Image
+## 🔧 Phase 1: Push Image to Docker Hub
 
-You have two options:
+Since TrueNAS will pull your image from Docker Hub, you need to build and push it first.
 
-#### Option A: Build Locally (Recommended)
-1. SSH into your TrueNAS server
-2. Clone or download this repository
-3. Build the Docker image:
-   ```bash
-   cd /mnt/your-pool/ai-chat-hub
-   docker build -t ai-chat-hub:latest .
-   ```
+### Step 1: Create Docker Hub Account
 
-#### Option B: Use Docker Hub
-1. Build on your computer and push to Docker Hub
-2. Use the image in TrueNAS Custom App
+1. Go to [hub.docker.com](https://hub.docker.com)
+2. Sign up for a free account
+3. Create a new repository:
+   - **Repository Name:** `budi-chat`
+   - **Visibility:** Public (or Private if you have Pro)
+   - **Description:** "AI Chat Hub - Self-hosted multi-user AI chat application"
 
-### Step 2: Create Storage Location
+### Step 2: Build and Push Image
 
-1. In TrueNAS, go to **Datasets**
-2. Create a new dataset:
-   - Name: `ai-chat-hub-data`
-   - Path: `/mnt/your-pool/ai-chat-hub-data`
-3. Note the full path for later
+On your development machine (where you have the source code):
 
-### Step 3: Deploy Custom App
+```bash
+# Navigate to your project directory
+cd /path/to/ai-chat-hub
 
-1. **Navigate to Apps** in TrueNAS UI
-2. Click **"Discover Apps"**
-3. Click **"Custom App"** button
+# Login to Docker Hub
+docker login
 
-### Step 4: Configure the Application
+# Build the image
+docker build -t ajaxx123/budi-chat:latest .
 
-Fill in the following configuration:
+# Tag with version (optional but recommended)
+docker tag ajaxx123/budi-chat:latest ajaxx123/budi-chat:v1.0.0
 
-#### **Application Name**
-```
-ai-chat-hub
+# Push to Docker Hub
+docker push ajaxx123/budi-chat:latest
+docker push ajaxx123/budi-chat:v1.0.0
 ```
 
-#### **Container Images**
+**Note:** Your Docker Hub username is `ajaxx123` and repository name is `budi-chat`.
 
-**Image Repository:**
+### Step 3: Verify Push
+
+Check your Docker Hub repository to confirm the image was pushed successfully.
+
+---
+
+## 🔧 Phase 2: Install Dockge on TrueNAS
+
+Dockge is a Docker Compose GUI manager that makes deployment easy.
+
+### Step 1: Install Dockge
+
+1. In TrueNAS UI, go to **Apps**
+2. Click **Discover Apps**
+3. Search for **"Dockge"**
+4. Click **Install**
+5. Configure:
+   - **Application Name:** `dockge` (or your preference)
+   - **Storagen>**: Use default or specify a path
+   - Click **Install**
+6. Wait for installation to complete
+
+### Step 2: Access Dockge
+
+1. Find the Dockge app in **Installed Applications**
+2. Click the **Open** button or go to `http://YOUR-TRUENAS-IP:5001`
+3. Create your Dockge admin account
+
+---
+
+## 🔧 Phase 3: Create Storage Location
+
+### Step 1: Create Dataset
+
+1. In TrueNAS UI, go to **Datasets**
+2. Navigate to your pool (`/mnt/ARK/`)
+3. Click **Add Dataset**
+4. Configure:
+   - **Name:** `ai-chat-hub`
+   - **Path:** `/mnt/ARK/apps/ai-chat-hub`
+   - **Encryption:** Optional (recommended for production)
+   - Click **Save**
+
+### Step 2: Create Data Subfolder
+
+```bash
+# SSH into your TrueNAS server
+ssh root@YOUR-TRUENAS-IP
+
+# Create data directory
+mkdir -p /mnt/ARK/apps/ai-chat-hub/data
+
+# Set proper permissions
+chown -R 568:568 /mnt/ARK/apps/ai-chat-hub
+chmod 755 /mnt/ARK/apps/ai-chat-hub/data
 ```
-ai-chat-hub
+
+---
+
+## 🔧 Phase 4: Deploy AI Chat Hub
+
+### Step 1: Create New Stack in Dockge
+
+1. Open Dockge UI (`http://YOUR-TRUENAS-IP:5001`)
+2. Click **"+ New Stack"**
+3. **Stack Name:** `ai-chat-hub`
+4. **File Path:** `/mnt/ARK/apps/ai-chat-hub/docker-compose.yml`
+
+### Step 2: Paste Docker Compose Configuration
+
+In the Docker Compose editor, paste:
+
+```yaml
+version: '3.8'
+
+services:
+  ai-chat-hub:
+    image: ajaxx123/budi-chat:latest
+    container_name: ai-chat-hub
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - /mnt/ARK/apps/ai-chat-hub/data:/app/data
+    environment:
+      - PORT=3001
+      - NODE_ENV=production
+      - JWT_SECRET=${JWT_SECRET}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - DEFAULT_OPENROUTER_API_KEY=${DEFAULT_OPENROUTER_API_KEY:-}
+      - DB_PATH=/app/data/database.db
+      - BRAVE_SEARCH_API_KEY=${BRAVE_SEARCH_API_KEY:-}
+      - WEB_SEARCH_MAX_RESULTS=${WEB_SEARCH_MAX_RESULTS:-5}
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/auth/me', (r) => {process.exit(r.statusCode === 401 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+    networks:
+      - ai-chat-hub
+
+networks:
+  ai-chat-hub:
+    driver: bridge
 ```
-*Or your Docker Hub repository if you pushed it there*
 
-**Image Tag:**
+**⚠️ Important:** The image is set to `ajaxx123/budi-chat:latest` which uses your Docker Hub username and repository name.
+
+### Step 3: Create Environment Variables File
+
+1. In Dockge, click **".env"** tab
+2. Paste the following (customize values):
+
+```bash
+# Security - CHANGE THESE!
+JWT_SECRET=your-super-secret-jwt-key-minimum-32-characters-long
+ADMIN_PASSWORD=your-secure-admin-password-here
+
+# Optional API Keys
+DEFAULT_OPENROUTER_API_KEY=sk-or-v1-your-openrouter-api-key-here
+BRAVE_SEARCH_API_KEY=your-brave-search-api-key-here
+
+# Admin Settings
+ADMIN_EMAIL=admin@ajaxx.uk
+WEB_SEARCH_MAX_RESULTS=5
 ```
-latest
+
+**🔐 Generate JWT Secret:**
+```bash
+# On any Linux/Mac machine
+openssl rand -base64 32
 ```
 
-**Image Pull Policy:**
+### Step 4: Deploy
+
+1. Click **"Compose"** → **"Up"** in Dockge
+2. Wait for the image to pull and container to start (this may take 2-5 minutes)
+3. Check logs to confirm successful startup
+
+### Step 5: Verify Deployment
+
+1. Go to `http://YOUR-TRUENAS-IP:3001`
+2. You should see the login page
+3. Login with:
+   - **Email:** Your `ADMIN_EMAIL` value
+   - **Password:** Your `ADMIN_PASSWORD` value
+
+---
+
+## 🔧 Phase 5: Configure Nginx Proxy Manager
+
+Since you already have Nginx Proxy Manager installed:
+
+### Step 1: Add Proxy Host
+
+1. Open Nginx Proxy Manager (`http://YOUR-TRUENAS-IP:81`)
+2. Go to **Hosts** → **Proxy Hosts**
+3. Click **Add Proxy Host**
+
+### Step 2: Configure Proxy Host
+
+**Details Tab:**
+- **Domain Names:** `chat.ajaxx.uk`
+- **Scheme:** `http`
+- **Forward Hostname/IP:** `YOUR-TRUENAS-IP` (or `truenas-hostname`)
+- **Forward Port:** `3001`
+
+**SSL Tab:**
+- **SSL Certificate:** Request a new SSL Certificate
+- **Force SSL:** ✅ Enabled
+- **HTTP/2 Support:** ✅ Enabled
+- **HSTS Enabled:** ✅ Enabled
+- **HSTS Subdomains:** ✅ Enabled
+
+**Advanced Tab:**
+Paste this custom configuration for WebSocket support (required for SSE streaming):
+
+```nginx
+# WebSocket support for SSE streaming
+location / {
+    proxy_pass http://YOUR-TRUENAS-IP:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 86400;
+}
 ```
-IfNotPresent
-```
 
-#### **Container Entrypoint**
-Leave empty (use default)
+### Step 3: Save and Test
 
-#### **Container Args**
-Leave empty (use default)
+1. Click **Save**
+2. Wait for SSL certificate to be issued
+3. Visit `https://chat.ajaxx.uk`
+4. You should see the AI Chat Hub login page with SSL enabled
 
-#### **Container Environment Variables**
-
-Click "Add" for each of these environment variables:
-
-| Name | Value |
-|------|-------|
-| `PORT` | `3001` |
-| `NODE_ENV` | `production` |
-| `JWT_SECRET` | `CHANGE-THIS-TO-A-SECURE-RANDOM-STRING-AT-LEAST-32-CHARS` |
-| `ADMIN_EMAIL` | `admin@yourdomain.com` |
-| `ADMIN_PASSWORD` | `YourSecurePassword123!` |
-| `DB_PATH` | `/app/data/database.db` |
-| `DEFAULT_OPENROUTER_API_KEY` | `sk-your-openrouter-api-key-here` (optional) |
-
-⚠️ **IMPORTANT SECURITY NOTES:**
-- **JWT_SECRET**: Generate a secure random string (at least 32 characters)
-  - Example: Use `openssl rand -base64 32` to generate one
-- **ADMIN_PASSWORD**: Use a strong password, change it after first login
-- **DEFAULT_OPENROUTER_API_KEY**: Optional - leave empty if users will use their own keys
-
-#### **Networking**
-
-**Port Forwarding:**
-
-Click "Add" to add a port:
-- **Container Port:** `3001`
-- **Node Port:** `30001` (or any available port 30000-32767)
-- **Protocol:** `TCP`
-
-You can also use host networking if preferred.
-
-**DNS Configuration:**
-- Leave default unless you have specific DNS requirements
-
-#### **Storage**
-
-Click "Add" under **Host Path Volumes**:
-
-**Mount Path 1: Database Storage**
-- **Host Path:** `/mnt/your-pool/ai-chat-hub-data`
-- **Mount Path:** `/app/data`
-- **Read Only:** `No` (unchecked)
-
-#### **Security Context**
-Leave as default unless you have specific requirements.
-
-#### **Resources**
-Configure based on your needs:
-- **CPU Limit:** `2000m` (2 cores)
-- **Memory Limit:** `2Gi` (2GB)
-- **CPU Request:** `500m` (0.5 core)
-- **Memory Request:** `512Mi` (512MB)
-
-*Adjust based on expected usage*
-
-### Step 5: Deploy
-
-1. Review all settings
-2. Click **"Install"** at the bottom
-3. Wait for deployment to complete (check "Installed Applications")
-
-### Step 6: Access Your Application
-
-1. Find your TrueNAS IP address
-2. Open browser and navigate to:
-   ```
-   http://YOUR-TRUENAS-IP:30001
-   ```
-   (Replace `30001` with your chosen Node Port)
-
-3. Login with admin credentials:
-   - Email: What you set in `ADMIN_EMAIL`
-   - Password: What you set in `ADMIN_PASSWORD`
-
-### Step 7: Post-Installation Setup
-
-1. **Change Admin Password:**
-   - Go to Settings
-   - Update your password immediately
-
-2. **Configure API Keys:**
-   - If you set `DEFAULT_OPENROUTER_API_KEY`, go to Admin Panel and verify it
-   - Otherwise, go to Settings and add your personal OpenRouter API key
-
-3. **Create Users (if needed):**
-   - Go to Admin Panel
-   - Click "Add User"
-   - Set permissions appropriately
+---
 
 ## 🔐 Security Best Practices
 
-### 1. Use a Reverse Proxy (Recommended)
+### 1. Change Default Password
 
-Set up a reverse proxy with SSL/TLS:
-- Use TrueNAS Scale's built-in reverse proxy (if available)
-- Or use Traefik/Nginx as a separate container
-- Enable HTTPS with Let's Encrypt
+1. Login to AI Chat Hub
+2. Go to **Profile** (top right)
+3. Change your password immediately
 
-### 2. Restrict Access
+### 2. Configure Firewall
 
-- Use TrueNAS firewall rules to limit access
-- Consider VPN access for remote users
-- Use strong passwords for all accounts
+In TrueNAS UI:
+1. Go to **Network** → **Firewall**
+2. Create rule to block direct access to port 3001 from external networks
+3. Only allow access through Nginx Proxy Manager (port 443)
 
-### 3. Regular Backups
+### 3. Enable 2FA (Optional)
 
-Backup your data directory regularly:
-```bash
-# Example backup command
-tar -czf ai-chat-hub-backup-$(date +%Y%m%d).tar.gz /mnt/your-pool/ai-chat-hub-data
-```
+1. Go to **Profile**
+2. Enable Two-Factor Authentication
+3. Scan QR code with authenticator app
 
-### 4. Monitor Resource Usage
-
-- Check container logs regularly
-- Monitor CPU/Memory usage in TrueNAS Apps
-- Set up alerts for high resource usage
+---
 
 ## 🔄 Updating the Application
 
-### Method 1: Using TrueNAS UI
+### Manual Update Process
 
-1. Go to **Installed Applications**
-2. Find **ai-chat-hub**
-3. Click **"Update"** (if available)
+When a new version is released:
 
-### Method 2: Manual Update
+#### Step 1: Build and Push New Version
 
-1. Build new image:
-   ```bash
-   docker build -t ai-chat-hub:latest .
-   ```
+On your development machine:
 
-2. Stop the application in TrueNAS UI
+```bash
+cd /path/to/ai-chat-hub
 
-3. Start the application (it will use the new image)
+# Build new version
+docker build -t ajaxx123/budi-chat:v1.1.0 .
+
+# Tag as latest
+docker tag ajaxx123/budi-chat:v1.1.0 ajaxx123/budi-chat:latest
+
+# Push both tags
+docker push ajaxx123/budi-chat:v1.1.0
+docker push ajaxx123/budi-chat:latest
+```
+
+#### Step 2: Update in Dockge
+
+1. Open Dockge UI
+2. Select the `ai-chat-hub` stack
+3. Click **"Compose"** → **"Pull"** (downloads latest image)
+4. Click **"Compose"** → **"Up"** (recreates container with new image)
+5. Check logs to confirm successful update
+
+#### Step 3: Verify
+
+1. Visit `https://chat.ajaxx.uk`
+2. Verify the app loads correctly
+3. Test basic functionality (login, create chat)
+
+### Rollback (if needed)
+
+If something goes wrong:
+
+1. In Dockge, edit the compose file
+2. Change image tag to previous version (e.g., `ajaxx123/budi-chat:v1.0.0`)
+3. Click **"Compose"** → **"Up"**
+4. Container will roll back to previous version
+
+---
+
+## 💾 Backup Strategy
+
+### Automated Backups
+
+Create a backup script:
+
+```bash
+#!/bin/bash
+# /mnt/ARK/apps/ai-chat-hub/backup.sh
+
+BACKUP_DIR="/mnt/ARK/backups/ai-chat-hub"
+DATE=$(date +%Y%m%d_%H%M%S)
+
+# Create backup directory
+mkdir -p "$BACKUP_DIR"
+
+# Backup database
+cp /mnt/ARK/apps/ai-chat-hub/data/database.db "$BACKUP_DIR/database_$DATE.db"
+
+# Keep only last 10 backups
+cd "$BACKUP_DIR" && ls -t *.db | tail -n +11 | xargs rm -f
+
+echo "Backup completed: database_$DATE.db"
+```
+
+### TrueNAS Task Scheduler
+
+1. Go to **System** → **Tasks** → **Cron Jobs**
+2. Click **Add**
+3. Configure:
+   - **Description:** AI Chat Hub Backup
+   - **Command:** `/mnt/ARK/apps/ai-chat-hub/backup.sh`
+   - **Schedule:** Daily at 3:00 AM (or your preference)
+   - **User:** root
+4. Click **Save**
+
+---
 
 ## 🐛 Troubleshooting
 
-### Application Won't Start
+### Container Won't Start
 
-1. **Check Logs:**
-   - Go to TrueNAS Apps
-   - Click on ai-chat-hub
-   - View container logs
+**Check logs in Dockge:**
+1. Select `ai-chat-hub` stack
+2. Click on container logs
+3. Look for error messages
 
-2. **Common Issues:**
-   - Port already in use → Change Node Port
-   - Permission denied → Check host path permissions
-   - Image not found → Verify image was built correctly
+**Common issues:**
+- Image not found → Verify Docker Hub username and image name
+- Permission denied → Check dataset permissions (`chown -R 568:568`)
+- Port conflict → Change port 3001 in compose file if needed
 
 ### Cannot Access Application
 
-1. **Verify Port:**
+1. **Verify container is running:**
    ```bash
-   netstat -tuln | grep 30001
+   docker ps | grep ai-chat-hub
    ```
 
-2. **Check Firewall:**
-   - Ensure port is open in TrueNAS firewall
-   - Check router/firewall settings
+2. **Check TrueNAS firewall:**
+   - Go to **Network** → **Firewall**
+   - Ensure port 3001 is allowed locally
 
-3. **Test Connectivity:**
+3. **Test direct access:**
    ```bash
-   curl http://localhost:30001
+   curl http://localhost:3001/api/auth/me
    ```
+   Should return 401 (unauthorized) - this means app is running
+
+### SSL Certificate Issues
+
+If Nginx Proxy Manager shows SSL errors:
+1. Ensure port 80 is forwarded to TrueNAS for ACME validation
+2. Check DNS A record points to your TrueNAS IP
+3. Try deleting and recreating the SSL certificate in NPM
 
 ### Database Issues
 
-If database gets corrupted:
-
-1. Stop the application
-2. Backup current database:
+If database becomes corrupted:
+1. Stop the container in Dockge
+2. SSH into TrueNAS:
    ```bash
-   cp /mnt/your-pool/ai-chat-hub-data/database.db /mnt/your-pool/ai-chat-hub-data/database.db.backup
+   cd /mnt/ARK/apps/ai-chat-hub/data
+   cp database.db database.db.backup.$(date +%Y%m%d)
+   rm database.db*
    ```
-3. Delete database:
-   ```bash
-   rm /mnt/your-pool/ai-chat-hub-data/database.db*
-   ```
-4. Restart application (new database will be created)
+3. Start the container - new database will be created
+4. Login with admin credentials (re-create users and data)
 
-### High Resource Usage
-
-1. Reduce concurrent users
-2. Increase resource limits in app configuration
-3. Consider using GPT-3.5 instead of GPT-4 for lower latency
+---
 
 ## 📊 Monitoring
 
-### View Container Logs
-```bash
-docker logs ai-chat-hub
-```
+### Resource Usage
 
-### Check Container Status
+Monitor in TrueNAS UI:
+1. Go to **Apps** → **Installed Applications**
+2. Click on **ai-chat-hub**
+3. View CPU, Memory, and Network usage
+
+### Container Logs
+
+In Dockge:
+1. Select `ai-chat-hub` stack
+2. View real-time logs
+3. Use search/filter to find specific events
+
+### Health Check
+
+The container includes a health check that automatically restarts if the app becomes unresponsive. Check status:
 ```bash
 docker ps | grep ai-chat-hub
+# Look for (healthy) status
 ```
 
-### Monitor Resource Usage
-Use TrueNAS built-in monitoring or:
-```bash
-docker stats ai-chat-hub
-```
-
-## 🔧 Advanced Configuration
-
-### Using External Database
-
-To use PostgreSQL instead of SQLite:
-1. Deploy PostgreSQL container
-2. Modify application to use PostgreSQL (requires code changes)
-
-### Multiple Instances
-
-Deploy multiple instances for high availability:
-1. Use different Node Ports for each instance
-2. Set up load balancer (Traefik/Nginx)
-3. Use shared database storage
-
-### Custom Domain
-
-1. Set up reverse proxy with SSL
-2. Configure DNS to point to TrueNAS
-3. Access via `https://ai-chat.yourdomain.com`
-
-## 📞 Getting Help
-
-### Check Application Status
-```bash
-# SSH into TrueNAS
-docker exec -it ai-chat-hub sh
-
-# Inside container
-node -e "console.log('App is running')"
-```
-
-### Common Commands
-```bash
-# Restart application
-docker restart ai-chat-hub
-
-# View environment variables
-docker exec ai-chat-hub env
-
-# Check disk usage
-du -sh /mnt/your-pool/ai-chat-hub-data
-```
-
-## 🎯 Performance Tuning
-
-### For Heavy Usage (10+ concurrent users)
-
-**Resource Limits:**
-- CPU: 4 cores (4000m)
-- Memory: 4GB (4Gi)
-
-**Database Optimization:**
-Consider PostgreSQL for better performance with multiple concurrent users.
-
-### For Light Usage (1-5 users)
-
-**Resource Limits:**
-- CPU: 1 core (1000m)
-- Memory: 1GB (1Gi)
+---
 
 ## ✅ Success Checklist
 
-- [ ] Application deployed and running
-- [ ] Can access via web browser
-- [ ] Logged in as admin
-- [ ] Changed default admin password
-- [ ] Configured API keys
-- [ ] Created test chat and verified it works
-- [ ] Set up backup strategy
-- [ ] Documented configuration for team
-- [ ] (Optional) Configured reverse proxy with SSL
+- [ ] Image pushed to Docker Hub successfully
+- [ ] Dockge installed on TrueNAS
+- [ ] Storage dataset created at `/mnt/ARK/apps/ai-chat-hub/data`
+- [ ] Docker Compose stack deployed in Dockge
+- [ ] Environment variables configured (.env file)
+- [ ] Application accessible at `http://YOUR-TRUENAS-IP:3001`
+- [ ] Nginx Proxy Manager configured with SSL
+- [ ] Application accessible at `https://chat.ajaxx.uk`
+- [ ] Default admin password changed
+- [ ] OpenRouter API key configured
+- [ ] Backup script created and scheduled
+- [ ] Test chat created successfully
+- [ ] WebSocket streaming works (test AI response)
+
+---
+
+## 🎯 Performance Tuning
+
+### For Light Usage (1-5 users)
+
+Default configuration is sufficient.
+
+### For Medium Usage (5-20 users)
+
+Add resource limits to docker-compose.yml:
+
+```yaml
+services:
+  ai-chat-hub:
+    # ... existing config ...
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+```
+
+### For Heavy Usage (20+ users)
+
+Consider:
+- Increasing CPU/Memory limits
+- Using an external database (PostgreSQL)
+- Load balancing with multiple instances
 
 ---
 
 ## 🎉 You're All Set!
 
-Your AI Chat Hub is now running on TrueNAS Scale. Enjoy your private, self-hosted AI chat application!
+Your AI Chat Hub is now running on TrueNAS Scale 25.10.1 with:
+- ✅ Docker Hub image management
+- ✅ Dockge for easy deployment and updates
+- ✅ SSL/HTTPS via Nginx Proxy Manager
+- ✅ Automated backups
+- ✅ Custom domain (`chat.ajaxx.uk`)
 
-For questions or issues, refer to the main README.md or create an issue on GitHub.
+**Access your app at:** https://chat.ajaxx.uk
+
+For questions or issues:
+- Check the logs in Dockge
+- Review this troubleshooting section
+- Check the main README.md
 
 **Happy Chatting! 💬✨**

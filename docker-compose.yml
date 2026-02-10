@@ -2,34 +2,44 @@ version: '3.8'
 
 services:
   ai-chat-hub:
-    build: .
+    image: ajaxx123/budi-chat:latest
     container_name: ai-chat-hub
     restart: unless-stopped
     ports:
       - "3001:3001"
     volumes:
-      # Persist database
-      - ./data:/app/data
+      # Persist database - adjust to your TrueNAS pool path
+      - /mnt/ARK/apps/ai-chat-hub/data:/app/data
     environment:
       # Server Configuration
       - PORT=3001
       - NODE_ENV=production
       
-      # JWT Secret - CHANGE THIS!
-      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-please-change-this-in-production}
+      # JWT Secret - CHANGE THIS! Generate a secure random string
+      - JWT_SECRET=${JWT_SECRET:-change-this-to-a-secure-random-string}
       
       # Default Admin Credentials (for initial setup)
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-change-this-password}
       
       # Optional: Default OpenRouter API Key
       - DEFAULT_OPENROUTER_API_KEY=${DEFAULT_OPENROUTER_API_KEY:-}
       
-      # Database Path
+      # Database Path (inside container)
       - DB_PATH=/app/data/database.db
+      
+      # Web Search Configuration (optional)
+      - BRAVE_SEARCH_API_KEY=${BRAVE_SEARCH_API_KEY:-}
+      - WEB_SEARCH_MAX_RESULTS=${WEB_SEARCH_MAX_RESULTS:-5}
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/auth/me', (r) => {process.exit(r.statusCode === 401 ? 0 : 1)})"]
       interval: 30s
       timeout: 3s
       retries: 3
       start_period: 40s
+    networks:
+      - ai-chat-hub
+
+networks:
+  ai-chat-hub:
+    driver: bridge
