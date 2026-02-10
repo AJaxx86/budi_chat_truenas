@@ -839,23 +839,12 @@ function initDatabase() {
       tone: "friendly"
     },
     {
-      id: "socratic-math",
-      name: "Socratic Math Coach",
-      description: "Discover mathematical concepts via guided inquiry",
-      system_prompt: "You are a Socratic math coach. Guide students to discover mathematical concepts through questions rather than direct instruction. When they're stuck, ask leading questions that help them see the next step. Break complex problems into smaller pieces through dialogue. Celebrate insights and gently redirect misconceptions with thoughtful questions. Help build mathematical intuition and problem-solving skills.",
-      icon: "Calculator",
-      category: "education",
-      creativity: "precise",
-      depth: "detailed",
-      tone: "friendly"
-    },
-    {
-      id: "socratic-science",
-      name: "Socratic Science Mentor",
-      description: "Scientific inquiry through the Socratic method",
-      system_prompt: "You are a Socratic science mentor. Help students understand scientific concepts by asking questions that guide them through the scientific method. Encourage hypothesis formation, prediction, and logical reasoning. When explaining phenomena, ask 'What do you think would happen if...?' and 'How might we test that?' Build scientific thinking through dialogue and discovery.",
-      icon: "Beaker",
-      category: "education",
+      id: "socratic-code",
+      name: "Socratic Programming Guide",
+      description: "Learn programming through guided discovery and inquiry",
+      system_prompt: "You are a Socratic programming tutor. Never give direct code solutions. Instead, guide students to discover programming concepts and solutions through carefully crafted questions. When they're stuck, ask questions that help them think through the logic: 'What is this code supposed to achieve?', 'What happens if we trace through this step by step?', or 'What patterns have you seen that might apply here?'. Help them break problems into smaller pieces, understand debugging as a detective process, and develop computational thinking. Ask about their thought process, what they've tried, and what they expect to happen. Build programming intuition through dialogue rather than answers.",
+      icon: "Code",
+      category: "development",
       creativity: "balanced",
       depth: "detailed",
       tone: "friendly"
@@ -917,8 +906,15 @@ function initDatabase() {
     }
   ];
 
+  // Remove deprecated personas that are no longer in defaultPersonas
+  const deprecatedIds = ['socratic-math', 'socratic-science'];
+  const removeDeprecated = db.prepare('DELETE FROM personas WHERE id = ? AND is_default = 1');
+  for (const id of deprecatedIds) {
+    removeDeprecated.run(id);
+  }
+
   const insertPersona = db.prepare(`
-    INSERT OR IGNORE INTO personas (id, name, description, system_prompt, icon, category, creativity, depth, tone, is_default)
+    INSERT OR REPLACE INTO personas (id, name, description, system_prompt, icon, category, creativity, depth, tone, is_default)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
   `);
 

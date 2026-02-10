@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Bot, ChevronDown, Check, Search, Clock, Loader2, X, Brain, Wrench, Eye,
-  User, BookOpen, Calculator, Code, Feather, Scale, Lightbulb, Sparkles, Beaker
+  User, BookOpen, Calculator, Code, Feather, Scale, Lightbulb, Sparkles, Beaker, Plus
 } from 'lucide-react';
 
 const DEFAULT_MODEL = 'moonshotai/kimi-k2-thinking';
@@ -270,6 +270,18 @@ function ModelSelector({
   const dropdownRef = useRef(null);
   const searchInputRef = useRef(null);
 
+  // Persona creation panel state
+  const [showCreatePanel, setShowCreatePanel] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [createFormData, setCreateFormData] = useState({
+    name: '',
+    description: '',
+    system_prompt: '',
+    icon: 'User',
+    category: 'general'
+  });
+
   // Load recent models from localStorage
   useEffect(() => {
     const stored = localStorage.getItem(RECENT_MODELS_KEY);
@@ -426,6 +438,65 @@ function ModelSelector({
 
     setIsOpen(false);
     setSearchQuery('');
+  };
+
+  // Handle persona creation
+  const handleCreatePersona = async () => {
+    if (!createFormData.name.trim() || !createFormData.system_prompt.trim()) {
+      setCreateError('Name and system prompt are required');
+      return;
+    }
+
+    setIsCreating(true);
+    setCreateError('');
+
+    try {
+      const res = await fetch('/api/personas', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(createFormData)
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to create persona');
+      }
+
+      const newPersona = await res.json();
+
+      // Refresh personas list
+      const personasRes = await fetch('/api/personas', {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (personasRes.ok) {
+        const data = await personasRes.json();
+        setPersonas(data);
+      }
+
+      // Reset form and close panel
+      setCreateFormData({
+        name: '',
+        description: '',
+        system_prompt: '',
+        icon: 'User',
+        category: 'general'
+      });
+      setShowCreatePanel(false);
+
+      // Select the newly created persona and close dropdown
+      if (onPersonaChange) {
+        onPersonaChange(newPersona);
+      }
+      setIsOpen(false);
+      setSearchQuery('');
+    } catch (error) {
+      setCreateError(error.message);
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   // Check if guest whitelist restrictions apply
@@ -646,22 +717,37 @@ function ModelSelector({
 
           {/* Search Bar */}
           <div className="p-3 border-b border-dark-700/50 bg-dark-850">
-            <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-400" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={activeTab === 'model' ? "Search models..." : "Search personas..."}
-                className="w-full pl-10 pr-9 py-2.5 rounded-xl bg-dark-800 border border-dark-700 outline-none text-dark-100 placeholder-dark-500 text-sm focus:border-accent/50"
-              />
-              {searchQuery && (
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-400" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={activeTab === 'model' ? "Search models..." : "Search personas..."}
+                  className="w-full pl-10 pr-9 py-2.5 rounded-xl bg-dark-800 border border-dark-700 outline-none text-dark-100 placeholder-dark-500 text-sm focus:border-accent/50"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 hover:bg-dark-700/50 rounded-lg transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5 text-dark-400" />
+                  </button>
+                )}
+              </div>
+              {activeTab === 'persona' && (
                 <button
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 hover:bg-dark-700/50 rounded-lg transition-colors"
+                  onClick={() => {
+                    setShowCreatePanel(true);
+                    setSearchQuery('');
+                    setCreateError('');
+                  }}
+                  className="flex items-center justify-center w-10 h-10 rounded-xl bg-accent hover:bg-accent/90 text-white transition-colors"
+                  title="Create new persona"
                 >
-                  <X className="w-3.5 h-3.5 text-dark-400" />
+                  <Plus className="w-5 h-5" />
                 </button>
               )}
             </div>
@@ -796,6 +882,133 @@ function ModelSelector({
             {/* PERSONA TAB CONTENT */}
             {activeTab === 'persona' && (
               <>
+                {/* Persona Creation Panel */}
+                {showCreatePanel && (
+                  <div className="p-3 border-b border-dark-700/30 bg-dark-850/50">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-semibold text-dark-200">Create Persona</h3>
+                      <button
+                        onClick={() => setShowCreatePanel(false)}
+                        className="p-1 hover:bg-dark-700/50 rounded-lg transition-colors"
+                      >
+                        <X className="w-4 h-4 text-dark-400" />
+                      </button>
+                    </div>
+
+                    {createError && (
+                      <div className="mb-3 p-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
+                        {createError}
+                      </div>
+                    )}
+
+                    <div className="space-y-3">
+                      {/* Name */}
+                      <div>
+                        <label className="block text-[11px] font-medium text-dark-400 uppercase tracking-wider mb-1.5">
+                          Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={createFormData.name}
+                          onChange={(e) => setCreateFormData({ ...createFormData, name: e.target.value })}
+                          placeholder="e.g., Python Expert"
+                          className="w-full px-3 py-2 rounded-lg bg-dark-800 border border-dark-700 outline-none text-dark-100 placeholder-dark-500 text-sm focus:border-accent/50"
+                        />
+                      </div>
+
+                      {/* Description */}
+                      <div>
+                        <label className="block text-[11px] font-medium text-dark-400 uppercase tracking-wider mb-1.5">
+                          Description
+                        </label>
+                        <input
+                          type="text"
+                          value={createFormData.description}
+                          onChange={(e) => setCreateFormData({ ...createFormData, description: e.target.value })}
+                          placeholder="Brief description..."
+                          className="w-full px-3 py-2 rounded-lg bg-dark-800 border border-dark-700 outline-none text-dark-100 placeholder-dark-500 text-sm focus:border-accent/50"
+                        />
+                      </div>
+
+                      {/* System Prompt */}
+                      <div>
+                        <label className="block text-[11px] font-medium text-dark-400 uppercase tracking-wider mb-1.5">
+                          System Prompt *
+                        </label>
+                        <textarea
+                          value={createFormData.system_prompt}
+                          onChange={(e) => setCreateFormData({ ...createFormData, system_prompt: e.target.value })}
+                          placeholder="Instructions for how the AI should behave..."
+                          rows={3}
+                          className="w-full px-3 py-2 rounded-lg bg-dark-800 border border-dark-700 outline-none text-dark-100 placeholder-dark-500 text-sm focus:border-accent/50 resize-none"
+                        />
+                      </div>
+
+                      {/* Icon Selection */}
+                      <div>
+                        <label className="block text-[11px] font-medium text-dark-400 uppercase tracking-wider mb-1.5">
+                          Icon
+                        </label>
+                        <div className="flex gap-2 flex-wrap">
+                          {Object.entries(ICON_MAP).map(([iconName, Icon]) => (
+                            <button
+                              key={iconName}
+                              onClick={() => setCreateFormData({ ...createFormData, icon: iconName })}
+                              className={`p-2 rounded-lg border transition-all ${
+                                createFormData.icon === iconName
+                                  ? 'bg-accent/20 border-accent/50 text-accent'
+                                  : 'bg-dark-800 border-dark-700 text-dark-400 hover:border-dark-600'
+                              }`}
+                            >
+                              <Icon className="w-4 h-4" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Category */}
+                      <div>
+                        <label className="block text-[11px] font-medium text-dark-400 uppercase tracking-wider mb-1.5">
+                          Category
+                        </label>
+                        <select
+                          value={createFormData.category}
+                          onChange={(e) => setCreateFormData({ ...createFormData, category: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg bg-dark-800 border border-dark-700 outline-none text-dark-100 text-sm focus:border-accent/50"
+                        >
+                          {Object.entries(CATEGORIES).map(([key, { label }]) => (
+                            <option key={key} value={key}>{label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          onClick={() => setShowCreatePanel(false)}
+                          className="flex-1 px-3 py-2 rounded-lg bg-dark-800 hover:bg-dark-700 text-dark-300 text-sm font-medium transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleCreatePersona}
+                          disabled={isCreating || !createFormData.name.trim() || !createFormData.system_prompt.trim()}
+                          className="flex-1 px-3 py-2 rounded-lg bg-accent hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                        >
+                          {isCreating ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <>
+                              <Check className="w-4 h-4" />
+                              Create
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Default/Reset */}
                 <div className="p-2 border-b border-dark-700/30">
                   <button
