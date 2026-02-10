@@ -32,7 +32,7 @@ npm run build            # Builds frontend from root
 
 ### Docker
 ```bash
-docker build -t ai-chat-hub:latest .
+docker build -t budi-chat:latest .
 docker-compose up -d
 ```
 

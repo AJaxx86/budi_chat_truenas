@@ -7,7 +7,7 @@ Get AI Chat Hub up and running in 5 minutes!
 ### 1. Clone Repository
 ```bash
 git clone <your-repo-url>
-cd ai-chat-hub
+cd budi-chat
 ```
 
 ### 2. Configure Environment

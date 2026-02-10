@@ -1,18 +1,18 @@
 version: '3.8'
 
 services:
-  ai-chat-hub:
+  budi-chat:
     image: ajaxx123/budi-chat:latest
-    container_name: ai-chat-hub
+    container_name: budi-chat
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "35005:35005"
     volumes:
       # Persist database - adjust to your TrueNAS pool path
-      - /mnt/ARK/apps/ai-chat-hub/data:/app/data
+      - /mnt/ARK/apps/budi-chat/data:/app/data
     environment:
       # Server Configuration
-      - PORT=3001
+      - PORT=35005
       - NODE_ENV=production
       
       # JWT Secret - CHANGE THIS! Generate a secure random string
@@ -38,8 +38,8 @@ services:
       retries: 3
       start_period: 40s
     networks:
-      - ai-chat-hub
+      - budi-chat
 
 networks:
-  ai-chat-hub:
+  budi-chat:
     driver: bridge

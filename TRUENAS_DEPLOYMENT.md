@@ -32,7 +32,7 @@ On your development machine (where you have the source code):
 
 ```bash
 # Navigate to your project directory
-cd /path/to/ai-chat-hub
+cd /path/to/budi-chat
 
 # Login to Docker Hub
 docker login
@@ -88,8 +88,8 @@ Dockge is a Docker Compose GUI manager that makes deployment easy.
 2. Navigate to your pool (`/mnt/ARK/`)
 3. Click **Add Dataset**
 4. Configure:
-   - **Name:** `ai-chat-hub`
-   - **Path:** `/mnt/ARK/apps/ai-chat-hub`
+- **Name:** `budi-chat`
+   - **Path:** `/mnt/ARK/apps/budi-chat`
    - **Encryption:** Optional (recommended for production)
    - Click **Save**
 
@@ -100,11 +100,9 @@ Dockge is a Docker Compose GUI manager that makes deployment easy.
 ssh root@YOUR-TRUENAS-IP
 
 # Create data directory
-mkdir -p /mnt/ARK/apps/ai-chat-hub/data
-
-# Set proper permissions
-chown -R 568:568 /mnt/ARK/apps/ai-chat-hub
-chmod 755 /mnt/ARK/apps/ai-chat-hub/data
+mkdir -p /mnt/ARK/apps/budi-chat/data
+chown -R 568:568 /mnt/ARK/apps/budi-chat
+chmod 755 /mnt/ARK/apps/budi-chat/data
 ```
 
 ---
@@ -115,8 +113,8 @@ chmod 755 /mnt/ARK/apps/ai-chat-hub/data
 
 1. Open Dockge UI (`http://YOUR-TRUENAS-IP:5001`)
 2. Click **"+ New Stack"**
-3. **Stack Name:** `ai-chat-hub`
-4. **File Path:** `/mnt/ARK/apps/ai-chat-hub/docker-compose.yml`
+3. **Stack Name:** `budi-chat`
+4. **File Path:** `/mnt/ARK/apps/budi-chat/docker-compose.yml`
 
 ### Step 2: Paste Docker Compose Configuration
 
@@ -126,14 +124,14 @@ In the Docker Compose editor, paste:
 version: '3.8'
 
 services:
-  ai-chat-hub:
+  budi-chat:
     image: ajaxx123/budi-chat:latest
-    container_name: ai-chat-hub
+    container_name: budi-chat
     restart: unless-stopped
     ports:
       - "3001:3001"
     volumes:
-      - /mnt/ARK/apps/ai-chat-hub/data:/app/data
+      - /mnt/ARK/apps/budi-chat/data:/app/data
     environment:
       - PORT=3001
       - NODE_ENV=production
@@ -151,10 +149,10 @@ services:
       retries: 3
       start_period: 40s
     networks:
-      - ai-chat-hub
+- budi-chat
 
 networks:
-  ai-chat-hub:
+  budi-chat:
     driver: bridge
 ```
 
@@ -287,7 +285,7 @@ When a new version is released:
 On your development machine:
 
 ```bash
-cd /path/to/ai-chat-hub
+cd /path/to/budi-chat
 
 # Build new version
 docker build -t ajaxx123/budi-chat:v1.1.0 .
@@ -303,7 +301,7 @@ docker push ajaxx123/budi-chat:latest
 #### Step 2: Update in Dockge
 
 1. Open Dockge UI
-2. Select the `ai-chat-hub` stack
+2. Select the `budi-chat` stack
 3. Click **"Compose"** → **"Pull"** (downloads latest image)
 4. Click **"Compose"** → **"Up"** (recreates container with new image)
 5. Check logs to confirm successful update
@@ -333,16 +331,16 @@ Create a backup script:
 
 ```bash
 #!/bin/bash
-# /mnt/ARK/apps/ai-chat-hub/backup.sh
+# /mnt/ARK/apps/budi-chat/backup.sh
 
-BACKUP_DIR="/mnt/ARK/backups/ai-chat-hub"
+BACKUP_DIR="/mnt/ARK/backups/budi-chat"
 DATE=$(date +%Y%m%d_%H%M%S)
 
 # Create backup directory
 mkdir -p "$BACKUP_DIR"
 
 # Backup database
-cp /mnt/ARK/apps/ai-chat-hub/data/database.db "$BACKUP_DIR/database_$DATE.db"
+cp /mnt/ARK/apps/budi-chat/data/database.db "$BACKUP_DIR/database_$DATE.db"
 
 # Keep only last 10 backups
 cd "$BACKUP_DIR" && ls -t *.db | tail -n +11 | xargs rm -f
@@ -356,7 +354,7 @@ echo "Backup completed: database_$DATE.db"
 2. Click **Add**
 3. Configure:
    - **Description:** AI Chat Hub Backup
-   - **Command:** `/mnt/ARK/apps/ai-chat-hub/backup.sh`
+   - **Command:** `/mnt/ARK/apps/budi-chat/backup.sh`
    - **Schedule:** Daily at 3:00 AM (or your preference)
    - **User:** root
 4. Click **Save**
@@ -368,7 +366,7 @@ echo "Backup completed: database_$DATE.db"
 ### Container Won't Start
 
 **Check logs in Dockge:**
-1. Select `ai-chat-hub` stack
+1. Select `budi-chat` stack
 2. Click on container logs
 3. Look for error messages
 
@@ -381,7 +379,7 @@ echo "Backup completed: database_$DATE.db"
 
 1. **Verify container is running:**
    ```bash
-   docker ps | grep ai-chat-hub
+   docker ps | grep budi-chat
    ```
 
 2. **Check TrueNAS firewall:**
@@ -407,7 +405,7 @@ If database becomes corrupted:
 1. Stop the container in Dockge
 2. SSH into TrueNAS:
    ```bash
-   cd /mnt/ARK/apps/ai-chat-hub/data
+   cd /mnt/ARK/apps/budi-chat/data
    cp database.db database.db.backup.$(date +%Y%m%d)
    rm database.db*
    ```
@@ -422,13 +420,13 @@ If database becomes corrupted:
 
 Monitor in TrueNAS UI:
 1. Go to **Apps** → **Installed Applications**
-2. Click on **ai-chat-hub**
+2. Click on **budi-chat**
 3. View CPU, Memory, and Network usage
 
 ### Container Logs
 
 In Dockge:
-1. Select `ai-chat-hub` stack
+1. Select `budi-chat` stack
 2. View real-time logs
 3. Use search/filter to find specific events
 
@@ -436,7 +434,7 @@ In Dockge:
 
 The container includes a health check that automatically restarts if the app becomes unresponsive. Check status:
 ```bash
-docker ps | grep ai-chat-hub
+docker ps | grep budi-chat
 # Look for (healthy) status
 ```
 
@@ -446,7 +444,7 @@ docker ps | grep ai-chat-hub
 
 - [ ] Image pushed to Docker Hub successfully
 - [ ] Dockge installed on TrueNAS
-- [ ] Storage dataset created at `/mnt/ARK/apps/ai-chat-hub/data`
+- [ ] Storage dataset created at `/mnt/ARK/apps/budi-chat/data`
 - [ ] Docker Compose stack deployed in Dockge
 - [ ] Environment variables configured (.env file)
 - [ ] Application accessible at `http://YOUR-TRUENAS-IP:3001`
@@ -472,7 +470,7 @@ Add resource limits to docker-compose.yml:
 
 ```yaml
 services:
-  ai-chat-hub:
+  budi-chat:
     # ... existing config ...
     deploy:
       resources:

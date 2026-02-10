@@ -39,7 +39,7 @@ A feature-rich, multi-user AI chat application with advanced capabilities includ
 2. **Click "Discover Apps"** → **"Custom App"**
 3. **Fill in the Application Configuration:**
 
-   **Application Name:** `ai-chat-hub`
+   **Application Name:** `budi-chat`
 
    **Image Repository:** Build the image first (see Building Docker Image below) or use a registry
 
@@ -59,7 +59,7 @@ A feature-rich, multi-user AI chat application with advanced capabilities includ
    ```
 
    **Storage:**
-   - Host Path: `/mnt/pool/ai-chat-hub/data`
+   - Host Path: `/mnt/pool/budi-chat/data`
    - Mount Path: `/app/data`
    - Type: Host Path
 
@@ -72,7 +72,7 @@ A feature-rich, multi-user AI chat application with advanced capabilities includ
 1. **Clone or copy this repository to your TrueNAS server:**
    ```bash
    git clone <your-repo-url>
-   cd ai-chat-hub
+   cd budi-chat
    ```
 
 2. **Create and configure environment file:**
@@ -100,7 +100,7 @@ A feature-rich, multi-user AI chat application with advanced capabilities includ
 
 ```bash
 # Build the image
-docker build -t ai-chat-hub:latest .
+docker build -t budi-chat:latest .
 
 # Or using docker-compose
 docker-compose build

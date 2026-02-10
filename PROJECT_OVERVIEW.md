@@ -67,7 +67,7 @@ A fully-featured, multi-user AI chat application designed for deployment on True
 ## 📁 Project Structure
 
 ```
-ai-chat-hub/
+budi-chat/
 ├── server/                      # Backend Node.js application
 │   ├── database.js             # SQLite database setup & migrations
 │   ├── index.js                # Express server entry point
