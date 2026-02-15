@@ -38,8 +38,27 @@ router.get('/:id', (req, res) => {
       return res.status(404).json({ error: 'Chat not found' });
     }
 
+    // Fetch messages with their attachments
     const messages = db.prepare(`
-      SELECT * FROM messages WHERE chat_id = ? ORDER BY created_at ASC
+      SELECT m.*,
+        CASE 
+          WHEN COUNT(f.id) > 0 THEN json_group_array(
+            json_object(
+              'id', f.id,
+              'filename', f.filename,
+              'original_name', f.original_name,
+              'mimetype', f.mimetype,
+              'size', f.size,
+              'has_text', CASE WHEN f.extracted_text IS NOT NULL THEN 1 ELSE 0 END
+            )
+          )
+          ELSE NULL 
+        END as attachments
+      FROM messages m
+      LEFT JOIN file_uploads f ON f.message_id = m.id
+      WHERE m.chat_id = ?
+      GROUP BY m.id
+      ORDER BY m.created_at ASC
     `).all(id);
 
     // Fetch steps for all messages in this chat
@@ -57,11 +76,24 @@ router.get('/:id', (req, res) => {
       stepsByMessage[step.message_id].push({ ...step, isComplete: true });
     }
 
-    // Attach steps to messages
-    const messagesWithSteps = messages.map(msg => ({
-      ...msg,
-      steps: stepsByMessage[msg.id] || []
-    }));
+    // Attach steps and parse attachments to messages
+    const messagesWithSteps = messages.map(msg => {
+      let attachments = [];
+      if (msg.attachments) {
+        try {
+          attachments = JSON.parse(msg.attachments);
+          // Filter out any null entries from the JSON aggregation
+          attachments = attachments.filter(att => att && att.id);
+        } catch (e) {
+          console.error('Failed to parse attachments for message', msg.id, e);
+        }
+      }
+      return {
+        ...msg,
+        steps: stepsByMessage[msg.id] || [],
+        attachments: attachments
+      };
+    });
 
     res.json({ ...chat, messages: messagesWithSteps });
   } catch (error) {
