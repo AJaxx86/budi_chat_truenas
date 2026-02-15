@@ -4,13 +4,22 @@ import db from '../database.js';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this';
 
 export function authMiddleware(req, res, next) {
+  // Try to get token from Authorization header first
+  let token = null;
   const authHeader = req.headers.authorization;
   
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  }
+  
+  // If no header token, try cookie
+  if (!token && req.cookies && req.cookies.token) {
+    token = req.cookies.token;
+  }
+  
+  if (!token) {
     return res.status(401).json({ error: 'No token provided' });
   }
-
-  const token = authHeader.substring(7);
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
