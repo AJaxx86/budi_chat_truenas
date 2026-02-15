@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
 import { fileURLToPath } from 'url';
-import { dirname, join, extname } from 'path';
+import { dirname, join, extname, resolve } from 'path';
 import { existsSync, mkdirSync, unlinkSync, readFileSync } from 'fs';
 import db from '../database.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -151,12 +151,22 @@ router.get('/:id', authMiddleware, (req, res) => {
     }
 
     if (!existsSync(file.storage_path)) {
+      console.error(`File not found on disk: ${file.storage_path}`);
       return res.status(404).json({ error: 'File not found on disk' });
     }
 
+    // Resolve to absolute path for res.sendFile safety
+    const absolutePath = resolve(file.storage_path);
+
     res.setHeader('Content-Type', file.mimetype);
     res.setHeader('Content-Disposition', `inline; filename="${file.original_name}"`);
-    res.sendFile(file.storage_path);
+    res.setHeader('Cache-Control', 'private, max-age=86400'); // Cache for 24h
+    res.sendFile(absolutePath, (err) => {
+      if (err && !res.headersSent) {
+        console.error('sendFile error:', err, 'path:', absolutePath);
+        res.status(500).json({ error: 'Failed to serve file' });
+      }
+    });
   } catch (error) {
     console.error('Get file error:', error);
     res.status(500).json({ error: 'Failed to get file' });

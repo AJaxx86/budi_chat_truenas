@@ -957,7 +957,7 @@ function Chat() {
                   const model = models.find((m) => m.id === modelId);
                   if (model?.name) return model.name;
                 }
-              } catch (e) {}
+              } catch (e) { }
               return modelId.split("/").pop();
             };
 
@@ -1443,13 +1443,13 @@ function Chat() {
           reasoning:
             thinkingMode !== "off"
               ? (() => {
-                  const mode = THINKING_MODES.find(
-                    (m) => m.id === thinkingMode,
-                  );
-                  // OpenRouter requires EITHER effort OR max_tokens, not both
-                  if (mode?.max_tokens) return { max_tokens: mode.max_tokens };
-                  return { effort: mode?.effort || "medium" };
-                })()
+                const mode = THINKING_MODES.find(
+                  (m) => m.id === thinkingMode,
+                );
+                // OpenRouter requires EITHER effort OR max_tokens, not both
+                if (mode?.max_tokens) return { max_tokens: mode.max_tokens };
+                return { effort: mode?.effort || "medium" };
+              })()
               : undefined,
           attachment_ids: attachmentIds,
         }),
@@ -1488,7 +1488,7 @@ function Chat() {
         if (currentStreamController?.signal.aborted) {
           try {
             reader.cancel();
-          } catch (e) {}
+          } catch (e) { }
           break;
         }
 
@@ -1654,10 +1654,10 @@ function Chat() {
                 accumulatedSteps = accumulatedSteps.map((step) =>
                   step.id === data.step_id
                     ? {
-                        ...step,
-                        isComplete: true,
-                        duration_ms: data.duration_ms,
-                      }
+                      ...step,
+                      isComplete: true,
+                      duration_ms: data.duration_ms,
+                    }
                     : step,
                 );
 
@@ -1679,8 +1679,8 @@ function Chat() {
                     reasoning_content: accumulatedReasoning,
                     tool_calls: hasReceivedToolCalls
                       ? JSON.stringify(
-                          streamingStates.get(chatId)?.toolCalls || [],
-                        )
+                        streamingStates.get(chatId)?.toolCalls || [],
+                      )
                       : null,
                   };
 
@@ -1710,7 +1710,7 @@ function Chat() {
         console.error("Failed to send message:", error);
         alert(
           error.message ||
-            "Failed to send message. Please check your API key configuration.",
+          "Failed to send message. Please check your API key configuration.",
         );
       }
     } finally {
@@ -1833,7 +1833,7 @@ function Chat() {
     ) {
       pendingEditMessageRef.current = null;
       // Programmatically trigger send
-      const syntheticEvent = { preventDefault: () => {} };
+      const syntheticEvent = { preventDefault: () => { } };
       sendMessage(syntheticEvent);
     }
   }, [inputMessage]);
@@ -1912,11 +1912,10 @@ function Chat() {
       {/* Sidebar - responsive */}
       <div
         className={`
-        ${
-          isMobile
+        ${isMobile
             ? `sidebar-mobile glass-sidebar ${showSidebar ? "open" : ""}`
             : `${showSidebar ? "w-72" : "w-16"} transition-all duration-300 ease-out glass-sidebar`
-        }
+          }
         flex flex-col overflow-hidden ${isMobile ? "z-[60]" : "z-50"} ${isMobile ? "max-h-screen max-h-[100dvh]" : ""}
       `}
       >
@@ -2092,11 +2091,10 @@ function Chat() {
                   return (
                     <div
                       key={workspace.id}
-                      className={`p-2 rounded-lg cursor-pointer transition-all duration-200 ${
-                        isActive
-                          ? "bg-dark-800/80 border-l-2 border-accent/60"
-                          : "hover:bg-dark-800/40 border-l-2 border-transparent"
-                      }`}
+                      className={`p-2 rounded-lg cursor-pointer transition-all duration-200 ${isActive
+                        ? "bg-dark-800/80 border-l-2 border-accent/60"
+                        : "hover:bg-dark-800/40 border-l-2 border-transparent"
+                        }`}
                       onClick={() =>
                         setActiveWorkspace((prev) =>
                           prev === workspace.id ? null : workspace.id,
@@ -2154,11 +2152,10 @@ function Chat() {
           {uncategorizedChats.map((chat) => (
             <div
               key={chat.id}
-              className={`group ${showSidebar ? "p-3" : "p-2"} rounded-lg cursor-pointer transition-all duration-200 ${
-                currentChat?.id === chat.id
-                  ? "bg-dark-800/80 border-l-2 border-accent/60"
-                  : "hover:bg-dark-800/40 border-l-2 border-transparent"
-              }`}
+              className={`group ${showSidebar ? "p-3" : "p-2"} rounded-lg cursor-pointer transition-all duration-200 ${currentChat?.id === chat.id
+                ? "bg-dark-800/80 border-l-2 border-accent/60"
+                : "hover:bg-dark-800/40 border-l-2 border-transparent"
+                }`}
               onClick={() => handleChatSelect(chat)}
               onContextMenu={(e) => handleContextMenu(e, chat.id)}
             >
@@ -2297,15 +2294,15 @@ function Chat() {
           {(user?.is_admin ||
             user?.user_type === "admin" ||
             user?.user_type === "master") && (
-            <button
-              onClick={() => navigate("/admin")}
-              className={`${showSidebar ? "w-full px-4 gap-3 min-h-[44px]" : "w-11 h-11 mx-auto"} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-400 hover:text-dark-300`}
-              title={showSidebar ? undefined : "Admin"}
-            >
-              <Sparkles className="w-4 h-4" />
-              {showSidebar && "Admin"}
-            </button>
-          )}
+              <button
+                onClick={() => navigate("/admin")}
+                className={`${showSidebar ? "w-full px-4 gap-3 min-h-[44px]" : "w-11 h-11 mx-auto"} flex items-center justify-center py-2 rounded-lg hover:bg-dark-800/40 transition-all text-sm font-medium text-dark-400 hover:text-dark-300`}
+                title={showSidebar ? undefined : "Admin"}
+              >
+                <Sparkles className="w-4 h-4" />
+                {showSidebar && "Admin"}
+              </button>
+            )}
           {showSidebar && <div className="divider-gradient my-2"></div>}
           <button
             onClick={logout}
@@ -2379,11 +2376,10 @@ function Chat() {
               <div className="relative overflow-visible" ref={statsPopupRef}>
                 <button
                   onClick={() => setShowInfoModal(!showInfoModal)}
-                  className={`p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-all duration-200 ${
-                    showInfoModal
-                      ? "bg-dark-800 text-dark-300 border border-dark-700/50"
-                      : "hover:bg-dark-800/40 text-dark-500 hover:text-dark-400"
-                  }`}
+                  className={`p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-all duration-200 ${showInfoModal
+                    ? "bg-dark-800 text-dark-300 border border-dark-700/50"
+                    : "hover:bg-dark-800/40 text-dark-500 hover:text-dark-400"
+                    }`}
                   title="Usage Stats"
                 >
                   <Info className="w-4 h-4" />
@@ -2529,11 +2525,10 @@ function Chat() {
               </div>
               <button
                 onClick={() => setShowSettings(!showSettings)}
-                className={`p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-all duration-200 ${
-                  showSettings
-                    ? "bg-dark-800 text-dark-300 border border-dark-700/50"
-                    : "hover:bg-dark-800/40 text-dark-500 hover:text-dark-400"
-                }`}
+                className={`p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-all duration-200 ${showSettings
+                  ? "bg-dark-800 text-dark-300 border border-dark-700/50"
+                  : "hover:bg-dark-800/40 text-dark-500 hover:text-dark-400"
+                  }`}
                 title="Settings"
               >
                 <SettingsIcon className="w-4 h-4" />
@@ -2598,7 +2593,7 @@ function Chat() {
                           Math.abs(chatSettings.temperature - opt.value) < 0.1
                             ? "bg-dark-600 text-white shadow-sm"
                             : "text-dark-400 hover:text-dark-200 hover:bg-dark-700/50"
-                        }`}
+                          }`}
                         title={opt.label}
                       >
                         {opt.label}
@@ -2619,11 +2614,10 @@ function Chat() {
                         onClick={() =>
                           setChatSettings((s) => ({ ...s, depth: d }))
                         }
-                        className={`flex-1 px-1 py-1.5 rounded-md text-[11px] font-medium capitalize transition-all duration-200 truncate ${
-                          chatSettings.depth === d
-                            ? "bg-dark-600 text-white shadow-sm"
-                            : "text-dark-400 hover:text-dark-200 hover:bg-dark-700/50"
-                        }`}
+                        className={`flex-1 px-1 py-1.5 rounded-md text-[11px] font-medium capitalize transition-all duration-200 truncate ${chatSettings.depth === d
+                          ? "bg-dark-600 text-white shadow-sm"
+                          : "text-dark-400 hover:text-dark-200 hover:bg-dark-700/50"
+                          }`}
                         title={d}
                       >
                         {d}
@@ -2644,11 +2638,10 @@ function Chat() {
                         onClick={() =>
                           setChatSettings((s) => ({ ...s, tone: t }))
                         }
-                        className={`flex-1 px-1 py-1.5 rounded-md text-[11px] font-medium capitalize transition-all duration-200 truncate ${
-                          chatSettings.tone === t
-                            ? "bg-dark-600 text-white shadow-sm"
-                            : "text-dark-400 hover:text-dark-200 hover:bg-dark-700/50"
-                        }`}
+                        className={`flex-1 px-1 py-1.5 rounded-md text-[11px] font-medium capitalize transition-all duration-200 truncate ${chatSettings.tone === t
+                          ? "bg-dark-600 text-white shadow-sm"
+                          : "text-dark-400 hover:text-dark-200 hover:bg-dark-700/50"
+                          }`}
                         title={t}
                       >
                         {t}
@@ -2823,8 +2816,8 @@ function Chat() {
                                             // Get token for API access
                                             const token = localStorage.getItem('token');
                                             // Use preview (blob URL) for new uploads, otherwise add token to API URL
-                                            const imageUrl = att.preview 
-                                              ? att.preview 
+                                            const imageUrl = att.preview
+                                              ? att.preview
                                               : `/api/uploads/${att.id}?token=${token}`;
                                             return (
                                               <div
@@ -2837,23 +2830,41 @@ function Chat() {
                                                     alt={att.original_name}
                                                     className="max-w-[220px] max-h-[160px] object-cover"
                                                     loading="lazy"
+                                                    onError={(e) => {
+                                                      // Retry once with a fresh token if the image fails
+                                                      const freshToken = localStorage.getItem('token');
+                                                      const retryUrl = `/api/uploads/${att.id}?token=${freshToken}`;
+                                                      if (e.target.src !== retryUrl && !e.target.dataset.retried) {
+                                                        console.warn(`Image load failed for ${att.original_name}, retrying...`, e.target.src);
+                                                        e.target.dataset.retried = 'true';
+                                                        e.target.src = retryUrl;
+                                                      } else {
+                                                        // Show placeholder on final failure
+                                                        console.error(`Image failed to load: ${att.original_name}`, e.target.src);
+                                                        e.target.style.display = 'none';
+                                                        e.target.parentElement.innerHTML = `<div class="flex flex-col items-center justify-center w-[220px] h-[120px] text-dark-400"><span class="text-2xl mb-1">🖼️</span><span class="text-xs">Failed to load</span><span class="text-[10px] text-dark-500 truncate max-w-[200px]">${att.original_name}</span></div>`;
+                                                      }
+                                                    }}
                                                   />
                                                   {/* Hover overlay with gradient */}
                                                   <div className="absolute inset-0 bg-gradient-to-t from-dark-950/90 via-dark-950/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                                                  
+
                                                   {/* Zoom button */}
                                                   <button
-                                                    onClick={() => setImageViewer({
-                                                      isOpen: true,
-                                                      imageUrl,
-                                                      imageName: att.original_name,
-                                                    })}
-                                                    className="absolute bottom-2 right-2 p-2 rounded-lg bg-dark-800/80 backdrop-blur-sm text-white opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition-all duration-300 hover:bg-dark-700/90"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setImageViewer({
+                                                        isOpen: true,
+                                                        imageUrl,
+                                                        imageName: att.original_name,
+                                                      });
+                                                    }}
+                                                    className="absolute bottom-2 right-2 p-2 rounded-lg bg-dark-800/80 backdrop-blur-sm text-white opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition-all duration-300 hover:bg-dark-700/90 z-10"
                                                     title="View full size"
                                                   >
                                                     <ZoomIn className="w-4 h-4" />
                                                   </button>
-                                                  
+
                                                   {/* Filename overlay */}
                                                   <div className="absolute bottom-0 left-0 right-0 px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                                                     <p className="text-xs text-white/90 truncate font-medium">
@@ -2939,7 +2950,7 @@ function Chat() {
                                 }
                               >
                                 {copiedMessageId ===
-                                `${message.id}-markdown` ? (
+                                  `${message.id}-markdown` ? (
                                   <Check className="w-3.5 h-3.5" />
                                 ) : (
                                   <FileText className="w-3.5 h-3.5" />
@@ -3141,7 +3152,7 @@ function Chat() {
                                 }
                               >
                                 {copiedMessageId ===
-                                `${lastContentMsg.id}-raw` ? (
+                                  `${lastContentMsg.id}-raw` ? (
                                   <Check className="w-3.5 h-3.5" />
                                 ) : (
                                   <Copy className="w-3.5 h-3.5" />
@@ -3158,13 +3169,13 @@ function Chat() {
                                 className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
                                 title={
                                   copiedMessageId ===
-                                  `${lastContentMsg.id}-markdown`
+                                    `${lastContentMsg.id}-markdown`
                                     ? "Copied!"
                                     : "Copy Markdown"
                                 }
                               >
                                 {copiedMessageId ===
-                                `${lastContentMsg.id}-markdown` ? (
+                                  `${lastContentMsg.id}-markdown` ? (
                                   <Check className="w-3.5 h-3.5" />
                                 ) : (
                                   <FileText className="w-3.5 h-3.5" />
@@ -3200,81 +3211,81 @@ function Chat() {
                               {(lastAssistantMsg.prompt_tokens ||
                                 lastAssistantMsg.response_time_ms ||
                                 lastAssistantMsg.cost > 0) && (
-                                <div className="group/info relative">
-                                  <button
-                                    className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
-                                    title="Message details"
-                                  >
-                                    <Info className="w-3.5 h-3.5" />
-                                  </button>
-                                  <div className="absolute bottom-full left-0 mb-1 hidden group-hover/info:block z-10">
-                                    <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
-                                      <div className="space-y-1">
-                                        {lastAssistantMsg.response_time_ms >
-                                          0 && (
-                                          <div className="flex justify-between gap-4">
-                                            <span className="text-dark-400">
-                                              Time:
-                                            </span>
-                                            <span className="text-dark-200 font-mono">
-                                              {formatThinkingTime(
-                                                lastAssistantMsg.response_time_ms /
-                                                  1000,
-                                              )}
-                                            </span>
-                                          </div>
-                                        )}
-                                        {lastAssistantMsg.completion_tokens >
-                                          0 &&
-                                          lastAssistantMsg.response_time_ms >
+                                  <div className="group/info relative">
+                                    <button
+                                      className="p-1.5 rounded-lg text-dark-500 hover:text-primary-400 hover:bg-dark-800 transition-colors"
+                                      title="Message details"
+                                    >
+                                      <Info className="w-3.5 h-3.5" />
+                                    </button>
+                                    <div className="absolute bottom-full left-0 mb-1 hidden group-hover/info:block z-10">
+                                      <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
+                                        <div className="space-y-1">
+                                          {lastAssistantMsg.response_time_ms >
                                             0 && (
+                                              <div className="flex justify-between gap-4">
+                                                <span className="text-dark-400">
+                                                  Time:
+                                                </span>
+                                                <span className="text-dark-200 font-mono">
+                                                  {formatThinkingTime(
+                                                    lastAssistantMsg.response_time_ms /
+                                                    1000,
+                                                  )}
+                                                </span>
+                                              </div>
+                                            )}
+                                          {lastAssistantMsg.completion_tokens >
+                                            0 &&
+                                            lastAssistantMsg.response_time_ms >
+                                            0 && (
+                                              <div className="flex justify-between gap-4">
+                                                <span className="text-dark-400">
+                                                  Speed:
+                                                </span>
+                                                <span className="text-dark-200 font-mono">
+                                                  {(
+                                                    lastAssistantMsg.completion_tokens /
+                                                    (lastAssistantMsg.response_time_ms /
+                                                      1000)
+                                                  ).toFixed(1)}{" "}
+                                                  t/s
+                                                </span>
+                                              </div>
+                                            )}
+                                          {(lastAssistantMsg.prompt_tokens ||
+                                            lastAssistantMsg.completion_tokens) && (
+                                              <div className="flex justify-between gap-4">
+                                                <span className="text-dark-400">
+                                                  Tokens:
+                                                </span>
+                                                <span className="text-dark-200 font-mono">
+                                                  {(
+                                                    (lastAssistantMsg.prompt_tokens ||
+                                                      0) +
+                                                    (lastAssistantMsg.completion_tokens ||
+                                                      0)
+                                                  ).toLocaleString()}{" "}
+                                                  tks
+                                                </span>
+                                              </div>
+                                            )}
+                                          {lastAssistantMsg.cost > 0 && (
                                             <div className="flex justify-between gap-4">
                                               <span className="text-dark-400">
-                                                Speed:
+                                                Cost:
                                               </span>
-                                              <span className="text-dark-200 font-mono">
-                                                {(
-                                                  lastAssistantMsg.completion_tokens /
-                                                  (lastAssistantMsg.response_time_ms /
-                                                    1000)
-                                                ).toFixed(1)}{" "}
-                                                t/s
+                                              <span className="text-accent-400 font-mono">
+                                                $
+                                                {lastAssistantMsg.cost.toFixed(2)}
                                               </span>
                                             </div>
                                           )}
-                                        {(lastAssistantMsg.prompt_tokens ||
-                                          lastAssistantMsg.completion_tokens) && (
-                                          <div className="flex justify-between gap-4">
-                                            <span className="text-dark-400">
-                                              Tokens:
-                                            </span>
-                                            <span className="text-dark-200 font-mono">
-                                              {(
-                                                (lastAssistantMsg.prompt_tokens ||
-                                                  0) +
-                                                (lastAssistantMsg.completion_tokens ||
-                                                  0)
-                                              ).toLocaleString()}{" "}
-                                              tks
-                                            </span>
-                                          </div>
-                                        )}
-                                        {lastAssistantMsg.cost > 0 && (
-                                          <div className="flex justify-between gap-4">
-                                            <span className="text-dark-400">
-                                              Cost:
-                                            </span>
-                                            <span className="text-accent-400 font-mono">
-                                              $
-                                              {lastAssistantMsg.cost.toFixed(2)}
-                                            </span>
-                                          </div>
-                                        )}
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
-                                </div>
-                              )}
+                                )}
                             </div>
                           )}
                         </div>
@@ -3288,145 +3299,145 @@ function Chat() {
                 streamingReasoning ||
                 streamingSteps?.length > 0 ||
                 completedTurns?.length > 0) && (
-                <div className="flex gap-4 group">
-                  {/* Single avatar for the entire streaming response group */}
-                  <div className="flex-shrink-0 flex flex-col items-center pt-1">
-                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-dark-800">
-                      <Bot className="w-5 h-5 text-accent" />
-                    </div>
-                  </div>
-
-                  <div className="flex-1 min-w-0 flex flex-col items-start">
-                    <div className="flex items-center gap-2 mb-1 px-1">
-                      <span className="text-xs font-medium text-dark-400">
-                        {formatModelName(chatSettings.model)}
-                      </span>
+                  <div className="flex gap-4 group">
+                    {/* Single avatar for the entire streaming response group */}
+                    <div className="flex-shrink-0 flex flex-col items-center pt-1">
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-dark-800">
+                        <Bot className="w-5 h-5 text-accent" />
+                      </div>
                     </div>
 
-                    {/* Render completed turns from multi-step tool chains */}
-                    {completedTurns &&
-                      completedTurns.map((turn, turnIdx) => (
-                        <React.Fragment key={`turn-${turnIdx}`}>
-                          {/* Steps for this completed turn */}
-                          {turn.steps && turn.steps.length > 0 ? (
-                            <div className="mb-2 w-full max-w-[85%]">
-                              <MessageSteps
-                                steps={turn.steps}
-                                isStreaming={false}
-                              />
-                            </div>
-                          ) : (
-                            /* Fallback: show ToolCallDisplay only when no steps exist */
-                            turn.toolCalls &&
-                            turn.toolCalls.length > 0 && (
-                              <div className="mb-2 max-w-[85%]">
-                                <ToolCallDisplay
-                                  toolCalls={turn.toolCalls}
-                                  toolResults={turn.toolResults || {}}
+                    <div className="flex-1 min-w-0 flex flex-col items-start">
+                      <div className="flex items-center gap-2 mb-1 px-1">
+                        <span className="text-xs font-medium text-dark-400">
+                          {formatModelName(chatSettings.model)}
+                        </span>
+                      </div>
+
+                      {/* Render completed turns from multi-step tool chains */}
+                      {completedTurns &&
+                        completedTurns.map((turn, turnIdx) => (
+                          <React.Fragment key={`turn-${turnIdx}`}>
+                            {/* Steps for this completed turn */}
+                            {turn.steps && turn.steps.length > 0 ? (
+                              <div className="mb-2 w-full max-w-[85%]">
+                                <MessageSteps
+                                  steps={turn.steps}
+                                  isStreaming={false}
                                 />
                               </div>
-                            )
-                          )}
-                          {/* Content for this completed turn */}
-                          {turn.message && (
-                            <div className="inline-block max-w-[85%] bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg mb-2">
-                              {renderMessage(turn.message)}
-                            </div>
-                          )}
-                        </React.Fragment>
-                      ))}
-
-                    {/* Current turn: steps/reasoning + streaming content */}
-                    {streamingSteps && streamingSteps.length > 0 ? (
-                      <div className="mb-2 w-full max-w-[85%]">
-                        <MessageSteps
-                          steps={streamingSteps}
-                          isStreaming={streaming}
-                        />
-                      </div>
-                    ) : (
-                      <>
-                        {(preToolReasoning ||
-                          (streaming &&
-                            !streamingMessage &&
-                            !isPostToolPhase &&
-                            !toolCalls?.length)) && (
-                          <ThinkingSection
-                            reasoning={preToolReasoning}
-                            isExpanded={expandedThinkingSections.has(
-                              "streaming-pre",
+                            ) : (
+                              /* Fallback: show ToolCallDisplay only when no steps exist */
+                              turn.toolCalls &&
+                              turn.toolCalls.length > 0 && (
+                                <div className="mb-2 max-w-[85%]">
+                                  <ToolCallDisplay
+                                    toolCalls={turn.toolCalls}
+                                    toolResults={turn.toolResults || {}}
+                                  />
+                                </div>
+                              )
                             )}
-                            onToggle={() =>
-                              toggleThinkingSection("streaming-pre")
-                            }
-                            isStreaming={
-                              streaming && !isPostToolPhase && !streamingMessage
-                            }
-                            elapsedTime={
-                              !isPostToolPhase ? thinkingElapsedTime : 0
-                            }
-                          />
-                        )}
-                        {toolCalls && toolCalls.length > 0 && (
-                          <ToolCallDisplay
-                            toolCalls={toolCalls}
-                            toolResults={toolResults}
-                          />
-                        )}
-                        {(postToolReasoning ||
-                          (streaming &&
-                            isPostToolPhase &&
-                            !streamingMessage)) && (
-                          <ThinkingSection
-                            reasoning={postToolReasoning}
-                            isExpanded={expandedThinkingSections.has(
-                              "streaming-post",
+                            {/* Content for this completed turn */}
+                            {turn.message && (
+                              <div className="inline-block max-w-[85%] bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg mb-2">
+                                {renderMessage(turn.message)}
+                              </div>
                             )}
-                            onToggle={() =>
-                              toggleThinkingSection("streaming-post")
-                            }
-                            isStreaming={
-                              streaming && isPostToolPhase && !streamingMessage
-                            }
-                            elapsedTime={
-                              isPostToolPhase ? thinkingElapsedTime : 0
-                            }
+                          </React.Fragment>
+                        ))}
+
+                      {/* Current turn: steps/reasoning + streaming content */}
+                      {streamingSteps && streamingSteps.length > 0 ? (
+                        <div className="mb-2 w-full max-w-[85%]">
+                          <MessageSteps
+                            steps={streamingSteps}
+                            isStreaming={streaming}
                           />
-                        )}
-                      </>
-                    )}
+                        </div>
+                      ) : (
+                        <>
+                          {(preToolReasoning ||
+                            (streaming &&
+                              !streamingMessage &&
+                              !isPostToolPhase &&
+                              !toolCalls?.length)) && (
+                              <ThinkingSection
+                                reasoning={preToolReasoning}
+                                isExpanded={expandedThinkingSections.has(
+                                  "streaming-pre",
+                                )}
+                                onToggle={() =>
+                                  toggleThinkingSection("streaming-pre")
+                                }
+                                isStreaming={
+                                  streaming && !isPostToolPhase && !streamingMessage
+                                }
+                                elapsedTime={
+                                  !isPostToolPhase ? thinkingElapsedTime : 0
+                                }
+                              />
+                            )}
+                          {toolCalls && toolCalls.length > 0 && (
+                            <ToolCallDisplay
+                              toolCalls={toolCalls}
+                              toolResults={toolResults}
+                            />
+                          )}
+                          {(postToolReasoning ||
+                            (streaming &&
+                              isPostToolPhase &&
+                              !streamingMessage)) && (
+                              <ThinkingSection
+                                reasoning={postToolReasoning}
+                                isExpanded={expandedThinkingSections.has(
+                                  "streaming-post",
+                                )}
+                                onToggle={() =>
+                                  toggleThinkingSection("streaming-post")
+                                }
+                                isStreaming={
+                                  streaming && isPostToolPhase && !streamingMessage
+                                }
+                                elapsedTime={
+                                  isPostToolPhase ? thinkingElapsedTime : 0
+                                }
+                              />
+                            )}
+                        </>
+                      )}
 
-                    {streamingMessage && (
-                      <div className="inline-block max-w-[85%] bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg fade-in">
-                        {renderMessage(streamingMessage)}
-                      </div>
-                    )}
-
-                    {streaming &&
-                      !streamingMessage &&
-                      !streamingReasoning &&
-                      !(streamingSteps?.length > 0) &&
-                      !(completedTurns?.length > 0) && (
-                        <div className="inline-block bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg fade-in">
-                          <div className="flex gap-1">
-                            <div
-                              className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce"
-                              style={{ animationDelay: "0ms" }}
-                            ></div>
-                            <div
-                              className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce"
-                              style={{ animationDelay: "150ms" }}
-                            ></div>
-                            <div
-                              className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce"
-                              style={{ animationDelay: "300ms" }}
-                            ></div>
-                          </div>
+                      {streamingMessage && (
+                        <div className="inline-block max-w-[85%] bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg fade-in">
+                          {renderMessage(streamingMessage)}
                         </div>
                       )}
+
+                      {streaming &&
+                        !streamingMessage &&
+                        !streamingReasoning &&
+                        !(streamingSteps?.length > 0) &&
+                        !(completedTurns?.length > 0) && (
+                          <div className="inline-block bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg fade-in">
+                            <div className="flex gap-1">
+                              <div
+                                className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce"
+                                style={{ animationDelay: "0ms" }}
+                              ></div>
+                              <div
+                                className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce"
+                                style={{ animationDelay: "150ms" }}
+                              ></div>
+                              <div
+                                className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce"
+                                style={{ animationDelay: "300ms" }}
+                              ></div>
+                            </div>
+                          </div>
+                        )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
               <div ref={messagesEndRef} />
             </div>
@@ -3569,7 +3580,7 @@ function Chat() {
         >
           {/* Backdrop with blur and gradient */}
           <div className="absolute inset-0 bg-dark-950/95 backdrop-blur-xl" />
-          
+
           {/* Content container */}
           <div
             className="relative z-10 max-w-[90vw] max-h-[90vh] flex flex-col items-center animate-in fade-in zoom-in-95 duration-200"
