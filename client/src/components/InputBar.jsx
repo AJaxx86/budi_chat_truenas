@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Square, Lightbulb, Check, X } from 'lucide-react';
+import { Send, Square, Lightbulb, Check, X, Image as ImageIcon } from 'lucide-react';
 import PlusMenu from './PlusMenu';
 import VoiceInput from './VoiceInput';
 
@@ -30,6 +30,7 @@ function InputBar({
   onOpenImageGeneration,
 }) {
   const [showThinkingDropdown, setShowThinkingDropdown] = useState(false);
+  const [pastingImage, setPastingImage] = useState(false);
   const textareaRef = useRef(null);
   const thinkingDropdownRef = useRef(null);
 
@@ -119,12 +120,83 @@ function InputBar({
     return '📎';
   };
 
+  // Handle paste events for images
+  const handlePaste = async (e) => {
+    if (streaming || pastingImage) return;
+
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const imageItems = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        const blob = item.getAsFile();
+        if (blob) {
+          imageItems.push(blob);
+        }
+      }
+    }
+
+    if (imageItems.length === 0) return;
+
+    // Prevent default paste behavior for images
+    e.preventDefault();
+
+    setPastingImage(true);
+
+    try {
+      const formData = new FormData();
+      imageItems.forEach((blob, index) => {
+        // Create a File from the Blob with a timestamped name
+        const extension = blob.type.split('/')[1] || 'png';
+        const filename = `pasted-image-${Date.now()}-${index}.${extension}`;
+        const file = new File([blob], filename, { type: blob.type });
+        formData.append('files', file);
+      });
+
+      const res = await fetch('/api/uploads', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: formData
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Upload failed');
+      }
+
+      const data = await res.json();
+
+      // Create preview URLs for uploaded files
+      const uploadedWithPreviews = data.files.map((file, index) => ({
+        ...file,
+        preview: URL.createObjectURL(imageItems[index])
+      }));
+
+      setPendingAttachments(prev => [...prev, ...uploadedWithPreviews]);
+    } catch (err) {
+      console.error('Failed to upload pasted image:', err);
+      // Could show a toast/notification here
+    } finally {
+      setPastingImage(false);
+    }
+  };
+
   return (
     <div className="p-4">
       <div className="max-w-2xl mx-auto">
         {/* Pending Attachments Preview */}
-        {pendingAttachments.length > 0 && (
+        {(pendingAttachments.length > 0 || pastingImage) && (
           <div className="flex flex-wrap gap-2 mb-3 p-2 rounded-xl bg-dark-800/50 border border-white/[0.06]">
+            {pastingImage && (
+              <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-white/[0.1] bg-dark-800 flex items-center justify-center">
+                <ImageIcon className="w-6 h-6 text-dark-500 animate-pulse" />
+                <span className="absolute bottom-1 text-[8px] text-dark-400">Pasting...</span>
+              </div>
+            )}
             {pendingAttachments.map((file) => {
               const isImage = file.mimetype?.startsWith('image/');
               const fileIcon = getFileIcon(file.mimetype, file.original_name);
@@ -180,6 +252,7 @@ function InputBar({
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={handleKeyDown}
             onInput={handleTextareaInput}
+            onPaste={handlePaste}
             placeholder={streaming ? "AI is responding..." : "Ask anything..."}
             className="flex-1 bg-transparent outline-none ring-0 ring-offset-0 focus:outline-none focus:ring-0 focus:ring-offset-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 text-dark-200 placeholder-dark-500 text-sm resize-none py-2"
             style={{ minHeight: '24px', maxHeight: '140px' }}
