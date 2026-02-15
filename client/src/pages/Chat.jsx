@@ -37,6 +37,9 @@ import {
   FileText,
   Shield,
   RotateCcw,
+  ZoomIn,
+  Maximize2,
+  Download,
 } from "lucide-react";
 import SearchModal from "../components/SearchModal";
 import ExportMenu from "../components/ExportMenu";
@@ -395,6 +398,13 @@ function Chat() {
   const [selectedPersona, setSelectedPersona] = useState(null);
   const targetMessageRef = useRef(null);
 
+  // Image viewer modal state
+  const [imageViewer, setImageViewer] = useState({
+    isOpen: false,
+    imageUrl: null,
+    imageName: "",
+  });
+
   const [chatSettings, setChatSettings] = useState(() => ({
     model: localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL,
     temperature: 0.7,
@@ -702,10 +712,14 @@ function Chat() {
         e.preventDefault();
         setShowSearch(true);
       }
+      // Close image viewer on Escape
+      if (e.key === "Escape" && imageViewer.isOpen) {
+        setImageViewer({ isOpen: false, imageUrl: null, imageName: "" });
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [imageViewer.isOpen]);
 
   // Close context menu on any click
   useEffect(() => {
@@ -2806,23 +2820,43 @@ function Chat() {
                                             return "📎";
                                           };
                                           if (isImage) {
+                                            const imageUrl = att.preview || `/api/uploads/${att.id}`;
                                             return (
-                                              <img
+                                              <div
                                                 key={att.id}
-                                                src={
-                                                  att.preview ||
-                                                  `/api/uploads/${att.id}`
-                                                }
-                                                alt={att.original_name}
-                                                className="max-w-[200px] max-h-[150px] rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                                                onClick={() =>
-                                                  window.open(
-                                                    att.preview ||
-                                                      `/api/uploads/${att.id}`,
-                                                    "_blank",
-                                                  )
-                                                }
-                                              />
+                                                className="group relative overflow-hidden rounded-xl border border-white/[0.08] bg-dark-800/50 shadow-lg hover:shadow-xl hover:border-white/[0.15] transition-all duration-300"
+                                              >
+                                                <div className="relative">
+                                                  <img
+                                                    src={imageUrl}
+                                                    alt={att.original_name}
+                                                    className="max-w-[220px] max-h-[160px] object-cover"
+                                                    loading="lazy"
+                                                  />
+                                                  {/* Hover overlay with gradient */}
+                                                  <div className="absolute inset-0 bg-gradient-to-t from-dark-950/90 via-dark-950/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                                                  
+                                                  {/* Zoom button */}
+                                                  <button
+                                                    onClick={() => setImageViewer({
+                                                      isOpen: true,
+                                                      imageUrl,
+                                                      imageName: att.original_name,
+                                                    })}
+                                                    className="absolute bottom-2 right-2 p-2 rounded-lg bg-dark-800/80 backdrop-blur-sm text-white opacity-0 group-hover:opacity-100 transform translate-y-2 group-hover:translate-y-0 transition-all duration-300 hover:bg-dark-700/90"
+                                                    title="View full size"
+                                                  >
+                                                    <ZoomIn className="w-4 h-4" />
+                                                  </button>
+                                                  
+                                                  {/* Filename overlay */}
+                                                  <div className="absolute bottom-0 left-0 right-0 px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                                    <p className="text-xs text-white/90 truncate font-medium">
+                                                      {att.original_name}
+                                                    </p>
+                                                  </div>
+                                                </div>
+                                              </div>
                                             );
                                           }
                                           return (
@@ -3521,6 +3555,63 @@ function Chat() {
         initialLanguage={canvasState.language}
         title={canvasState.title}
       />
+
+      {/* Image Viewer Modal */}
+      {imageViewer.isOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center"
+          onClick={() => setImageViewer({ isOpen: false, imageUrl: null, imageName: "" })}
+        >
+          {/* Backdrop with blur and gradient */}
+          <div className="absolute inset-0 bg-dark-950/95 backdrop-blur-xl" />
+          
+          {/* Content container */}
+          <div
+            className="relative z-10 max-w-[90vw] max-h-[90vh] flex flex-col items-center animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="absolute -top-14 left-0 right-0 flex items-center justify-between px-4">
+              <h3 className="text-dark-200 font-medium truncate max-w-[70vw]">
+                {imageViewer.imageName}
+              </h3>
+              <div className="flex items-center gap-2">
+                <a
+                  href={imageViewer.imageUrl}
+                  download={imageViewer.imageName}
+                  className="p-2.5 rounded-lg bg-dark-800/80 text-dark-300 hover:text-white hover:bg-dark-700/80 transition-all duration-200"
+                  title="Download image"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Download className="w-5 h-5" />
+                </a>
+                <button
+                  onClick={() => setImageViewer({ isOpen: false, imageUrl: null, imageName: "" })}
+                  className="p-2.5 rounded-lg bg-dark-800/80 text-dark-300 hover:text-white hover:bg-dark-700/80 transition-all duration-200"
+                  title="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Image container */}
+            <div className="relative rounded-2xl overflow-hidden shadow-2xl border border-white/[0.08]">
+              <img
+                src={imageViewer.imageUrl}
+                alt={imageViewer.imageName}
+                className="max-w-[85vw] max-h-[80vh] object-contain"
+              />
+            </div>
+
+            {/* Footer hint */}
+            <p className="mt-4 text-dark-500 text-sm flex items-center gap-2">
+              <Maximize2 className="w-4 h-4" />
+              Click outside to close
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Context Menu */}
       {contextMenu.isOpen && (
