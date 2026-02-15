@@ -17,6 +17,11 @@ export function authMiddleware(req, res, next) {
     token = req.cookies.token;
   }
   
+  // If no cookie, try query parameter (for image/file loading)
+  if (!token && req.query && req.query.token) {
+    token = req.query.token;
+  }
+  
   if (!token) {
     return res.status(401).json({ error: 'No token provided' });
   }

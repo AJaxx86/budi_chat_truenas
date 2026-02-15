@@ -2820,7 +2820,12 @@ function Chat() {
                                             return "📎";
                                           };
                                           if (isImage) {
-                                            const imageUrl = att.preview || `/api/uploads/${att.id}`;
+                                            // Get token for API access
+                                            const token = localStorage.getItem('token');
+                                            // Use preview (blob URL) for new uploads, otherwise add token to API URL
+                                            const imageUrl = att.preview 
+                                              ? att.preview 
+                                              : `/api/uploads/${att.id}?token=${token}`;
                                             return (
                                               <div
                                                 key={att.id}
