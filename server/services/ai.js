@@ -1,5 +1,6 @@
 import db from '../database.js';
 import OpenAI from 'openai';
+import { ensureModelsCache, getModelCapabilities } from './models.js';
 
 export async function getApiKey(userId) {
   const keyInfo = await getApiKeyInfo(userId);
@@ -95,7 +96,74 @@ export async function generateChatTitle(userMessage, userId) {
   }
 }
 
-export async function executeToolCall(toolCall, userId = null, workspaceId = null) {
+function heuristicVisionSupport(model) {
+  if (!model) return false;
+  const lowerModel = model.toLowerCase();
+  const visionPatterns = [
+    "gpt-4-vision",
+    "gpt-4o",
+    "claude-3",
+    "claude-3-5",
+    "claude-3.5",
+    "gemini-1.5",
+    "gemini-2",
+    "gemini-3",
+    "gemini-2.5",
+    "gemini-pro-vision",
+    "gemini-ultra-vision",
+    "gemini-1.0-pro-vision",
+    "gemini-1.5-pro",
+    "gemini-1.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-flash",
+    "llava",
+    "vision",
+    "multimodal",
+    "kimi-v1",
+    "kimi-1.5",
+    "kimi-k2",
+    "kimi-v2",
+    "pixtral",
+    "mistral-large-2",
+    "mistral-small-3",
+    "qwen2-vl",
+    "internvl",
+    "cogvlm",
+  ];
+
+  if (visionPatterns.some((pattern) => lowerModel.includes(pattern))) {
+    return true;
+  }
+
+  if (
+    lowerModel.includes("gemini") &&
+    !lowerModel.includes("embedding") &&
+    !lowerModel.includes("text")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+async function modelSupportsVision(model) {
+  if (!model) return false;
+  try {
+    await ensureModelsCache();
+    const caps = getModelCapabilities(model);
+    if (caps?.vision !== undefined) {
+      return !!caps?.vision;
+    }
+    return heuristicVisionSupport(model);
+  } catch (error) {
+    console.error("Failed to resolve model capabilities:", error);
+    return heuristicVisionSupport(model);
+  }
+}
+
+export async function executeToolCall(toolCall, userId = null, workspaceId = null, model = null) {
   const { name, arguments: args } = toolCall.function;
   let parsedArgs;
 
@@ -126,7 +194,13 @@ export async function executeToolCall(toolCall, userId = null, workspaceId = nul
         return await executeAddMemory(parsedArgs.content, parsedArgs.category, parsedArgs.importance, userId);
 
       case 'read_memories':
-        return await executeReadMemories(parsedArgs.category, parsedArgs.query, parsedArgs.limit, userId);
+        return await executeReadMemories(
+          parsedArgs.category,
+          parsedArgs.query,
+          parsedArgs.limit,
+          userId,
+          await modelSupportsVision(model),
+        );
 
       default:
         return `Unknown tool: ${name}`;
@@ -413,7 +487,7 @@ async function executeAddMemory(content, category = 'general', importance = 1, u
     `).run(userId, content.trim(), validCategory, validImportance);
 
     if (result.changes > 0) {
-      return `Memory stored successfully (ID: ${result.lastInsertRowid}, category: ${validCategory}, importance: ${validImportance}/5)`;
+      return `Memory stored successfully (ID: ${result.lastInsertRowid}, category: ${validCategory}, importance: ${validImportance}/5)\n\nContent: ${content.trim()}`;
     } else {
       return 'Error: Failed to store memory.';
     }
@@ -423,7 +497,7 @@ async function executeAddMemory(content, category = 'general', importance = 1, u
   }
 }
 
-async function executeReadMemories(category = null, query = null, limit = 10, userId) {
+async function executeReadMemories(category = null, query = null, limit = 10, userId, modelSupportsVision = false) {
   if (!userId) {
     return 'Error: User context required to read memories.';
   }
@@ -468,13 +542,38 @@ async function executeReadMemories(category = null, query = null, limit = 10, us
       }
     }
 
+    // Fetch images for each memory
+    const memoriesWithImages = memories.map(memory => {
+      const images = db.prepare(`
+        SELECT f.id, f.original_name, f.mimetype, f.size, f.storage_path
+        FROM memory_images mi
+        JOIN file_uploads f ON mi.file_id = f.id
+        WHERE mi.memory_id = ?
+        ORDER BY mi.created_at ASC
+      `).all(memory.id);
+      
+      return {
+        ...memory,
+        images
+      };
+    });
+
     // Format results
-    const formattedMemories = memories.map((mem, index) => {
+    const formattedMemories = memoriesWithImages.map((mem, index) => {
       const date = new Date(mem.created_at);
       const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       const importanceStars = '★'.repeat(mem.importance) + '☆'.repeat(5 - mem.importance);
+      
+      let imageInfo = '';
+      if (mem.images && mem.images.length > 0) {
+        if (modelSupportsVision) {
+          imageInfo = `\n    [This memory has ${mem.images.length} image(s) attached and included for vision-capable models]`;
+        } else {
+          imageInfo = `\n    [This memory has ${mem.images.length} image(s) attached, but the current model does not support vision]`;
+        }
+      }
 
-      return `[${index + 1}] ${importanceStars} [${mem.category}] (${dateStr})\n    ${mem.content}`;
+      return `[${index + 1}] ${importanceStars} [${mem.category}] (${dateStr})${imageInfo}\n    ${mem.content}`;
     }).join('\n\n');
 
     const filterInfo = [];

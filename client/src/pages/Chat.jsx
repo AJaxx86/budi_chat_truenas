@@ -1341,17 +1341,72 @@ function Chat() {
     }
   };
 
+  const persistCancelledMessage = useCallback(
+    async (chatId) => {
+      const streamState = streamingStates.get(chatId);
+      if (!streamState) return;
+
+      const content = (streamState.streamingMessage || "").trim();
+      const reasoningContent = (streamState.streamingReasoning || "").trim();
+      const toolCalls = streamState.toolCalls?.length
+        ? JSON.stringify(streamState.toolCalls)
+        : null;
+
+      if (!content && !reasoningContent) return;
+
+      let finalContent = content || "Response cancelled before output.";
+      if (!finalContent.startsWith("[Cancelled]")) {
+        finalContent = `[Cancelled] ${finalContent}`;
+      }
+
+      const cancelledMessage = {
+        id: `cancelled-${Date.now()}`,
+        role: "assistant",
+        content: finalContent,
+        reasoning_content: reasoningContent || null,
+        created_at: new Date().toISOString(),
+        tool_calls: toolCalls,
+      };
+
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === cancelledMessage.id)) return prev;
+        return [...prev, cancelledMessage];
+      });
+
+      try {
+        await fetch(`/api/messages/${chatId}/partial`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+          body: JSON.stringify({
+            content: finalContent,
+            reasoning_content: reasoningContent || null,
+            tool_calls: toolCalls,
+          }),
+        });
+      } catch (error) {
+        console.error("Failed to persist cancelled message:", error);
+      }
+    },
+    [streamingStates, setMessages],
+  );
+
   const stopGeneration = useCallback(() => {
     const chatId = currentChat?.id;
     if (!chatId) return;
+
+    persistCancelledMessage(chatId);
 
     const controller = abortControllersRef.current.get(chatId);
     if (controller) {
       controller.abort();
       abortControllersRef.current.delete(chatId);
-      clearStreamState(chatId);
     }
-  }, [currentChat?.id, clearStreamState]);
+
+    clearStreamState(chatId);
+  }, [currentChat?.id, clearStreamState, persistCancelledMessage]);
 
   const sendMessage = async (e) => {
     e.preventDefault();

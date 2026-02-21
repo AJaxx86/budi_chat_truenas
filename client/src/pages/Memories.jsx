@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Brain, Plus, Trash2, Edit2, Save, X, Star } from 'lucide-react';
+import { ArrowLeft, Brain, Plus, Trash2, Edit2, Save, X, Star, Image as ImageIcon, Upload, ZoomIn, AlertTriangle } from 'lucide-react';
 
 function Memories() {
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
   const [memories, setMemories] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -13,6 +14,11 @@ function Memories() {
     category: 'general',
     importance: 1
   });
+  const [pendingImages, setPendingImages] = useState([]);
+  const [existingImages, setExistingImages] = useState([]);
+  const [imagesToRemove, setImagesToRemove] = useState([]);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     loadMemories();
@@ -30,38 +36,166 @@ function Memories() {
     }
   };
 
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files);
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    
+    if (imageFiles.length + pendingImages.length + existingImages.length - imagesToRemove.length > 10) {
+      alert('Maximum 10 images per memory allowed');
+      return;
+    }
+
+    const newImages = imageFiles.map(file => ({
+      id: `temp-${Date.now()}-${Math.random()}`,
+      file,
+      preview: URL.createObjectURL(file),
+      original_name: file.name,
+      size: file.size,
+      isNew: true
+    }));
+
+    setPendingImages(prev => [...prev, ...newImages]);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const files = Array.from(e.dataTransfer.files);
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    
+    if (imageFiles.length + pendingImages.length + existingImages.length - imagesToRemove.length > 10) {
+      alert('Maximum 10 images per memory allowed');
+      return;
+    }
+
+    const newImages = imageFiles.map(file => ({
+      id: `temp-${Date.now()}-${Math.random()}`,
+      file,
+      preview: URL.createObjectURL(file),
+      original_name: file.name,
+      size: file.size,
+      isNew: true
+    }));
+
+    setPendingImages(prev => [...prev, ...newImages]);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handlePaste = async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const imageItems = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        const blob = item.getAsFile();
+        if (blob) imageItems.push(blob);
+      }
+    }
+
+    if (imageItems.length === 0) return;
+
+    if (imageItems.length + pendingImages.length + existingImages.length - imagesToRemove.length > 10) {
+      alert('Maximum 10 images per memory allowed');
+      return;
+    }
+
+    const newImages = imageItems.map((blob, index) => {
+      const extension = blob.type.split('/')[1] || 'png';
+      const filename = `pasted-${Date.now()}-${index}.${extension}`;
+      const file = new File([blob], filename, { type: blob.type });
+      
+      return {
+        id: `temp-${Date.now()}-${Math.random()}`,
+        file,
+        preview: URL.createObjectURL(file),
+        original_name: filename,
+        size: file.size,
+        isNew: true
+      };
+    });
+
+    setPendingImages(prev => [...prev, ...newImages]);
+  };
+
+  const removePendingImage = (imageId) => {
+    const image = pendingImages.find(img => img.id === imageId);
+    if (image?.preview) {
+      URL.revokeObjectURL(image.preview);
+    }
+    setPendingImages(prev => prev.filter(img => img.id !== imageId));
+  };
+
+  const removeExistingImage = (imageId) => {
+    setImagesToRemove(prev => [...prev, imageId]);
+    setExistingImages(prev => prev.filter(img => img.id !== imageId));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
     try {
+      const formDataObj = new FormData();
+      formDataObj.append('content', formData.content);
+      formDataObj.append('category', formData.category);
+      formDataObj.append('importance', formData.importance);
+
       if (editingId) {
-        await fetch(`/api/memories/${editingId}`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          },
-          body: JSON.stringify(formData)
-        });
-      } else {
-        await fetch('/api/memories', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          },
-          body: JSON.stringify(formData)
-        });
+        // For updates, send images to remove
+        if (imagesToRemove.length > 0) {
+          formDataObj.append('remove_image_ids', JSON.stringify(imagesToRemove));
+        }
       }
 
+      // Append new images
+      pendingImages.forEach(img => {
+        if (img.file) {
+          formDataObj.append('images', img.file);
+        }
+      });
+
+      const url = editingId ? `/api/memories/${editingId}` : '/api/memories';
+      const method = editingId ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: formDataObj
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to save memory');
+      }
+
+      // Cleanup
+      pendingImages.forEach(img => {
+        if (img.preview) URL.revokeObjectURL(img.preview);
+      });
+
       setFormData({ content: '', category: 'general', importance: 1 });
+      setPendingImages([]);
+      setExistingImages([]);
+      setImagesToRemove([]);
       setEditingId(null);
       setShowNewMemory(false);
       loadMemories();
     } catch (error) {
       console.error('Failed to save memory:', error);
-      alert('Failed to save memory');
+      alert('Failed to save memory: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -73,6 +207,9 @@ function Memories() {
       category: memory.category,
       importance: memory.importance
     });
+    setExistingImages(memory.images || []);
+    setPendingImages([]);
+    setImagesToRemove([]);
     setEditingId(memory.id);
     setShowNewMemory(true);
   };
@@ -92,7 +229,15 @@ function Memories() {
   };
 
   const cancelEdit = () => {
+    // Cleanup previews
+    pendingImages.forEach(img => {
+      if (img.preview) URL.revokeObjectURL(img.preview);
+    });
+    
     setFormData({ content: '', category: 'general', importance: 1 });
+    setPendingImages([]);
+    setExistingImages([]);
+    setImagesToRemove([]);
     setEditingId(null);
     setShowNewMemory(false);
   };
@@ -106,6 +251,20 @@ function Memories() {
     };
     return colors[category] || colors.general;
   };
+
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
+  const getImageUrl = (image) => {
+    const token = localStorage.getItem('token');
+    return `/api/uploads/${image.id}?token=${token}`;
+  };
+
+  const totalImages = pendingImages.length + existingImages.length;
+  const canAddMore = totalImages < 10;
 
   return (
     <div className="min-h-screen min-h-[100dvh] bg-dark-950 bg-mesh">
@@ -165,6 +324,7 @@ function Memories() {
                   <textarea
                     value={formData.content}
                     onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+                    onPaste={handlePaste}
                     className="w-full px-4 py-3 rounded-xl glass-input outline-none resize-none text-dark-100 text-sm"
                     rows="4"
                     placeholder="What should the AI remember about you?"
@@ -208,9 +368,125 @@ function Memories() {
                   </div>
                 </div>
 
+                {/* Image Upload Section */}
+                <div>
+                  <label className="block text-sm font-medium text-dark-300 mb-2">
+                    Images ({totalImages}/10)
+                  </label>
+                  
+                  {/* Image Preview Grid */}
+                  {(existingImages.length > 0 || pendingImages.length > 0) && (
+                    <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-2 mb-3">
+                      {existingImages.map(image => (
+                        <div
+                          key={image.id}
+                          className="relative group aspect-square rounded-lg overflow-hidden border border-dark-600/50 bg-dark-700/50"
+                        >
+                          <img
+                            src={getImageUrl(image)}
+                            alt={image.original_name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              e.target.nextSibling.style.display = 'flex';
+                            }}
+                          />
+                          <div className="hidden absolute inset-0 items-center justify-center bg-dark-800">
+                            <ImageIcon className="w-6 h-6 text-dark-500" />
+                          </div>
+                          <div className="absolute inset-0 bg-dark-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedImage(getImageUrl(image))}
+                              className="p-1.5 bg-dark-700/80 rounded-lg hover:bg-dark-600 transition-colors"
+                            >
+                              <ZoomIn className="w-3.5 h-3.5 text-dark-200" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeExistingImage(image.id)}
+                              className="p-1.5 bg-red-500/20 rounded-lg hover:bg-red-500/30 transition-colors"
+                            >
+                              <X className="w-3.5 h-3.5 text-red-400" />
+                            </button>
+                          </div>
+                          <div className="absolute bottom-0 inset-x-0 bg-dark-900/80 px-1.5 py-0.5">
+                            <p className="text-[8px] text-dark-400 truncate">{image.original_name}</p>
+                          </div>
+                        </div>
+                      ))}
+                      
+                      {pendingImages.map(image => (
+                        <div
+                          key={image.id}
+                          className="relative group aspect-square rounded-lg overflow-hidden border border-accent/30 bg-dark-700/50"
+                        >
+                          <img
+                            src={image.preview}
+                            alt={image.original_name}
+                            className="w-full h-full object-cover"
+                          />
+                          <div className="absolute inset-0 bg-dark-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <button
+                              type="button"
+                              onClick={() => removePendingImage(image.id)}
+                              className="p-1.5 bg-red-500/20 rounded-lg hover:bg-red-500/30 transition-colors"
+                            >
+                              <X className="w-3.5 h-3.5 text-red-400" />
+                            </button>
+                          </div>
+                          <div className="absolute bottom-0 inset-x-0 bg-accent/20 px-1.5 py-0.5">
+                            <p className="text-[8px] text-accent truncate">{formatFileSize(image.size)}</p>
+                          </div>
+                          <div className="absolute top-1 right-1">
+                            <span className="text-[8px] bg-accent/30 text-accent px-1 rounded">NEW</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Upload Area */}
+                  {canAddMore && (
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      onDrop={handleDrop}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      className={`
+                        relative border-2 border-dashed rounded-xl p-6 cursor-pointer transition-all duration-200
+                        ${isDragging 
+                          ? 'border-accent bg-accent/5' 
+                          : 'border-dark-600 hover:border-dark-500 hover:bg-dark-800/30'
+                        }
+                      `}
+                    >
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handleFileSelect}
+                        className="hidden"
+                      />
+                      <div className="flex flex-col items-center gap-2">
+                        <Upload className={`w-8 h-8 ${isDragging ? 'text-accent' : 'text-dark-500'}`} />
+                        <div className="text-center">
+                          <p className="text-sm text-dark-300">
+                            Drop images here or click to upload
+                          </p>
+                          <p className="text-xs text-dark-500 mt-1">
+                            Supports: JPG, PNG, GIF, WebP (max 10MB each)
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !formData.content.trim()}
                   className="btn-primary w-full py-3 rounded-xl font-semibold transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {loading ? (
@@ -261,8 +537,37 @@ function Memories() {
                             />
                           ))}
                         </div>
+                        {memory.images && memory.images.length > 0 && (
+                          <span className="flex items-center gap-1 text-xs text-dark-500 ml-2">
+                            <ImageIcon className="w-3 h-3" />
+                            {memory.images.length}
+                          </span>
+                        )}
                       </div>
                       <p className="text-dark-200 whitespace-pre-wrap text-sm">{memory.content}</p>
+                      
+                      {/* Image Thumbnails */}
+                      {memory.images && memory.images.length > 0 && (
+                        <div className="flex gap-2 mt-3 flex-wrap">
+                          {memory.images.map(image => (
+                            <button
+                              key={image.id}
+                              onClick={() => setSelectedImage(getImageUrl(image))}
+                              className="relative w-16 h-16 rounded-lg overflow-hidden border border-dark-600/50 hover:border-accent/50 transition-colors group"
+                            >
+                              <img
+                                src={getImageUrl(image)}
+                                alt={image.original_name}
+                                className="w-full h-full object-cover"
+                              />
+                              <div className="absolute inset-0 bg-dark-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <ZoomIn className="w-4 h-4 text-white" />
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      
                       <p className="text-xs text-dark-500 mt-2">
                         Created {new Date(memory.created_at).toLocaleDateString()}
                       </p>
@@ -291,6 +596,27 @@ function Memories() {
           </div>
         </div>
       </div>
+
+      {/* Image Lightbox Modal */}
+      {selectedImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-dark-950/95 backdrop-blur-sm p-4"
+          onClick={() => setSelectedImage(null)}
+        >
+          <button
+            onClick={() => setSelectedImage(null)}
+            className="absolute top-4 right-4 p-2 bg-dark-800/50 rounded-full hover:bg-dark-700 transition-colors"
+          >
+            <X className="w-6 h-6 text-dark-300" />
+          </button>
+          <img
+            src={selectedImage}
+            alt="Full size"
+            className="max-w-full max-h-full object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }

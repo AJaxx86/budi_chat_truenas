@@ -142,6 +142,18 @@ function initDatabase() {
     )
   `);
 
+  // Memory images junction table (for multiple images per memory)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS memory_images (
+      memory_id INTEGER NOT NULL,
+      file_id TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (memory_id, file_id),
+      FOREIGN KEY (memory_id) REFERENCES memories(id) ON DELETE CASCADE,
+      FOREIGN KEY (file_id) REFERENCES file_uploads(id) ON DELETE CASCADE
+    )
+  `);
+
   // Tools table (available tools for agent mode)
   db.exec(`
     CREATE TABLE IF NOT EXISTS tools (
@@ -787,7 +799,7 @@ function initDatabase() {
       {
         id: "read_memories",
         name: "read_memories",
-        description: "Retrieve stored memories about the user. Use this to recall relevant context before answering questions or to provide personalized responses. Can filter by category or search for specific topics.",
+        description: "Retrieve stored memories about the user. Use this to recall relevant context before answering questions or to provide personalized responses. Can filter by category or search for specific topics. Memories may contain attached images - if the current model supports vision, you'll be able to view them; otherwise, you'll be notified that images exist but cannot be viewed.",
         parameters: JSON.stringify({
           type: "object",
           properties: {

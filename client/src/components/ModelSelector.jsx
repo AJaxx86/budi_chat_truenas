@@ -6,7 +6,7 @@ import {
 
 const DEFAULT_MODEL = 'moonshotai/kimi-k2-thinking';
 const RECENT_MODELS_KEY = 'budi_chat_recent_models';
-const MODELS_CACHE_KEY = 'budi_chat_models_cache_v3';
+const MODELS_CACHE_KEY = 'budi_chat_models_cache_v4';
 const MODELS_CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_RECENT_MODELS = 5;
 
@@ -38,6 +38,7 @@ const FALLBACK_MODELS = [
     name: 'Kimi K2 Thinking',
     description: 'Moonshot AI reasoning model',
     supportedParameters: ['reasoning', 'tools'],
+    architecture: { input_modalities: ['text'] },
     contextLength: 128000,
     pricing: { prompt: '0', completion: '0' }
   },
@@ -46,6 +47,7 @@ const FALLBACK_MODELS = [
     name: 'Claude Sonnet 4',
     description: 'Anthropic Claude Sonnet 4',
     supportedParameters: ['reasoning', 'tools', 'vision'],
+    architecture: { input_modalities: ['text', 'image'] },
     contextLength: 200000,
     pricing: { prompt: '0.000003', completion: '0.000015' }
   },
@@ -54,6 +56,7 @@ const FALLBACK_MODELS = [
     name: 'Claude 3.5 Sonnet',
     description: 'Anthropic Claude 3.5 Sonnet',
     supportedParameters: ['tools', 'vision'],
+    architecture: { input_modalities: ['text', 'image'] },
     contextLength: 200000,
     pricing: { prompt: '0.000003', completion: '0.000015' }
   },
@@ -62,6 +65,7 @@ const FALLBACK_MODELS = [
     name: 'GPT-4o',
     description: 'OpenAI GPT-4o',
     supportedParameters: ['tools', 'vision'],
+    architecture: { input_modalities: ['text', 'image'] },
     contextLength: 128000,
     pricing: { prompt: '0.0000025', completion: '0.00001' }
   },
@@ -70,6 +74,7 @@ const FALLBACK_MODELS = [
     name: 'GPT-4 Turbo',
     description: 'OpenAI GPT-4 Turbo',
     supportedParameters: ['tools', 'vision'],
+    architecture: { input_modalities: ['text', 'image'] },
     contextLength: 128000,
     pricing: { prompt: '0.00001', completion: '0.000003' }
   },
@@ -78,6 +83,7 @@ const FALLBACK_MODELS = [
     name: 'Gemini 2.5 Pro',
     description: 'Google Gemini 2.5 Pro',
     supportedParameters: ['reasoning', 'tools', 'vision'],
+    architecture: { input_modalities: ['text', 'image'] },
     contextLength: 2000000,
     pricing: { prompt: '0.00000125', completion: '0.000005' }
   },
@@ -86,6 +92,7 @@ const FALLBACK_MODELS = [
     name: 'Gemini 2.5 Flash',
     description: 'Google Gemini 2.5 Flash',
     supportedParameters: ['reasoning', 'tools', 'vision'],
+    architecture: { input_modalities: ['text', 'image'] },
     contextLength: 1000000,
     pricing: { prompt: '0.000000075', completion: '0.0000003' }
   },
@@ -94,6 +101,7 @@ const FALLBACK_MODELS = [
     name: 'DeepSeek R1',
     description: 'DeepSeek R1 reasoning model',
     supportedParameters: ['reasoning', 'tools'],
+    architecture: { input_modalities: ['text'] },
     contextLength: 64000,
     pricing: { prompt: '0.00000055', completion: '0.00000219' }
   },
@@ -102,6 +110,7 @@ const FALLBACK_MODELS = [
     name: 'DeepSeek Chat',
     description: 'DeepSeek Chat model',
     supportedParameters: ['tools'],
+    architecture: { input_modalities: ['text'] },
     contextLength: 64000,
     pricing: { prompt: '0.00000014', completion: '0.00000028' }
   },
@@ -110,6 +119,7 @@ const FALLBACK_MODELS = [
     name: 'Llama 3.3 70B',
     description: 'Meta Llama 3.3 70B',
     supportedParameters: ['tools'],
+    architecture: { input_modalities: ['text'] },
     contextLength: 128000,
     pricing: { prompt: '0.00000023', completion: '0.0000004' }
   },
@@ -118,6 +128,7 @@ const FALLBACK_MODELS = [
     name: 'Qwen 2.5 72B',
     description: 'Alibaba Qwen 2.5 72B',
     supportedParameters: ['tools'],
+    architecture: { input_modalities: ['text'] },
     contextLength: 32000,
     pricing: { prompt: '0.00000035', completion: '0.0000004' }
   },
@@ -126,6 +137,7 @@ const FALLBACK_MODELS = [
     name: 'Mistral Large',
     description: 'Mistral Large 2411',
     supportedParameters: ['tools'],
+    architecture: { input_modalities: ['text'] },
     contextLength: 128000,
     pricing: { prompt: '0.000002', completion: '0.000006' }
   },
@@ -136,28 +148,13 @@ const getModelCapabilitiesFromData = (model) => {
   if (!model) return { reasoning: false, tools: false, vision: false };
 
   const params = model.supportedParameters || [];
-  const id = (model.id || '').toLowerCase();
 
-  // Check for reasoning-related parameters or model naming patterns
-  const hasReasoningParams = params.includes('reasoning') || params.includes('include_reasoning');
-  // Updated o1 check to catch "openai/o1" and plain "o1" in addition to "o1-" variants
-  const isReasoningModel = id.includes('thinking') || id.includes('-r1') || id.includes('deepseek-r1') ||
-    id.includes('qwq') || id.includes('o1-') || id.endsWith('/o1') || id === 'o1' ||
-    id.includes('o3-') || id.includes('o4-') || id.includes('gemini-3');
-
-  // Check for vision-related parameters or model naming patterns
-  const hasVisionParams = params.includes('vision') || params.includes('image_input');
-  // Updated Llama 3.2 check to exclude text-only models (1b and 3b)
-  const isLlamaVision = id.includes('llama-3.2') && !id.includes('1b') && !id.includes('3b');
-
-  const isVisionModel = id.includes('vision') || id.includes('-4o') || id.includes('gpt-4o') ||
-    id.includes('claude-3') || id.includes('gemini') || id.includes('llava') ||
-    id.includes('pixtral') || id.includes('qwen-vl') || isLlamaVision;
+  const inputModalities = model.architecture?.input_modalities || [];
 
   return {
-    reasoning: hasReasoningParams || isReasoningModel,
+    reasoning: params.includes('reasoning') || params.includes('include_reasoning') || params.includes('reasoning_effort'),
     tools: params.includes('tools'),
-    vision: hasVisionParams || isVisionModel,
+    vision: params.includes('vision') || params.includes('image_input') || inputModalities.includes('image'),
   };
 };
 
@@ -301,12 +298,15 @@ function ModelSelector({
       const cached = localStorage.getItem(MODELS_CACHE_KEY);
       if (cached) {
         try {
-          const { models: cachedModels, timestamp } = JSON.parse(cached);
-          if (Date.now() - timestamp < MODELS_CACHE_EXPIRY) {
-            setModels(cachedModels);
-            setLoading(false);
-            return;
-          }
+        const { models: cachedModels, timestamp } = JSON.parse(cached);
+        const hasArchitecture = cachedModels.every((model) =>
+          model.architecture && Array.isArray(model.architecture.input_modalities)
+        );
+        if (Date.now() - timestamp < MODELS_CACHE_EXPIRY && hasArchitecture) {
+          setModels(cachedModels);
+          setLoading(false);
+          return;
+        }
         } catch (e) {
           console.error('Failed to parse cached models:', e);
         }
@@ -327,6 +327,10 @@ function ModelSelector({
             contextLength: model.context_length,
             pricing: model.pricing,
             supportedParameters: model.supported_parameters || [],
+            architecture: {
+              ...(model.architecture || {}),
+              input_modalities: model.architecture?.input_modalities || [],
+            },
           }))
           .sort((a, b) => a.name.localeCompare(b.name));
 

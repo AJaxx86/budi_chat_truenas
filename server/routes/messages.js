@@ -9,6 +9,7 @@ import {
   executeToolCall,
   generateChatTitle,
 } from "../services/ai.js";
+import { ensureModelsCache, getModelCapabilities } from "../services/models.js";
 
 // Helper to convert file to base64 data URL
 function getFileAsDataUrl(filePath, mimetype) {
@@ -18,8 +19,276 @@ function getFileAsDataUrl(filePath, mimetype) {
   return `data:${mimetype};base64,${base64}`;
 }
 
+function heuristicVisionSupport(model) {
+  if (!model) return false;
+  const lowerModel = model.toLowerCase();
+  const visionPatterns = [
+    "gpt-4-vision",
+    "gpt-4o",
+    "claude-3",
+    "claude-3-5",
+    "claude-3.5",
+    "gemini-1.5",
+    "gemini-2",
+    "gemini-3",
+    "gemini-2.5",
+    "gemini-pro-vision",
+    "gemini-ultra-vision",
+    "gemini-1.0-pro-vision",
+    "gemini-1.5-pro",
+    "gemini-1.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-flash",
+    "llava",
+    "vision",
+    "multimodal",
+    "kimi-v1",
+    "kimi-1.5",
+    "kimi-k2",
+    "kimi-v2",
+    "pixtral",
+    "mistral-large-2",
+    "mistral-small-3",
+    "qwen2-vl",
+    "internvl",
+    "cogvlm",
+  ];
+
+  if (visionPatterns.some((pattern) => lowerModel.includes(pattern))) {
+    return true;
+  }
+
+  if (
+    lowerModel.includes("gemini") &&
+    !lowerModel.includes("embedding") &&
+    !lowerModel.includes("text")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+async function modelSupportsVision(model) {
+  if (!model) return false;
+  try {
+    await ensureModelsCache();
+    const caps = getModelCapabilities(model);
+    if (caps?.vision !== undefined) {
+      return !!caps?.vision;
+    }
+    return heuristicVisionSupport(model);
+  } catch (error) {
+    console.error("Failed to resolve model capabilities:", error);
+    return heuristicVisionSupport(model);
+  }
+}
+
+const MAX_MEMORY_IMAGES = null;
+
+function fetchMemoriesForContext({
+  userId,
+  category,
+  query,
+  limit,
+  orderByUpdated = false,
+}) {
+  let sql = `
+      SELECT id, content, category, importance, created_at, updated_at
+      FROM memories
+      WHERE user_id = ?
+    `;
+  const params = [userId];
+
+  if (category && category.trim()) {
+    sql += ` AND category = ?`;
+    params.push(category.trim().toLowerCase());
+  }
+
+  if (query && query.trim()) {
+    sql += ` AND content LIKE ?`;
+    params.push(`%${query.trim()}%`);
+  }
+
+  if (orderByUpdated) {
+    sql += ` ORDER BY importance DESC, updated_at DESC LIMIT ?`;
+  } else {
+    sql += ` ORDER BY importance DESC, created_at DESC LIMIT ?`;
+  }
+  params.push(limit);
+
+  return db.prepare(sql).all(...params);
+}
+
+function fetchMemoryImages(memoryId) {
+  return db
+    .prepare(
+      `
+      SELECT f.id, f.original_name, f.mimetype, f.storage_path
+      FROM memory_images mi
+      JOIN file_uploads f ON mi.file_id = f.id
+      WHERE mi.memory_id = ?
+      ORDER BY mi.created_at ASC
+    `,
+    )
+    .all(memoryId);
+}
+
+function buildMemoryContextMessage({
+  userId,
+  category,
+  query,
+  limit,
+  visionCapable,
+  headerText,
+  orderByUpdated = false,
+}) {
+  const memories = fetchMemoriesForContext({
+    userId,
+    category,
+    query,
+    limit,
+    orderByUpdated,
+  });
+
+  if (memories.length === 0) return null;
+
+  if (!visionCapable) {
+    const memoryContents = memories.map((memory) => {
+      let memoryContent = memory.content;
+      const memoryImages = fetchMemoryImages(memory.id);
+      if (memoryImages.length > 0) {
+        memoryContent += `\n[Note: This memory has ${memoryImages.length} image(s) attached, but the current model doesn't support vision capabilities]`;
+      }
+      return memoryContent;
+    });
+
+    return {
+      role: "system",
+      content: `${headerText}\n${memoryContents.join("\n\n")}`,
+    };
+  }
+
+  const contentParts = [{ type: "text", text: headerText }];
+  let usedImages = 0;
+
+  for (const memory of memories) {
+    contentParts.push({ type: "text", text: `Memory: ${memory.content}` });
+    const memoryImages = fetchMemoryImages(memory.id);
+
+    for (const image of memoryImages) {
+      if (MAX_MEMORY_IMAGES && usedImages >= MAX_MEMORY_IMAGES) break;
+
+      const dataUrl = getFileAsDataUrl(image.storage_path, image.mimetype);
+      if (dataUrl) {
+        contentParts.push({
+          type: "image_url",
+          image_url: { url: dataUrl },
+        });
+        usedImages += 1;
+      }
+    }
+  }
+
+  return { role: "system", content: contentParts };
+}
+
+function buildMemoryImageContextMessage({
+  userId,
+  category,
+  query,
+  limit,
+  visionCapable,
+  headerText,
+}) {
+  if (!visionCapable) return null;
+
+  const memories = fetchMemoriesForContext({
+    userId,
+    category,
+    query,
+    limit,
+  });
+
+  if (memories.length === 0) return null;
+
+  const contentParts = [{ type: "text", text: headerText }];
+  let usedImages = 0;
+  let hasImages = false;
+
+  for (const memory of memories) {
+    const memoryImages = fetchMemoryImages(memory.id);
+    if (memoryImages.length === 0) continue;
+
+    hasImages = true;
+    contentParts.push({
+      type: "text",
+      text: `Memory image for: ${memory.content}`,
+    });
+
+    for (const image of memoryImages) {
+      if (MAX_MEMORY_IMAGES && usedImages >= MAX_MEMORY_IMAGES) break;
+
+      const dataUrl = getFileAsDataUrl(image.storage_path, image.mimetype);
+      if (dataUrl) {
+        contentParts.push({
+          type: "image_url",
+          image_url: { url: dataUrl },
+        });
+        usedImages += 1;
+      }
+    }
+  }
+
+  if (!hasImages) return null;
+
+  return { role: "system", content: contentParts };
+}
+
 const router = express.Router();
 router.use(authMiddleware);
+
+// Save partial assistant message (for cancelled generations)
+router.post("/:chatId/partial", (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { content, reasoning_content, tool_calls } = req.body || {};
+
+    if ((!content || content.trim().length === 0) && (!reasoning_content || reasoning_content.trim().length === 0)) {
+      return res.status(400).json({ error: "Content or reasoning is required" });
+    }
+
+    const chat = db
+      .prepare("SELECT id FROM chats WHERE id = ? AND user_id = ?")
+      .get(chatId, req.user.id);
+
+    if (!chat) {
+      return res.status(404).json({ error: "Chat not found" });
+    }
+
+    const messageId = uuidv4();
+    db.prepare(
+      `
+      INSERT INTO messages (id, chat_id, role, content, reasoning_content, tool_calls, created_at)
+      VALUES (?, ?, 'assistant', ?, ?, ?, ?)
+    `,
+    ).run(
+      messageId,
+      chatId,
+      content || "",
+      reasoning_content || null,
+      tool_calls || null,
+      new Date().toISOString(),
+    );
+
+    res.json({ id: messageId });
+  } catch (error) {
+    console.error("Failed to save partial message:", error);
+    res.status(500).json({ error: "Failed to save partial message" });
+  }
+});
 
 // Send message and get AI response
 router.post("/:chatId", async (req, res) => {
@@ -204,24 +473,17 @@ router.post("/:chatId", async (req, res) => {
       openaiMessages.push({ role: "system", content: "Be energetic, enthusiastic, and encouraging in your responses." });
     }
 
-    // Get user memories for context
-    const memories = db
-      .prepare(
-        `
-      SELECT content FROM memories
-      WHERE user_id = ?
-      ORDER BY importance DESC, updated_at DESC
-      LIMIT 5
-    `,
-      )
-      .all(req.user.id);
+    const visionCapable = await modelSupportsVision(chat.model);
+    const memoryContextMessage = buildMemoryContextMessage({
+      userId: req.user.id,
+      limit: 5,
+      visionCapable,
+      headerText: "Previous context about the user:",
+      orderByUpdated: true,
+    });
 
-    if (memories.length > 0) {
-      const memoryContext = memories.map((m) => m.content).join("\n");
-      openaiMessages.push({
-        role: "system",
-        content: `Previous context about the user:\n${memoryContext}`,
-      });
+    if (memoryContextMessage) {
+      openaiMessages.push(memoryContextMessage);
     }
 
     // Get all attachments for this chat's messages
@@ -382,6 +644,15 @@ router.post("/:chatId", async (req, res) => {
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
+    let wasAborted = false;
+    const abortController = new AbortController();
+    req.on("close", () => {
+      if (!wasAborted) {
+        wasAborted = true;
+        abortController.abort();
+      }
+    });
+
     let assistantMessage = "";
     let assistantReasoning = "";
     let toolCalls = [];
@@ -449,10 +720,12 @@ router.post("/:chatId", async (req, res) => {
 
     console.log(`Starting stream for model: ${chat.model}`);
     const requestStartTime = Date.now();
+    requestOptions.signal = abortController.signal;
     const stream = await openai.chat.completions.create(requestOptions);
 
-    for await (const chunk of stream) {
-      const delta = chunk.choices[0]?.delta;
+    try {
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta;
 
       // Capture usage data if present (usually in final chunk)
       if (chunk.usage) {
@@ -539,6 +812,13 @@ router.post("/:chatId", async (req, res) => {
         }
       }
     }
+    } catch (error) {
+      if (abortController.signal.aborted) {
+        wasAborted = true;
+      } else {
+        throw error;
+      }
+    }
 
     // Complete any remaining reasoning step
     if (currentReasoningStepId) {
@@ -561,6 +841,11 @@ router.post("/:chatId", async (req, res) => {
     );
     if (usageData) {
       console.log(`Usage: ${JSON.stringify(usageData)}`);
+    }
+
+    if (wasAborted) {
+      console.log("Stream aborted, skipping persistence");
+      return;
     }
 
     // Save initial assistant message
@@ -671,6 +956,10 @@ router.post("/:chatId", async (req, res) => {
     let totalResponseTime = responseTimeMs;
 
     while (currentToolCalls.length > 0) {
+      if (wasAborted) {
+        console.log("Stream aborted before tool execution, skipping persistence");
+        return;
+      }
       res.write(
         `data: ${JSON.stringify({ type: "tool_calls", tool_calls: currentToolCalls })}\n\n`,
       );
@@ -691,7 +980,7 @@ router.post("/:chatId", async (req, res) => {
         }
 
         const toolStartTime = Date.now();
-        const result = await executeToolCall(toolCall, req.user.id, chat.workspace_id);
+        const result = await executeToolCall(toolCall, req.user.id, chat.workspace_id, chat.model);
         const toolDuration = Date.now() - toolStartTime;
 
         // Complete the tool_call step
@@ -737,7 +1026,33 @@ router.post("/:chatId", async (req, res) => {
         );
       }
 
-      // Build messages for follow-up: conversation so far + assistant tool call + tool results
+      const memoryImageMessages = [];
+      for (const toolCall of currentToolCalls) {
+        if (toolCall.function?.name !== "read_memories") continue;
+
+        let args = {};
+        try {
+          args = JSON.parse(toolCall.function.arguments || "{}");
+        } catch (error) {
+          args = {};
+        }
+
+        const limit = Math.min(Math.max(parseInt(args.limit) || 10, 1), 50);
+        const imageContextMessage = buildMemoryImageContextMessage({
+          userId: req.user.id,
+          category: args.category,
+          query: args.query,
+          limit,
+          visionCapable,
+          headerText: "Memory images from read_memories:",
+        });
+
+        if (imageContextMessage) {
+          memoryImageMessages.push(imageContextMessage);
+        }
+      }
+
+      // Build messages for follow-up: conversation so far + assistant tool call + tool results + memory images
       conversationMessages = [
         ...conversationMessages,
         {
@@ -750,6 +1065,7 @@ router.post("/:chatId", async (req, res) => {
           tool_call_id: tr.tool_call_id,
           content: tr.result,
         })),
+        ...memoryImageMessages,
       ];
 
       console.log(`Making follow-up request to synthesize ${toolResults.length} tool result(s)`);
@@ -805,6 +1121,7 @@ router.post("/:chatId", async (req, res) => {
       currentAssistantMessageId = uuidv4();
 
       const synthesisStartTime = Date.now();
+      followUpOptions.signal = abortController.signal;
       const synthesisStream = await openai.chat.completions.create(followUpOptions);
 
       let synthesisMessage = "";
@@ -813,8 +1130,9 @@ router.post("/:chatId", async (req, res) => {
       let synthesisToolCalls = [];
       let synthesisReasoningStepId = null;
 
-      for await (const chunk of synthesisStream) {
-        const delta = chunk.choices[0]?.delta;
+      try {
+        for await (const chunk of synthesisStream) {
+          const delta = chunk.choices[0]?.delta;
 
         if (chunk.usage) {
           synthesisUsage = chunk.usage;
@@ -890,9 +1208,21 @@ router.post("/:chatId", async (req, res) => {
             }
           }
         }
+        }
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          wasAborted = true;
+        } else {
+          throw error;
+        }
       }
 
       // Complete any remaining reasoning step
+      if (wasAborted) {
+        console.log("Synthesis stream aborted, skipping persistence");
+        return;
+      }
+
       if (synthesisReasoningStepId) {
         completeStep(synthesisReasoningStepId);
         synthesisReasoningStepId = null;
