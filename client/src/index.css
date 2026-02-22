@@ -264,6 +264,11 @@
     @apply text-primary-500;
   }
 
+  .gradient-primary {
+    background: linear-gradient(135deg, var(--accent-light) 0%, var(--accent) 50%, var(--accent-dark) 100%);
+    box-shadow: 0 2px 12px rgba(251, 191, 36, 0.25);
+  }
+
   .text-accent-light {
     @apply text-primary-400;
   }

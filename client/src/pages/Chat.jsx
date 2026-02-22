@@ -2044,7 +2044,7 @@ function Chat() {
                   createNewChat();
                   if (isMobile) setShowSidebar(false);
                 }}
-                className={`${showSidebar ? "flex-1 py-3 gap-2 min-h-[44px]" : "w-11 h-11 mx-auto"} gradient-primary text-white rounded-xl font-semibold hover:shadow-glow transition-all duration-200 flex items-center justify-center shine active:scale-[0.98]`}
+                className={`${showSidebar ? "flex-1 py-3 gap-2 min-h-[44px]" : "w-11 h-11 mx-auto"} text-dark-300 hover:text-white rounded-xl font-medium transition-all duration-200 flex items-center justify-center hover:bg-dark-700/50 active:scale-95`}
                 title={showSidebar ? undefined : "New Chat"}
               >
                 <Plus className="w-4 h-4" />
