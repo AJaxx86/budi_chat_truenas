@@ -369,13 +369,17 @@ function Chat() {
   }, [currentChat?.id]);
 
   // Thinking mode state for reasoning models (default to 'medium')
+  // Track if "off" was auto-set by model change (vs user manually selecting it)
+  const isAutoThinkingOffRef = useRef(false);
+
   const [thinkingMode, setThinkingMode] = useState(
     () => localStorage.getItem(LAST_THINKING_MODE_KEY) || "medium",
   );
 
-  // Persist thinking mode changes
+  // Persist thinking mode changes only when user explicitly sets it (not auto-set by model change)
   useEffect(() => {
-    if (thinkingMode) {
+    // Only save to localStorage if this wasn't an auto-set
+    if (!isAutoThinkingOffRef.current) {
       localStorage.setItem(LAST_THINKING_MODE_KEY, thinkingMode);
     }
   }, [thinkingMode]);
@@ -543,10 +547,19 @@ function Chat() {
     return modelSupportsReasoning(chatSettings.model);
   }, [chatSettings.model]);
 
-  // Reset thinking mode if model changes to one that doesn't support it
+  // Handle thinking mode when model changes
   useEffect(() => {
     if (!isReasoningSupported && thinkingMode !== "off") {
+      // Model doesn't support reasoning - auto-set to "off"
+      // Mark this as auto-set so we can restore later
+      isAutoThinkingOffRef.current = true;
       setThinkingMode("off");
+    } else if (isReasoningSupported && isAutoThinkingOffRef.current && thinkingMode === "off") {
+      // Model supports reasoning again and "off" was auto-set (not user-selected)
+      // Restore user's last explicit selection
+      isAutoThinkingOffRef.current = false;
+      const lastMode = localStorage.getItem(LAST_THINKING_MODE_KEY) || "medium";
+      setThinkingMode(lastMode);
     }
   }, [isReasoningSupported, thinkingMode]);
 
@@ -1091,6 +1104,18 @@ function Chat() {
       systemPrompt = defaultPersona.system_prompt || "";
     }
 
+    // Determine thinking mode based on model capabilities
+    const modelSupportsReasoningNew = modelSupportsReasoning(modelToUse);
+    let newThinkingMode;
+    if (modelSupportsReasoningNew) {
+      // Use user's last selected thinking mode or default to "medium"
+      newThinkingMode = localStorage.getItem(LAST_THINKING_MODE_KEY) || "medium";
+      isAutoThinkingOffRef.current = false;
+    } else {
+      newThinkingMode = "off";
+      isAutoThinkingOffRef.current = true;
+    }
+
     // Create a temporary chat object without an ID
     // The actual chat will be created when the first message is sent
     setCurrentChat({
@@ -1099,7 +1124,7 @@ function Chat() {
       temperature,
       system_prompt: systemPrompt,
       agent_mode: false,
-      thinking_mode: "medium",
+      thinking_mode: newThinkingMode,
     });
     setChatSettings({
       model: modelToUse,
@@ -1109,7 +1134,7 @@ function Chat() {
       system_prompt: systemPrompt,
       agent_mode: false,
     });
-    setThinkingMode(localStorage.getItem(LAST_THINKING_MODE_KEY) || "medium");
+    setThinkingMode(newThinkingMode);
   };
 
   const updateChatSettings = async () => {
@@ -1954,7 +1979,7 @@ function Chat() {
   );
 
   return (
-    <div className="flex h-screen h-[100dvh] bg-dark-950 bg-mesh">
+    <div className="flex h-screen-safe bg-dark-950 bg-mesh">
       {/* Mobile Sidebar Overlay */}
       {isMobile && showSidebar && (
         <div
@@ -1971,7 +1996,7 @@ function Chat() {
             ? `sidebar-mobile glass-sidebar ${showSidebar ? "open" : ""}`
             : `${showSidebar ? "w-72" : "w-16"} transition-all duration-300 ease-out glass-sidebar`
           }
-        flex flex-col overflow-hidden ${isMobile ? "z-[60]" : "z-50"} ${isMobile ? "max-h-screen max-h-[100dvh]" : ""}
+        flex flex-col overflow-hidden ${isMobile ? "z-[60] max-h-screen-safe" : "z-50"}
       `}
       >
         <div

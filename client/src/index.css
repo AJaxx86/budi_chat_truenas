@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --vh: 1vh;
+}
+
 @layer base {
   :root {
     /* Accent color HSL values - default amber */
@@ -442,6 +446,21 @@
       opacity: 1;
       transform: translateX(-50%) scale(1);
     }
+  }
+
+  .h-screen-safe {
+    height: 100vh;
+    height: calc(var(--vh, 1vh) * 100);
+  }
+
+  .min-h-screen-safe {
+    min-height: 100vh;
+    min-height: calc(var(--vh, 1vh) * 100);
+  }
+
+  .max-h-screen-safe {
+    max-height: 100vh;
+    max-height: calc(var(--vh, 1vh) * 100);
   }
 }
 

@@ -90,7 +90,7 @@ function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen min-h-[100dvh] flex items-center justify-center bg-dark-950 bg-mesh">
+      <div className="min-h-screen-safe flex items-center justify-center bg-dark-950 bg-mesh">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-accent border-t-transparent"></div>
           <p className="mt-4 text-dark-400">Loading...</p>

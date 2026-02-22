@@ -174,14 +174,14 @@ function Personas() {
 
   if (loading) {
     return (
-      <div className="min-h-screen min-h-[100dvh] bg-dark-950 bg-mesh flex items-center justify-center">
+<div className="min-h-screen-safe bg-dark-950 bg-mesh flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-2 border-accent border-t-transparent"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen min-h-[100dvh] bg-dark-950 bg-mesh">
+    <div className="min-h-screen-safe bg-dark-950 bg-mesh">
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">

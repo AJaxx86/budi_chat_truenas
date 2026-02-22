@@ -128,7 +128,7 @@ function Setup() {
 
   if (isChecking) {
     return (
-      <div className="min-h-screen min-h-[100dvh] flex items-center justify-center bg-dark-950 bg-mesh">
+      <div className="min-h-screen-safe flex items-center justify-center bg-dark-950 bg-mesh">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-purple-500 border-t-transparent"></div>
           <p className="mt-4 text-dark-400">Checking setup status...</p>
@@ -143,7 +143,7 @@ function Setup() {
 
   if (success) {
     return (
-      <div className="min-h-screen min-h-[100dvh] flex items-center justify-center bg-dark-950 bg-mesh p-4">
+      <div className="min-h-screen-safe flex items-center justify-center bg-dark-950 bg-mesh p-4">
         <div className="max-w-md w-full text-center">
           <div className="glass-card rounded-2xl p-12 scale-in">
             <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-purple-500/20 mb-6">
@@ -164,7 +164,7 @@ function Setup() {
   }
 
   return (
-    <div className="min-h-screen min-h-[100dvh] flex items-center justify-center bg-dark-950 bg-mesh p-4">
+    <div className="min-h-screen-safe flex items-center justify-center bg-dark-950 bg-mesh p-4">
       <div className="max-w-md w-full">
         {/* Header */}
         <div className="text-center mb-8">

@@ -87,7 +87,7 @@ function SharedChat() {
 
     if (loading) {
         return (
-            <div className="min-h-screen min-h-[100dvh] bg-mesh flex items-center justify-center">
+<div className="min-h-screen-safe bg-mesh flex items-center justify-center">
                 <div className="text-center">
                     <div className="w-12 h-12 border-2 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
                     <p className="text-dark-400">Loading shared conversation...</p>
@@ -98,7 +98,7 @@ function SharedChat() {
 
     if (error) {
         return (
-            <div className="min-h-screen min-h-[100dvh] bg-mesh flex items-center justify-center p-4">
+            <div className="min-h-screen-safe bg-mesh flex items-center justify-center p-4">
                 <div className="glass-card rounded-2xl p-8 max-w-md text-center">
                     <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
                         <AlertCircle className="w-8 h-8 text-red-400" />
@@ -120,7 +120,7 @@ function SharedChat() {
     const { chat, messages, share_info } = chatData;
 
     return (
-        <div className="min-h-screen min-h-[100dvh] bg-mesh">
+        <div className="min-h-screen-safe bg-mesh">
             {/* Header */}
             <header className="sticky top-0 z-50 glass border-b border-white/[0.06]">
                 <div className="max-w-4xl mx-auto px-4 py-4">
