@@ -324,7 +324,6 @@ function Chat() {
   const [currentChat, setCurrentChat] = useState(() => ({
     title: "New Chat",
     model: localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL,
-    temperature: 0.7,
     system_prompt: "",
     agent_mode: false,
     thinking_mode: "medium",
@@ -411,9 +410,6 @@ function Chat() {
 
   const [chatSettings, setChatSettings] = useState(() => ({
     model: localStorage.getItem(LAST_MODEL_KEY) || DEFAULT_MODEL,
-    temperature: 0.7,
-    depth: "standard",
-    tone: "friendly",
     system_prompt: "",
     agent_mode: false,
   }));
@@ -998,9 +994,6 @@ function Chat() {
 
       setChatSettings({
         model: modelToUse,
-        temperature: data.temperature,
-        depth: data.depth || "standard",
-        tone: data.tone || "friendly",
         system_prompt: data.system_prompt || "",
         agent_mode: !!data.agent_mode,
       });
@@ -1091,18 +1084,7 @@ function Chat() {
 
     setSelectedPersona(defaultPersona);
 
-    // Apply persona settings if available
-    let temperature = 0.7;
-    let depth = "standard";
-    let tone = "friendly";
-    let systemPrompt = "";
-    if (defaultPersona) {
-      if (defaultPersona.creativity === "precise") temperature = 0.2;
-      else if (defaultPersona.creativity === "imaginative") temperature = 1.0;
-      depth = defaultPersona.depth || "standard";
-      tone = defaultPersona.tone || "friendly";
-      systemPrompt = defaultPersona.system_prompt || "";
-    }
+    const systemPrompt = "";
 
     // Determine thinking mode based on model capabilities
     const modelSupportsReasoningNew = modelSupportsReasoning(modelToUse);
@@ -1121,16 +1103,12 @@ function Chat() {
     setCurrentChat({
       title: "New Chat",
       model: modelToUse,
-      temperature,
       system_prompt: systemPrompt,
       agent_mode: false,
       thinking_mode: newThinkingMode,
     });
     setChatSettings({
       model: modelToUse,
-      temperature,
-      depth,
-      tone,
       system_prompt: systemPrompt,
       agent_mode: false,
     });
@@ -1192,13 +1170,6 @@ function Chat() {
     setSelectedPersona(persona);
 
     if (!persona) {
-      setChatSettings((prev) => ({
-        ...prev,
-        system_prompt: "",
-        temperature: 0.7,
-        depth: "standard",
-        tone: "friendly",
-      }));
       // Persist null persona to chat
       if (currentChat?.id) {
         try {
@@ -1216,20 +1187,6 @@ function Chat() {
       }
       return;
     }
-
-    // Map creativity to temperature
-    let newTemp = 0.7;
-    if (persona.creativity === "precise") newTemp = 0.2;
-    else if (persona.creativity === "imaginative") newTemp = 1.0;
-    else newTemp = 0.7;
-
-    setChatSettings((prev) => ({
-      ...prev,
-      system_prompt: persona.system_prompt || "",
-      temperature: newTemp,
-      depth: persona.depth || "standard",
-      tone: persona.tone || "friendly",
-    }));
 
     // Persist persona_id to chat
     if (currentChat?.id) {
@@ -1270,16 +1227,6 @@ function Chat() {
           if (personaRes.ok) {
             const persona = await personaRes.json();
             setSelectedPersona(persona);
-            let newTemp = 0.7;
-            if (persona.creativity === "precise") newTemp = 0.2;
-            else if (persona.creativity === "imaginative") newTemp = 1.0;
-            setChatSettings((prev) => ({
-              ...prev,
-              system_prompt: persona.system_prompt || "",
-              temperature: newTemp,
-              depth: persona.depth || "standard",
-              tone: persona.tone || "friendly",
-            }));
             return;
           }
         } catch (e) {
@@ -1293,9 +1240,6 @@ function Chat() {
     setChatSettings((prev) => ({
       ...prev,
       system_prompt: "",
-      temperature: 0.7,
-      depth: "standard",
-      tone: "friendly",
     }));
   };
 
@@ -1470,14 +1414,7 @@ function Chat() {
           body: JSON.stringify({
             title: "New Chat",
             model: chatSettings.model,
-            temperature: chatSettings.temperature,
-            // Combine persona prompt (if any) with custom system prompt
-            system_prompt: [
-              selectedPersona?.system_prompt,
-              chatSettings.system_prompt,
-            ]
-              .filter(Boolean)
-              .join("\n\n"),
+            system_prompt: chatSettings.system_prompt || "",
             agent_mode: chatSettings.agent_mode,
             thinking_mode: thinkingMode || "medium",
             workspace_id: activeWorkspace || null,
@@ -2398,13 +2335,13 @@ function Chat() {
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <div className="bg-dark-900/50 border-b border-dark-700/30 px-3 md:px-4 pt-1 pb-2 md:pt-3 md:pb-3 flex items-center justify-between relative z-50 overflow-visible">
+        <div className="bg-dark-900/50 border-b border-dark-700/30 px-2 md:px-4 pt-1 pb-2 md:pt-3 md:pb-3 flex items-center justify-between relative z-50 overflow-visible gap-1">
           {/* Left - Mobile Menu Button + Chat Title */}
-          <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 md:gap-3 flex-1 min-w-0">
             {/* Mobile menu button */}
             <button
               onClick={() => setShowSidebar(!showSidebar)}
-              className="mobile-only p-2 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-dark-700/30 rounded-lg transition-all duration-200"
+              className="mobile-only p-2 min-w-[40px] min-h-[40px] flex items-center justify-center hover:bg-dark-700/30 rounded-lg transition-all duration-200"
               aria-label={showSidebar ? "Close menu" : "Open menu"}
             >
               {showSidebar ? (
@@ -2416,12 +2353,12 @@ function Chat() {
 
             {currentChat ? (
               <>
-                <h2 className="text-sm font-medium text-dark-200 truncate max-w-[150px] md:max-w-none">
+                <h2 className="text-sm font-medium text-dark-200 truncate max-w-[100px] sm:max-w-[150px] md:max-w-none">
                   {currentChat.title}
                 </h2>
               </>
             ) : (
-              <p className="text-dark-500 text-sm">
+              <p className="text-dark-500 text-sm truncate">
                 Select a chat or create a new one
               </p>
             )}
@@ -2429,11 +2366,12 @@ function Chat() {
 
           {/* Center - Model Selector */}
           {currentChat && (
-            <div className="flex items-center justify-center flex-shrink-0 px-4">
+            <div className="flex items-center justify-center flex-shrink-0 px-1 md:px-4 max-w-[50%] md:max-w-none mt-1 md:mt-0">
               <ModelSelector
                 selectedModel={chatSettings.model}
                 onModelChange={handleModelChange}
                 isDropdown={true}
+                isCompact={isMobile}
                 guestWhitelist={
                   (!user?.is_admin &&
                     !user?.permissions?.can_use_default_key &&
@@ -2452,11 +2390,12 @@ function Chat() {
           )}
           {/* Right - Action Buttons */}
           {currentChat ? (
-            <div className="flex items-center gap-1 md:gap-2 overflow-visible flex-1 justify-end">
+            <div className="flex items-center gap-0.5 md:gap-2 overflow-visible flex-1 justify-end">
+              {/* Chat Stats Button */}
               <div className="relative overflow-visible" ref={statsPopupRef}>
                 <button
                   onClick={() => setShowInfoModal(!showInfoModal)}
-                  className={`p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-all duration-200 ${showInfoModal
+                  className={`p-2 min-w-[36px] min-h-[36px] md:min-w-[40px] md:min-h-[40px] flex items-center justify-center rounded-lg transition-all duration-200 ${showInfoModal
                     ? "bg-dark-800 text-dark-300 border border-dark-700/50"
                     : "hover:bg-dark-800/40 text-dark-500 hover:text-dark-400"
                     }`}
@@ -2603,9 +2542,10 @@ function Chat() {
                   </div>
                 )}
               </div>
+              {/* Mobile: More compact buttons */}
               <button
                 onClick={() => setShowSettings(!showSettings)}
-                className={`p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-all duration-200 ${showSettings
+                className={`p-2 min-w-[36px] min-h-[36px] md:min-w-[40px] md:min-h-[40px] flex items-center justify-center rounded-lg transition-all duration-200 ${showSettings
                   ? "bg-dark-800 text-dark-300 border border-dark-700/50"
                   : "hover:bg-dark-800/40 text-dark-500 hover:text-dark-400"
                   }`}
@@ -2613,15 +2553,17 @@ function Chat() {
               >
                 <SettingsIcon className="w-4 h-4" />
               </button>
-              <ExportMenu
-                chatId={currentChat?.id}
-                chatTitle={currentChat?.title}
-                messages={messages}
-              />
+              <div className="hidden sm:block">
+                <ExportMenu
+                  chatId={currentChat?.id}
+                  chatTitle={currentChat?.title}
+                  messages={messages}
+                />
+              </div>
               {currentChat?.id && (
                 <button
                   onClick={() => setShowShareDialog(true)}
-                  className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-all duration-200 hover:bg-dark-800/40 text-dark-500 hover:text-dark-400"
+                  className="p-2 min-w-[36px] min-h-[36px] md:min-w-[40px] md:min-h-[40px] flex items-center justify-center rounded-lg transition-all duration-200 hover:bg-dark-800/40 text-dark-500 hover:text-dark-400"
                   title="Share chat"
                 >
                   <Share2 className="w-4 h-4" />
@@ -2633,106 +2575,36 @@ function Chat() {
           )}
         </div>
 
-        {/* Settings Panel */}
+        {/* Settings Panel Overlay */}
         {showSettings && currentChat && (
-          <div className="bg-dark-900/50 border-b border-dark-700/30 p-5 scale-in">
-            <div className="max-w-2xl mx-auto space-y-6">
-              {/* Persona Selector */}
-              <div>
-                <label className="block text-sm font-medium text-dark-300 mb-2">
-                  Persona
-                </label>
-                <PersonaSelector
-                  selectedPersona={selectedPersona}
-                  onSelect={handlePersonaSelect}
-                />
+          <div className="fixed inset-0 bg-dark-950/80 backdrop-blur-md flex items-start justify-center z-50 pt-[15vh] p-4 scale-in">
+            <div className="bg-dark-900 border border-dark-700/50 rounded-2xl w-full max-w-2xl max-h-[70vh] overflow-y-auto shadow-2xl">
+              <div className="sticky top-0 bg-dark-900 border-b border-dark-700/30 px-6 py-4 flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-dark-100">Chat Settings</h2>
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="p-2 hover:bg-dark-800 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-dark-400" />
+                </button>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                {/* Creativity (Temperature) */}
+              <div className="p-6 space-y-6">
+                {/* Model */}
                 <div>
                   <label className="block text-sm font-medium text-dark-300 mb-2">
-                    Creativity
+                    Model
                   </label>
-                  <div className="flex bg-dark-800 rounded-lg p-1 border border-dark-700/50">
-                    {[
-                      { label: "Precise", value: 0.2, id: "precise" },
-                      { label: "Balanced", value: 0.7, id: "balanced" },
-                      { label: "Creative", value: 1.0, id: "imaginative" },
-                    ].map((opt) => (
-                      <button
-                        key={opt.id}
-                        onClick={() =>
-                          setChatSettings((s) => ({
-                            ...s,
-                            temperature: opt.value,
-                          }))
-                        }
-                        className={`flex-1 px-1 py-1.5 rounded-md text-[11px] font-medium transition-all duration-200 truncate ${
-                          // Approximate match for float comparison
-                          Math.abs(chatSettings.temperature - opt.value) < 0.1
-                            ? "bg-dark-600 text-white shadow-sm"
-                            : "text-dark-400 hover:text-dark-200 hover:bg-dark-700/50"
-                          }`}
-                        title={opt.label}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
+                  <ModelSelector
+                    selectedModel={chatSettings.model}
+                    onModelChange={(model) =>
+                      setChatSettings((s) => ({ ...s, model }))
+                    }
+                    isDropdown={false}
+                  />
                 </div>
 
-                {/* Depth */}
-                <div>
-                  <label className="block text-sm font-medium text-dark-300 mb-2">
-                    Depth
-                  </label>
-                  <div className="flex bg-dark-800 rounded-lg p-1 border border-dark-700/50">
-                    {["concise", "standard", "detailed"].map((d) => (
-                      <button
-                        key={d}
-                        onClick={() =>
-                          setChatSettings((s) => ({ ...s, depth: d }))
-                        }
-                        className={`flex-1 px-1 py-1.5 rounded-md text-[11px] font-medium capitalize transition-all duration-200 truncate ${chatSettings.depth === d
-                          ? "bg-dark-600 text-white shadow-sm"
-                          : "text-dark-400 hover:text-dark-200 hover:bg-dark-700/50"
-                          }`}
-                        title={d}
-                      >
-                        {d}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Tone */}
-                <div>
-                  <label className="block text-sm font-medium text-dark-300 mb-2">
-                    Tone
-                  </label>
-                  <div className="flex bg-dark-800 rounded-lg p-1 border border-dark-700/50">
-                    {["professional", "friendly", "enthusiastic"].map((t) => (
-                      <button
-                        key={t}
-                        onClick={() =>
-                          setChatSettings((s) => ({ ...s, tone: t }))
-                        }
-                        className={`flex-1 px-1 py-1.5 rounded-md text-[11px] font-medium capitalize transition-all duration-200 truncate ${chatSettings.tone === t
-                          ? "bg-dark-600 text-white shadow-sm"
-                          : "text-dark-400 hover:text-dark-200 hover:bg-dark-700/50"
-                          }`}
-                        title={t}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Advanced System Prompt */}
-              <div className="pt-2">
+                {/* Custom System Prompt */}
+                <div className="pt-2">
                 <details className="group">
                   <summary className="flex items-center gap-2 text-xs font-medium text-dark-400 cursor-pointer hover:text-dataset-300 transition-colors select-none mb-2">
                     <ChevronRight className="w-3 h-3 transition-transform group-open:rotate-90" />
@@ -2764,7 +2636,7 @@ function Chat() {
                 </details>
               </div>
 
-              <div className="flex justify-end pt-2">
+              <div className="flex justify-end pt-4">
                 <button
                   onClick={updateChatSettings}
                   className="btn-primary px-5 py-2.5 rounded-xl font-semibold transition-all duration-200"
@@ -2773,6 +2645,7 @@ function Chat() {
                 </button>
               </div>
             </div>
+          </div>
           </div>
         )}
 
@@ -3562,7 +3435,6 @@ function Chat() {
         />
       </div>
 
-      {/* Fork Modal */}
       {showForkModal && (
         <div className="fixed inset-0 bg-dark-950/80 backdrop-blur-md flex items-center justify-center z-50 scale-in">
           <div className="glass-modal rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl">

@@ -142,22 +142,22 @@ function StatsTab() {
       </p>
 
       {/* Weekly Activity Calendar */}
-      <div className="bg-dark-800/30 rounded-xl p-6 border border-dark-700/30 mb-8">
+      <div className="bg-dark-800/30 rounded-xl p-4 lg:p-6 border border-dark-700/30 mb-8">
         <h3 className="text-lg font-semibold text-dark-100 mb-4 flex items-center gap-2">
           <Calendar className="w-5 h-5 text-accent-400" />
           Weekly Activity
         </h3>
 
-        {/* Day circles with connecting bars */}
-        <div className="flex items-center justify-center px-4">
+        {/* Day circles with connecting bars - compact mode for mobile */}
+        <div className="flex items-center justify-center px-2 lg:px-4">
           {weekData.map((day, index) => (
             <React.Fragment key={day.date}>
               {/* Day circle with label */}
               <div className="flex flex-col items-center group relative">
-                {/* Day circle */}
+                {/* Day circle - compact on mobile */}
                 <div
                   className={`
-                    relative w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm
+                    relative w-9 h-9 lg:w-12 lg:h-12 rounded-full flex items-center justify-center font-bold text-xs lg:text-sm
                     transition-all duration-300 cursor-default
                     ${day.hasActivity
                       ? "bg-gradient-to-br from-accent to-accent-light text-white shadow-lg shadow-accent/30"
@@ -171,7 +171,7 @@ function StatsTab() {
                   `}
                 >
                   {day.hasActivity ? (
-                    <Check className="w-5 h-5" />
+                    <Check className="w-4 h-4 lg:w-5 lg:h-5" />
                   ) : (
                     <span>{day.label}</span>
                   )}
@@ -184,7 +184,7 @@ function StatsTab() {
 
                 {/* Day label below */}
                 <span
-                  className={`mt-2 text-xs font-medium ${day.hasActivity
+                  className={`mt-2 text-[10px] lg:text-xs font-medium ${day.hasActivity
                       ? "text-accent"
                       : day.isToday
                         ? "text-dark-300"
@@ -194,9 +194,9 @@ function StatsTab() {
                   {day.label}
                 </span>
 
-                {/* Hover tooltip */}
-                <div className="absolute -top-14 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
-                  <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-xl">
+                {/* Hover tooltip - more compact */}
+                <div className="absolute -top-12 lg:-top-14 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
+                  <div className="bg-dark-800 border border-dark-600 rounded-lg px-2 lg:px-3 py-1.5 lg:py-2 text-[10px] lg:text-xs whitespace-nowrap shadow-xl">
                     <div className="text-dark-300 font-medium">
                       {new Date(day.date).toLocaleDateString("en-US", {
                         weekday: "long",
@@ -207,8 +207,7 @@ function StatsTab() {
                     <div
                       className={`font-semibold ${day.hasActivity ? "text-accent" : "text-dark-500"}`}
                     >
-                      {day.messageCount} message
-                      {day.messageCount !== 1 ? "s" : ""}
+                      {day.messageCount} msg{day.messageCount !== 1 ? "s" : ""}
                     </div>
                   </div>
                   {/* Tooltip arrow */}
@@ -216,10 +215,10 @@ function StatsTab() {
                 </div>
               </div>
 
-              {/* Connecting bar (except after last circle) */}
+              {/* Connecting bar - smaller on mobile (except after last circle) */}
               {index < weekData.length - 1 && (
                 <div
-                  className={`flex-1 h-1 mx-1 rounded-full self-start mt-[22px] min-w-[40px] ${day.hasActivity && weekData[index + 1].hasActivity
+                  className={`flex-1 h-1 mx-0.5 lg:mx-1 rounded-full self-start mt-[16px] lg:mt-[22px] min-w-[16px] lg:min-w-[40px] ${day.hasActivity && weekData[index + 1].hasActivity
                       ? "bg-gradient-to-r from-accent to-accent-light"
                       : day.hasActivity || weekData[index + 1].hasActivity
                         ? "bg-gradient-to-r from-accent/30 to-accent-light/30"
@@ -252,37 +251,36 @@ function StatsTab() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        <div className="bg-dark-800/50 p-6 rounded-xl border border-dark-700/50">
+        <div className="bg-dark-800/50 p-4 lg:p-6 rounded-xl border border-dark-700/50">
           <div className="flex items-center gap-2 text-dark-400 mb-2 text-sm">
             <Zap className="w-4 h-4" />
             Lifetime Tokens
           </div>
-          <div className="text-3xl font-bold text-dark-100 mb-1">
+          <div className="text-2xl lg:text-3xl font-bold text-dark-100 mb-1">
             {totals.total_tokens.toLocaleString()}
           </div>
-          <div className="text-sm text-dark-500">
-            {totals.prompt_tokens.toLocaleString()} input /{" "}
-            {totals.completion_tokens.toLocaleString()} output
+          <div className="text-xs lg:text-sm text-dark-500">
+            {totals.prompt_tokens.toLocaleString()} in / {totals.completion_tokens.toLocaleString()} out
           </div>
         </div>
 
-        <div className="bg-dark-800/50 p-6 rounded-xl border border-dark-700/50">
+        <div className="bg-dark-800/50 p-4 lg:p-6 rounded-xl border border-dark-700/50">
           <div className="flex items-center gap-2 text-dark-400 mb-2 text-sm">
             <Coins className="w-4 h-4" />
             Lifetime Cost
           </div>
-          <div className="text-3xl font-bold text-dark-100 mb-1">
+          <div className="text-2xl lg:text-3xl font-bold text-dark-100 mb-1">
             ${totals.cost.toFixed(4)}
           </div>
-          <div className="text-sm text-dark-500">Based on model pricing</div>
+          <div className="text-xs lg:text-sm text-dark-500">Based on model pricing</div>
         </div>
       </div>
 
       {/* Top 3 Models */}
-      <div className="bg-dark-800/30 rounded-xl p-6 border border-dark-700/30">
-        <h3 className="text-lg font-semibold text-dark-100 mb-4 flex items-center gap-2">
+      <div className="bg-dark-800/30 rounded-xl p-4 lg:p-6 border border-dark-700/30">
+        <h3 className="text-base lg:text-lg font-semibold text-dark-100 mb-4 flex items-center gap-2">
           <BarChart2 className="w-5 h-5 text-accent" />
-          Top 3 Models by Token Usage
+          Top 3 Models
         </h3>
 
         {topModels.length === 0 ? (
@@ -344,20 +342,20 @@ function StatsTab() {
       </div>
 
       {/* Additional Stats */}
-      <div className="mt-6 grid grid-cols-2 gap-4">
-        <div className="bg-dark-800/30 p-4 rounded-lg border border-dark-700/30">
-          <div className="flex items-center gap-2 text-dark-400 text-sm mb-1">
+      <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="bg-dark-800/30 p-3 lg:p-4 rounded-lg border border-dark-700/30">
+          <div className="flex items-center gap-2 text-dark-400 text-xs lg:text-sm mb-1">
             <Hash className="w-4 h-4" />
             Total Messages
           </div>
-          <div className="text-xl font-bold text-dark-200">
+          <div className="text-lg lg:text-xl font-bold text-dark-200">
             {totals.messages.toLocaleString()}
           </div>
         </div>
 
-        <div className="bg-dark-800/30 p-4 rounded-lg border border-dark-700/30">
-          <div className="text-dark-400 text-sm mb-1">Avg Response Time</div>
-          <div className="text-xl font-bold text-dark-200">
+        <div className="bg-dark-800/30 p-3 lg:p-4 rounded-lg border border-dark-700/30">
+          <div className="text-dark-400 text-xs lg:text-sm mb-1">Avg Response Time</div>
+          <div className="text-lg lg:text-xl font-bold text-dark-200">
             {totals.avg_response_time_ms}ms
           </div>
         </div>

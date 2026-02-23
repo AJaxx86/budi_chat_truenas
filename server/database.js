@@ -578,6 +578,23 @@ function initDatabase() {
     console.error("Migration error:", e);
   }
 
+  // Migration: Add temperature column to personas table for configurable creativity
+  try {
+    const personasInfo = db.prepare("PRAGMA table_info(personas)").all();
+    const hasTemperature = personasInfo.some((col) => col.name === "temperature");
+
+    if (!hasTemperature) {
+      db.exec("ALTER TABLE personas ADD COLUMN temperature REAL DEFAULT 0.7");
+      // Set default temperatures based on existing creativity values
+      db.exec("UPDATE personas SET temperature = 0.2 WHERE creativity = 'precise'");
+      db.exec("UPDATE personas SET temperature = 0.7 WHERE creativity = 'balanced' OR creativity IS NULL");
+      db.exec("UPDATE personas SET temperature = 1.0 WHERE creativity = 'imaginative'");
+      console.log("✅ Migration: Added temperature column to personas table");
+    }
+  } catch (e) {
+    console.error("Migration error:", e);
+  }
+
   // Migration: Add persona_id to chats table
   try {
     const chatsInfo = db.prepare("PRAGMA table_info(chats)").all();
@@ -958,7 +975,8 @@ function initDatabase() {
       category: "education",
       creativity: "balanced",
       depth: "detailed",
-      tone: "friendly"
+      tone: "friendly",
+      temperature: 0.7
     },
     {
       id: "socratic-code",
@@ -969,7 +987,8 @@ function initDatabase() {
       category: "development",
       creativity: "balanced",
       depth: "detailed",
-      tone: "friendly"
+      tone: "friendly",
+      temperature: 0.7
     },
     {
       id: "code-mentor",
@@ -980,7 +999,8 @@ function initDatabase() {
       category: "development",
       creativity: "precise",
       depth: "detailed",
-      tone: "friendly"
+      tone: "friendly",
+      temperature: 0.2
     },
     {
       id: "creative-writing",
@@ -991,7 +1011,8 @@ function initDatabase() {
       category: "creative",
       creativity: "imaginative",
       depth: "standard",
-      tone: "enthusiastic"
+      tone: "enthusiastic",
+      temperature: 1.0
     },
     {
       id: "devils-advocate",
@@ -1002,7 +1023,8 @@ function initDatabase() {
       category: "analytical",
       creativity: "balanced",
       depth: "detailed",
-      tone: "professional"
+      tone: "professional",
+      temperature: 0.7
     },
     {
       id: "eli5",
@@ -1013,7 +1035,8 @@ function initDatabase() {
       category: "education",
       creativity: "imaginative",
       depth: "concise",
-      tone: "friendly"
+      tone: "friendly",
+      temperature: 1.0
     },
     {
       id: "brainstorm",
@@ -1024,7 +1047,8 @@ function initDatabase() {
       category: "creative",
       creativity: "imaginative",
       depth: "standard",
-      tone: "enthusiastic"
+      tone: "enthusiastic",
+      temperature: 1.0
     }
   ];
 
@@ -1036,12 +1060,12 @@ function initDatabase() {
   }
 
   const insertPersona = db.prepare(`
-    INSERT OR REPLACE INTO personas (id, name, description, system_prompt, icon, category, creativity, depth, tone, is_default)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    INSERT OR REPLACE INTO personas (id, name, description, system_prompt, icon, category, creativity, depth, tone, temperature, is_default)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
   `);
 
   for (const persona of defaultPersonas) {
-    insertPersona.run(persona.id, persona.name, persona.description, persona.system_prompt, persona.icon, persona.category, persona.creativity, persona.depth, persona.tone);
+    insertPersona.run(persona.id, persona.name, persona.description, persona.system_prompt, persona.icon, persona.category, persona.creativity, persona.depth, persona.tone, persona.temperature);
   }
 
   console.log("✅ Database initialized successfully");

@@ -449,28 +449,49 @@ router.post("/:chatId", async (req, res) => {
       });
     }
 
+    const chatSystemPrompt = chat.system_prompt?.trim();
+
+    // Fetch persona settings and inject modifiers
+    let personaTemperature = 0.7;
+    if (chat.persona_id) {
+      const persona = db.prepare('SELECT system_prompt, depth, tone, temperature FROM personas WHERE id = ?').get(chat.persona_id);
+      if (persona) {
+        if (persona.temperature !== null && persona.temperature !== undefined) {
+          personaTemperature = persona.temperature;
+        }
+
+        const personaPrompt = persona.system_prompt?.trim();
+        const shouldInjectPersonaPrompt =
+          personaPrompt && (!chatSystemPrompt || !chatSystemPrompt.includes(personaPrompt));
+
+        if (shouldInjectPersonaPrompt) {
+          openaiMessages.push({ role: "system", content: personaPrompt });
+        }
+
+        // Inject Depth modifiers from persona
+        if (persona.depth === 'concise') {
+          openaiMessages.push({ role: "system", content: "Please provide concise, direct answers without unnecessary elaboration." });
+        } else if (persona.depth === 'detailed') {
+          openaiMessages.push({ role: "system", content: "Please provide comprehensive, detailed explanations covering all aspects of the topic." });
+        }
+
+        // Inject Tone modifiers from persona
+        if (persona.tone === 'professional') {
+          openaiMessages.push({ role: "system", content: "Maintain a formal, professional, and objective tone." });
+        } else if (persona.tone === 'friendly') {
+          openaiMessages.push({ role: "system", content: "Be warm, friendly, and conversational." });
+        } else if (persona.tone === 'enthusiastic') {
+          openaiMessages.push({ role: "system", content: "Be energetic, enthusiastic, and encouraging in your responses." });
+        }
+      }
+    }
+
     // Then inject chat-specific system prompt (if set)
-    if (chat.system_prompt) {
+    if (chatSystemPrompt) {
       openaiMessages.push({
         role: "system",
-        content: chat.system_prompt,
+        content: chatSystemPrompt,
       });
-    }
-
-    // Inject Depth modifiers
-    if (chat.depth === 'concise') {
-      openaiMessages.push({ role: "system", content: "Please provide concise, direct answers without unnecessary elaboration." });
-    } else if (chat.depth === 'detailed') {
-      openaiMessages.push({ role: "system", content: "Please provide comprehensive, detailed explanations covering all aspects of the topic." });
-    }
-
-    // Inject Tone modifiers
-    if (chat.tone === 'professional') {
-      openaiMessages.push({ role: "system", content: "Maintain a formal, professional, and objective tone." });
-    } else if (chat.tone === 'friendly') {
-      openaiMessages.push({ role: "system", content: "Be warm, friendly, and conversational." });
-    } else if (chat.tone === 'enthusiastic') {
-      openaiMessages.push({ role: "system", content: "Be energetic, enthusiastic, and encouraging in your responses." });
     }
 
     const visionCapable = await modelSupportsVision(chat.model);
@@ -602,7 +623,7 @@ router.post("/:chatId", async (req, res) => {
     const requestOptions = {
       model: chat.model,
       messages: openaiMessages,
-      temperature: chat.temperature,
+      temperature: personaTemperature,
       stream: true,
       usage: { include: true },
     };
@@ -1074,7 +1095,7 @@ router.post("/:chatId", async (req, res) => {
       const followUpOptions = {
         model: chat.model,
         messages: conversationMessages,
-        temperature: chat.temperature,
+        temperature: personaTemperature,
         stream: true,
         usage: { include: true },
       };

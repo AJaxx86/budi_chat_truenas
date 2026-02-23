@@ -19,7 +19,7 @@ function Profile() {
 
   return (
     <div className="min-h-screen-safe bg-dark-950 bg-mesh">
-      <div className="max-w-6xl mx-auto p-6">
+      <div className="max-w-6xl mx-auto p-4 lg:p-6">
         <button
           onClick={() => navigate('/')}
           className="mb-6 flex items-center gap-2 text-dark-400 hover:text-dark-200 transition-colors"
@@ -28,9 +28,9 @@ function Profile() {
           Back to Chat
         </button>
 
-        <div className="flex gap-6">
+        <div className="flex flex-col lg:flex-row gap-6">
           {/* Sidebar */}
-          <div className="w-56 shrink-0">
+          <div className="w-full lg:w-56 shrink-0">
             <div className="glass-card rounded-2xl p-4 sticky top-6">
               <h1 className="text-xl font-bold text-accent mb-4 px-2 tracking-tight">Account</h1>
               <nav className="space-y-1">
@@ -56,7 +56,7 @@ function Profile() {
 
           {/* Content Area */}
           <div className="flex-1 min-w-0">
-            <div className="glass-card rounded-2xl p-8">
+            <div className="glass-card rounded-2xl p-4 lg:p-8">
               {activeTab === 'profile' && <ProfileTab user={user} />}
               {activeTab === 'stats' && <StatsTab />}
               {activeTab === 'settings' && <SettingsTab user={user} logout={logout} />}

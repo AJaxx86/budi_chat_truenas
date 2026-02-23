@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Bot, ChevronDown, Check, Search, Clock, Loader2, X, Brain, Wrench, Eye,
-  User, BookOpen, Calculator, Code, Feather, Scale, Lightbulb, Sparkles, Beaker, Plus
+  User, BookOpen, Calculator, Code, Feather, Scale, Lightbulb, Sparkles, Beaker, Plus, Star
 } from 'lucide-react';
 
 const DEFAULT_MODEL = 'moonshotai/kimi-k2-thinking';
 const RECENT_MODELS_KEY = 'budi_chat_recent_models';
+const FAVOURITE_MODELS_KEY = 'budi_chat_favourite_models';
+const EXPANDED_SECTIONS_KEY = 'budi_chat_model_sections_expanded';
 const MODELS_CACHE_KEY = 'budi_chat_models_cache_v4';
 const MODELS_CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_RECENT_MODELS = 5;
@@ -264,6 +266,12 @@ function ModelSelector({
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [recentModels, setRecentModels] = useState([]);
+  const [favouriteModels, setFavouriteModels] = useState([]);
+  const [expandedSections, setExpandedSections] = useState({
+    favourites: true,
+    recent: true,
+    all: true
+  });
   const dropdownRef = useRef(null);
   const searchInputRef = useRef(null);
 
@@ -276,7 +284,11 @@ function ModelSelector({
     description: '',
     system_prompt: '',
     icon: 'User',
-    category: 'general'
+    category: 'general',
+    creativity: 'balanced',
+    depth: 'standard',
+    tone: 'professional',
+    temperature: 0.7
   });
 
   // Load recent models from localStorage
@@ -290,6 +302,36 @@ function ModelSelector({
       }
     }
   }, []);
+
+  // Load favourite models from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem(FAVOURITE_MODELS_KEY);
+    if (stored) {
+      try {
+        setFavouriteModels(JSON.parse(stored));
+      } catch (e) {
+        console.error('Failed to parse favourite models:', e);
+      }
+    }
+  }, []);
+
+  // Load expanded sections state from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem(EXPANDED_SECTIONS_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        setExpandedSections(prev => ({ ...prev, ...parsed }));
+      } catch (e) {
+        console.error('Failed to parse expanded sections:', e);
+      }
+    }
+  }, []);
+
+  // Save expanded sections state to localStorage when changed
+  useEffect(() => {
+    localStorage.setItem(EXPANDED_SECTIONS_KEY, JSON.stringify(expandedSections));
+  }, [expandedSections]);
 
   // Fetch models from OpenRouter or cache
   useEffect(() => {
@@ -413,6 +455,27 @@ function ModelSelector({
     localStorage.setItem(RECENT_MODELS_KEY, JSON.stringify(updated));
   };
 
+  // Toggle model favourite status
+  const toggleFavourite = (e, modelId) => {
+    e.stopPropagation();
+    setFavouriteModels(prev => {
+      const isFavourited = prev.includes(modelId);
+      const updated = isFavourited
+        ? prev.filter(id => id !== modelId)
+        : [modelId, ...prev];
+      localStorage.setItem(FAVOURITE_MODELS_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  // Toggle section expansion
+  const toggleSection = (section) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
   // Handle model selection
   const handleModelSelect = (modelId) => {
     addToRecentModels(modelId);
@@ -486,7 +549,11 @@ function ModelSelector({
         description: '',
         system_prompt: '',
         icon: 'User',
-        category: 'general'
+        category: 'general',
+        creativity: 'balanced',
+        depth: 'standard',
+        tone: 'professional',
+        temperature: 0.7
       });
       setShowCreatePanel(false);
 
@@ -576,8 +643,17 @@ function ModelSelector({
       .filter(Boolean);
   }, [recentModels, models, whitelistedModels, hasWhitelistRestriction]);
 
+  // Get favourite models data (filtered by whitelist if applicable)
+  const favouriteModelsData = useMemo(() => {
+    const baseModels = hasWhitelistRestriction ? whitelistedModels : models;
+    return favouriteModels
+      .map(id => baseModels.find(m => m.id === id))
+      .filter(Boolean);
+  }, [favouriteModels, models, whitelistedModels, hasWhitelistRestriction]);
+
   // Get the display name for current model
   const getModelDisplayName = (modelId) => {
+    if (!modelId) return 'Select model';
     const model = models.find(m => m.id === modelId);
     if (model) {
       if (model.name.includes(': ')) {
@@ -591,6 +667,7 @@ function ModelSelector({
 
   // Get provider from model ID
   const getProvider = (modelId) => {
+    if (!modelId) return '';
     const parts = modelId.split('/');
     if (parts.length > 1) {
       return parts[0].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -781,13 +858,83 @@ function ModelSelector({
                 </div>
               ) : (
                 <>
-                  {/* Recently Used Models */}
+                  {/* Favourites Section */}
+                  {!searchQuery && favouriteModelsData.length > 0 && (
+                    <div className="border-b border-dark-700/50">
+                      <button
+                        onClick={() => toggleSection('favourites')}
+                        className="w-full flex items-center justify-between px-4 py-2.5 bg-dark-850/30 hover:bg-dark-850/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2 text-[11px] font-semibold text-yellow-500 uppercase tracking-wider">
+                          <Star className="w-3.5 h-3.5" />
+                          Favourites
+                          <span className="text-dark-500">({favouriteModelsData.length})</span>
+                        </div>
+                        <ChevronDown className={`w-4 h-4 text-dark-400 transition-transform duration-200 ${expandedSections.favourites ? '' : '-rotate-90'}`} />
+                      </button>
+                      {expandedSections.favourites && (
+                        <div className="p-2 space-y-0.5">
+                          {favouriteModelsData.map(model => (
+                            <button
+                              key={`fav-${model.id}`}
+                              onClick={() => handleModelSelect(model.id)}
+                              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all duration-150 text-left group ${selectedModel === model.id
+                                ? 'bg-accent/10 border border-accent/20'
+                                : 'hover:bg-dark-700/50 border border-transparent'
+                                }`}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className={`text-sm font-medium truncate ${selectedModel === model.id ? 'text-dark-50' : 'text-dark-200 group-hover:text-dark-100'}`}>{model.name}</p>
+                                  <ModelFeatureBadges model={model} />
+                                </div>
+                                <p className="text-xs text-dark-500 truncate">
+                                  {getProvider(model.id)}
+                                  {model.contextLength && (
+                                    <span className="ml-1.5 text-dark-600">• {Math.round(model.contextLength / 1000)}k</span>
+                                  )}
+                                  {model.pricing && formatModelPrice(model.pricing) && (
+                                    <span className="ml-1.5 text-emerald-500/70">• {formatModelPrice(model.pricing)}</span>
+                                  )}
+                                </p>
+                              </div>
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                onClick={(e) => toggleFavourite(e, model.id)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    toggleFavourite(e, model.id);
+                                  }
+                                }}
+                                className="p-1.5 rounded-lg transition-colors flex-shrink-0 ml-2 hover:bg-dark-700/50"
+                                title="Remove from favourites"
+                              >
+                                <Star className="w-4 h-4 fill-yellow-500 text-yellow-500" />
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Recently Used Section */}
                   {!searchQuery && recentModelsData.length > 0 && (
-                    <div className="p-2 border-b border-dark-700/50">
-                      <div className="flex items-center gap-2 px-3 py-2 text-[11px] font-semibold text-dark-500 uppercase tracking-wider">
-                        <Clock className="w-3 h-3" />
-                        Recently Used
-                      </div>
+                    <div className="border-b border-dark-700/50">
+                      <button
+                        onClick={() => toggleSection('recent')}
+                        className="w-full flex items-center justify-between px-4 py-2.5 bg-dark-850/30 hover:bg-dark-850/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2 text-[11px] font-semibold text-dark-500 uppercase tracking-wider">
+                          <Clock className="w-3 h-3" />
+                          Recently Used
+                          <span className="text-dark-600">({recentModelsData.length})</span>
+                        </div>
+                        <ChevronDown className={`w-4 h-4 text-dark-400 transition-transform duration-200 ${expandedSections.recent ? '' : '-rotate-90'}`} />
+                      </button>
+                      {expandedSections.recent && (
+                        <div className="p-2 space-y-0.5">
                       {recentModelsData.map(model => (
                         <button
                           key={`recent-${model.id}`}
@@ -812,39 +959,47 @@ function ModelSelector({
                               )}
                             </p>
                           </div>
-                          {selectedModel === model.id && (
-                            <div className="w-5 h-5 rounded-md bg-accent flex items-center justify-center flex-shrink-0 ml-2">
-                              <Check className="w-3 h-3 text-white" />
-                            </div>
-                          )}
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => toggleFavourite(e, model.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                toggleFavourite(e, model.id);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg transition-colors flex-shrink-0 ml-2 hover:bg-dark-700/50"
+                            title={favouriteModels.includes(model.id) ? 'Remove from favourites' : 'Add to favourites'}
+                          >
+                            <Star
+                              className={`w-4 h-4 transition-colors ${favouriteModels.includes(model.id)
+                                ? 'fill-yellow-500 text-yellow-500'
+                                : 'text-dark-400 group-hover:text-dark-300'
+                                }`}
+                            />
+                          </span>
                         </button>
                       ))}
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {/* All Models */}
-                  <div className="p-2">
-                    {!searchQuery && (
-                      <div className="px-3 py-2 text-[11px] font-semibold text-dark-500 uppercase tracking-wider">
-                        {hasWhitelistRestriction ? 'Available Models' : 'All Models'} <span className="text-dark-600">({filteredModels.length})</span>
+                  {/* All Models Section */}
+                  <div className="">
+                    <button
+                      onClick={() => toggleSection('all')}
+                      className="w-full flex items-center justify-between px-4 py-2.5 bg-dark-850/30 hover:bg-dark-850/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-2 text-[11px] font-semibold text-dark-500 uppercase tracking-wider">
+                        <Bot className="w-3 h-3" />
+                        {hasWhitelistRestriction ? 'Available Models' : 'All Models'}
+                        <span className="text-dark-600">({filteredModels.length})</span>
                       </div>
-                    )}
-                    {searchQuery && (
-                      <div className="px-3 py-2 text-xs text-dark-400">
-                        {filteredModels.length} result{filteredModels.length !== 1 ? 's' : ''} for "<span className="text-accent">{searchQuery}</span>"
-                      </div>
-                    )}
-
-                    {filteredModels.length === 0 ? (
-                      <div className="py-12 text-center">
-                        <div className="w-12 h-12 rounded-xl bg-dark-800 flex items-center justify-center mx-auto mb-3">
-                          <Search className="w-6 h-6 text-dark-500" />
-                        </div>
-                        <p className="text-dark-400 font-medium">No models found</p>
-                        <p className="text-xs text-dark-500 mt-1">Try a different search term</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-0.5">
+                      <ChevronDown className={`w-4 h-4 text-dark-400 transition-transform duration-200 ${expandedSections.all ? '' : '-rotate-90'}`} />
+                    </button>
+                    {expandedSections.all && (
+                      <div className="p-2 space-y-0.5">
                         {filteredModels.map(model => (
                           <button
                             key={model.id}
@@ -869,11 +1024,25 @@ function ModelSelector({
                                 )}
                               </p>
                             </div>
-                            {selectedModel === model.id && (
-                              <div className="w-5 h-5 rounded-md bg-accent flex items-center justify-center flex-shrink-0 ml-2">
-                                <Check className="w-3 h-3 text-white" />
-                              </div>
-                            )}
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => toggleFavourite(e, model.id)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  toggleFavourite(e, model.id);
+                                }
+                              }}
+                              className="p-1.5 rounded-lg transition-colors flex-shrink-0 ml-2 hover:bg-dark-700/50"
+                              title={favouriteModels.includes(model.id) ? 'Remove from favourites' : 'Add to favourites'}
+                            >
+                              <Star
+                                className={`w-4 h-4 transition-colors ${favouriteModels.includes(model.id)
+                                  ? 'fill-yellow-500 text-yellow-500'
+                                  : 'text-dark-400 group-hover:text-dark-300'
+                                  }`}
+                              />
+                            </span>
                           </button>
                         ))}
                       </div>
@@ -984,6 +1153,74 @@ function ModelSelector({
                             <option key={key} value={key}>{label}</option>
                           ))}
                         </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-medium text-dark-400 uppercase tracking-wider mb-1.5">
+                            Depth
+                          </label>
+                          <select
+                            value={createFormData.depth}
+                            onChange={(e) => setCreateFormData({ ...createFormData, depth: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-dark-800 border border-dark-700 outline-none text-dark-100 text-sm focus:border-accent/50"
+                          >
+                            <option value="concise">Concise</option>
+                            <option value="standard">Standard</option>
+                            <option value="detailed">Detailed</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-medium text-dark-400 uppercase tracking-wider mb-1.5">
+                            Tone
+                          </label>
+                          <select
+                            value={createFormData.tone}
+                            onChange={(e) => setCreateFormData({ ...createFormData, tone: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-dark-800 border border-dark-700 outline-none text-dark-100 text-sm focus:border-accent/50"
+                          >
+                            <option value="professional">Professional</option>
+                            <option value="friendly">Friendly</option>
+                            <option value="enthusiastic">Enthusiastic</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-medium text-dark-400 uppercase tracking-wider mb-1.5">
+                            Creativity
+                          </label>
+                          <select
+                            value={createFormData.creativity}
+                            onChange={(e) => {
+                              const creativity = e.target.value;
+                              let newTemp = 0.7;
+                              if (creativity === 'precise') newTemp = 0.2;
+                              else if (creativity === 'imaginative') newTemp = 1.0;
+                              setCreateFormData({ ...createFormData, creativity, temperature: newTemp });
+                            }}
+                            className="w-full px-3 py-2 rounded-lg bg-dark-800 border border-dark-700 outline-none text-dark-100 text-sm focus:border-accent/50"
+                          >
+                            <option value="precise">Precise</option>
+                            <option value="balanced">Balanced</option>
+                            <option value="imaginative">Imaginative</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-medium text-dark-400 uppercase tracking-wider mb-1.5">
+                            Temperature: {createFormData.temperature.toFixed(1)}
+                          </label>
+                          <input
+                            type="range"
+                            min="0"
+                            max="2"
+                            step="0.1"
+                            value={createFormData.temperature}
+                            onChange={(e) => setCreateFormData({ ...createFormData, temperature: parseFloat(e.target.value) })}
+                            className="w-full h-9 px-2 rounded-lg bg-dark-800 border border-dark-700 outline-none accent-accent cursor-pointer"
+                          />
+                        </div>
                       </div>
 
                       {/* Actions */}

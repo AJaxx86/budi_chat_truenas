@@ -2,7 +2,8 @@ import React, { useState, useEffect, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft, Plus, Trash2, Edit, User, BookOpen, Calculator, Code, Feather,
-  Scale, Lightbulb, Sparkles, Beaker, Save, X, Eye
+  Scale, Lightbulb, Sparkles, Beaker, Save, X, Eye, Target, Minimize2,
+  AlignCenter, Maximize2, Briefcase, Smile, Zap
 } from 'lucide-react';
 import { AuthContext } from '../contexts/AuthContext';
 
@@ -44,7 +45,8 @@ function Personas() {
     category: 'general',
     creativity: 'balanced',
     depth: 'standard',
-    tone: 'professional'
+    tone: 'professional',
+    temperature: 0.7
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -119,7 +121,8 @@ function Personas() {
       category: persona.category || 'general',
       creativity: persona.creativity || 'balanced',
       depth: persona.depth || 'standard',
-      tone: persona.tone || 'professional'
+      tone: persona.tone || 'professional',
+      temperature: persona.temperature !== undefined ? persona.temperature : 0.7
     });
     setShowForm(true);
   };
@@ -154,7 +157,8 @@ function Personas() {
       category: 'general',
       creativity: 'balanced',
       depth: 'standard',
-      tone: 'professional'
+      tone: 'professional',
+      temperature: 0.7
     });
     setError('');
   };
@@ -242,7 +246,40 @@ function Personas() {
                       {persona.description && (
                         <p className="text-sm text-dark-500 mt-1">{persona.description}</p>
                       )}
-                      <p className="text-xs text-dark-600 mt-2">
+                      {/* Personality Badges */}
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+                          persona.creativity === 'precise' ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' :
+                          persona.creativity === 'imaginative' ? 'bg-purple-500/10 border-purple-500/20 text-purple-400' :
+                          'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                        }`}>
+                          {persona.creativity === 'precise' && <Target className="w-3 h-3" />}
+                          {persona.creativity === 'balanced' && <Scale className="w-3 h-3" />}
+                          {persona.creativity === 'imaginative' && <Sparkles className="w-3 h-3" />}
+                          {persona.creativity || 'Balanced'}
+                        </span>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+                          persona.depth === 'concise' ? 'bg-green-500/10 border-green-500/20 text-green-400' :
+                          persona.depth === 'detailed' ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' :
+                          'bg-cyan-500/10 border-cyan-500/20 text-cyan-400'
+                        }`}>
+                          {persona.depth === 'concise' && <Minimize2 className="w-3 h-3" />}
+                          {persona.depth === 'standard' && <AlignCenter className="w-3 h-3" />}
+                          {persona.depth === 'detailed' && <Maximize2 className="w-3 h-3" />}
+                          {persona.depth || 'Standard'}
+                        </span>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+                          persona.tone === 'professional' ? 'bg-slate-500/10 border-slate-500/20 text-slate-400' :
+                          persona.tone === 'enthusiastic' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
+                          'bg-pink-500/10 border-pink-500/20 text-pink-400'
+                        }`}>
+                          {persona.tone === 'professional' && <Briefcase className="w-3 h-3" />}
+                          {persona.tone === 'friendly' && <Smile className="w-3 h-3" />}
+                          {persona.tone === 'enthusiastic' && <Zap className="w-3 h-3" />}
+                          {persona.tone || 'Friendly'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-dark-600 mt-1">
                         Used {persona.usage_count || 0} times
                       </p>
                     </div>
@@ -303,6 +340,39 @@ function Personas() {
                     {persona.description && (
                       <p className="text-sm text-dark-500 mt-1">{persona.description}</p>
                     )}
+                    {/* Personality Badges */}
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+                        persona.creativity === 'precise' ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' :
+                        persona.creativity === 'imaginative' ? 'bg-purple-500/10 border-purple-500/20 text-purple-400' :
+                        'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                      }`}>
+                        {persona.creativity === 'precise' && <Target className="w-3 h-3" />}
+                        {persona.creativity === 'balanced' && <Scale className="w-3 h-3" />}
+                        {persona.creativity === 'imaginative' && <Sparkles className="w-3 h-3" />}
+                        {persona.creativity || 'Balanced'}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+                        persona.depth === 'concise' ? 'bg-green-500/10 border-green-500/20 text-green-400' :
+                        persona.depth === 'detailed' ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' :
+                        'bg-cyan-500/10 border-cyan-500/20 text-cyan-400'
+                      }`}>
+                        {persona.depth === 'concise' && <Minimize2 className="w-3 h-3" />}
+                        {persona.depth === 'standard' && <AlignCenter className="w-3 h-3" />}
+                        {persona.depth === 'detailed' && <Maximize2 className="w-3 h-3" />}
+                        {persona.depth || 'Standard'}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${
+                        persona.tone === 'professional' ? 'bg-slate-500/10 border-slate-500/20 text-slate-400' :
+                        persona.tone === 'enthusiastic' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
+                        'bg-pink-500/10 border-pink-500/20 text-pink-400'
+                      }`}>
+                        {persona.tone === 'professional' && <Briefcase className="w-3 h-3" />}
+                        {persona.tone === 'friendly' && <Smile className="w-3 h-3" />}
+                        {persona.tone === 'enthusiastic' && <Zap className="w-3 h-3" />}
+                        {persona.tone || 'Friendly'}
+                      </span>
+                    </div>
                   </div>
                   <button
                     onClick={() => setViewingPersona(persona)}
@@ -412,21 +482,7 @@ function Personas() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-dark-300 mb-2">
-                        Creativity
-                      </label>
-                      <select
-                        value={formData.creativity}
-                        onChange={(e) => setFormData({ ...formData, creativity: e.target.value })}
-                        className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-100 capitalize"
-                      >
-                        <option value="precise">Precise</option>
-                        <option value="balanced">Balanced</option>
-                        <option value="imaginative">Imaginative</option>
-                      </select>
-                    </div>
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-dark-300 mb-2">
                         Depth
@@ -454,6 +510,47 @@ function Personas() {
                         <option value="friendly">Friendly</option>
                         <option value="enthusiastic">Enthusiastic</option>
                       </select>
+                    </div>
+                  </div>
+
+                  {/* Creativity and Temperature Row */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-dark-300 mb-2">
+                        Creativity
+                      </label>
+                      <select
+                        value={formData.creativity}
+                        onChange={(e) => {
+                          const creativity = e.target.value;
+                          let newTemp = 0.7;
+                          if (creativity === 'precise') newTemp = 0.2;
+                          else if (creativity === 'imaginative') newTemp = 1.0;
+                          setFormData({ ...formData, creativity, temperature: newTemp });
+                        }}
+                        className="w-full px-4 py-3 rounded-xl glass-input outline-none text-dark-100 capitalize"
+                      >
+                        <option value="precise">Precise</option>
+                        <option value="balanced">Balanced</option>
+                        <option value="imaginative">Imaginative</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-dark-300 mb-2">
+                        Temperature: {formData.temperature.toFixed(1)}
+                      </label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="2"
+                        step="0.1"
+                        value={formData.temperature}
+                        onChange={(e) => setFormData({ ...formData, temperature: parseFloat(e.target.value) })}
+                        className="w-full h-10 px-2 rounded-xl glass-input outline-none accent-accent cursor-pointer"
+                      />
+                      <p className="text-xs text-dark-500 mt-1">
+                        Controls randomness (0 = deterministic, 2 = very creative)
+                      </p>
                     </div>
                   </div>
 
@@ -538,14 +635,38 @@ function Personas() {
                 </div>
 
                 <div className="flex gap-2 mt-4 flex-wrap">
-                  <span className="px-2 py-1 rounded-md bg-dark-800 text-xs text-dark-400 border border-dark-700">
-                    Creativity: <span className="text-dark-200 capitalize">{viewingPersona.creativity || 'Balanced'}</span>
+                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium border ${
+                    viewingPersona.creativity === 'precise' ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' :
+                    viewingPersona.creativity === 'imaginative' ? 'bg-purple-500/10 border-purple-500/20 text-purple-400' :
+                    'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                  }`}>
+                    {viewingPersona.creativity === 'precise' && <Target className="w-3 h-3" />}
+                    {viewingPersona.creativity === 'balanced' && <Scale className="w-3 h-3" />}
+                    {viewingPersona.creativity === 'imaginative' && <Sparkles className="w-3 h-3" />}
+                    <span className="capitalize">{viewingPersona.creativity || 'Balanced'}</span>
                   </span>
-                  <span className="px-2 py-1 rounded-md bg-dark-800 text-xs text-dark-400 border border-dark-700">
-                    Depth: <span className="text-dark-200 capitalize">{viewingPersona.depth || 'Standard'}</span>
+                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium border ${
+                    viewingPersona.depth === 'concise' ? 'bg-green-500/10 border-green-500/20 text-green-400' :
+                    viewingPersona.depth === 'detailed' ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' :
+                    'bg-cyan-500/10 border-cyan-500/20 text-cyan-400'
+                  }`}>
+                    {viewingPersona.depth === 'concise' && <Minimize2 className="w-3 h-3" />}
+                    {viewingPersona.depth === 'standard' && <AlignCenter className="w-3 h-3" />}
+                    {viewingPersona.depth === 'detailed' && <Maximize2 className="w-3 h-3" />}
+                    <span className="capitalize">{viewingPersona.depth || 'Standard'}</span>
                   </span>
-                  <span className="px-2 py-1 rounded-md bg-dark-800 text-xs text-dark-400 border border-dark-700">
-                    Tone: <span className="text-dark-200 capitalize">{viewingPersona.tone || 'Professional'}</span>
+                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium border ${
+                    viewingPersona.tone === 'professional' ? 'bg-slate-500/10 border-slate-500/20 text-slate-400' :
+                    viewingPersona.tone === 'enthusiastic' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
+                    'bg-pink-500/10 border-pink-500/20 text-pink-400'
+                  }`}>
+                    {viewingPersona.tone === 'professional' && <Briefcase className="w-3 h-3" />}
+                    {viewingPersona.tone === 'friendly' && <Smile className="w-3 h-3" />}
+                    {viewingPersona.tone === 'enthusiastic' && <Zap className="w-3 h-3" />}
+                    <span className="capitalize">{viewingPersona.tone || 'Friendly'}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium border bg-dark-800/50 border-dark-700 text-dark-400">
+                    Temp: <span className="text-dark-200">{viewingPersona.temperature !== undefined ? viewingPersona.temperature.toFixed(1) : '0.7'}</span>
                   </span>
                 </div>
 

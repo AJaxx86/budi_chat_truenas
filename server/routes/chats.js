@@ -105,20 +105,17 @@ router.get('/:id', (req, res) => {
 // Create new chat
 router.post('/', (req, res) => {
   try {
-    const { title, model, system_prompt, temperature, agent_mode, workspace_id, depth, tone, persona_id } = req.body;
+    const { title, model, system_prompt, agent_mode, workspace_id, persona_id } = req.body;
     const id = uuidv4();
 
     // If workspace_id provided, get workspace defaults
     let finalModel = model || 'moonshotai/kimi-k2-thinking';
     let finalSystemPrompt = system_prompt || null;
-    let finalTemperature = temperature !== undefined ? temperature : 0.7;
-    let finalDepth = depth || 'standard';
-    let finalTone = tone || 'professional';
     let finalPersonaId = persona_id || null;
 
     if (workspace_id) {
       const workspace = db.prepare(`
-        SELECT default_model, default_system_prompt, default_temperature, default_persona_id
+        SELECT default_model, default_system_prompt, default_persona_id
         FROM workspaces WHERE id = ? AND user_id = ?
       `).get(workspace_id, req.user.id);
 
@@ -130,9 +127,6 @@ router.post('/', (req, res) => {
         if (!system_prompt && workspace.default_system_prompt) {
           finalSystemPrompt = workspace.default_system_prompt;
         }
-        if (temperature === undefined && workspace.default_temperature !== null) {
-          finalTemperature = workspace.default_temperature;
-        }
         // Inherit workspace default persona if none explicitly provided
         if (!persona_id && workspace.default_persona_id) {
           finalPersonaId = workspace.default_persona_id;
@@ -140,37 +134,15 @@ router.post('/', (req, res) => {
       }
     }
 
-    // Look up persona settings to apply system_prompt, depth, tone, temperature
-    if (finalPersonaId) {
-      const persona = db.prepare('SELECT * FROM personas WHERE id = ? AND (user_id = ? OR is_default = 1)').get(finalPersonaId, req.user.id);
-      if (persona) {
-        if (!system_prompt && persona.system_prompt) {
-          finalSystemPrompt = persona.system_prompt;
-        }
-        if (temperature === undefined && persona.temperature !== undefined && persona.temperature !== null) {
-          finalTemperature = persona.temperature;
-        }
-        if (!depth && persona.depth) {
-          finalDepth = persona.depth;
-        }
-        if (!tone && persona.tone) {
-          finalTone = persona.tone;
-        }
-      }
-    }
-
     db.prepare(`
-      INSERT INTO chats(id, user_id, title, model, system_prompt, temperature, depth, tone, agent_mode, workspace_id, thinking_mode, persona_id)
-      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO chats(id, user_id, title, model, system_prompt, agent_mode, workspace_id, thinking_mode, persona_id)
+      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
       id,
       req.user.id,
       title || 'New Chat',
       finalModel,
       finalSystemPrompt,
-      finalTemperature,
-      finalDepth,
-      finalTone,
       agent_mode ? 1 : 0,
       workspace_id || null,
       req.body.thinking_mode || 'medium',
@@ -196,7 +168,7 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const { title, model, system_prompt, temperature, agent_mode, depth, tone, persona_id } = req.body;
+    const { title, model, system_prompt, agent_mode, persona_id } = req.body;
 
     const updates = [];
     const values = [];
@@ -216,24 +188,9 @@ router.put('/:id', (req, res) => {
       values.push(system_prompt);
     }
 
-    if (temperature !== undefined) {
-      updates.push('temperature = ?');
-      values.push(temperature);
-    }
-
     if (agent_mode !== undefined) {
       updates.push('agent_mode = ?');
       values.push(agent_mode ? 1 : 0);
-    }
-
-    if (depth !== undefined) {
-      updates.push('depth = ?');
-      values.push(depth);
-    }
-
-    if (tone !== undefined) {
-      updates.push('tone = ?');
-      values.push(tone);
     }
 
     if (req.body.thinking_mode !== undefined) {
@@ -295,8 +252,8 @@ router.post('/:id/fork', (req, res) => {
     const newChatId = uuidv4();
     db.prepare(`
       INSERT INTO chats(id, user_id, title, parent_chat_id, fork_point_message_id,
-        model, system_prompt, temperature, depth, tone, agent_mode, thinking_mode, persona_id)
-      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        model, system_prompt, agent_mode, thinking_mode, persona_id)
+      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
       newChatId,
       req.user.id,
@@ -305,9 +262,6 @@ router.post('/:id/fork', (req, res) => {
       message_id,
       model || originalChat.model,
       originalChat.system_prompt,
-      originalChat.temperature,
-      originalChat.depth,
-      originalChat.tone,
       originalChat.agent_mode,
       originalChat.thinking_mode || 'medium',
       originalChat.persona_id || null

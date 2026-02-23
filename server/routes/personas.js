@@ -60,7 +60,7 @@ router.get('/:id', (req, res) => {
 // Create new persona
 router.post('/', (req, res) => {
   try {
-    const { name, description, system_prompt, icon, category, creativity, depth, tone } = req.body;
+    const { name, description, system_prompt, icon, category, creativity, depth, tone, temperature } = req.body;
 
     if (!name || !system_prompt) {
       return res.status(400).json({ error: 'Name and system prompt are required' });
@@ -68,9 +68,17 @@ router.post('/', (req, res) => {
 
     const id = uuidv4();
 
+    // Determine temperature based on creativity if not provided
+    let personaTemperature = temperature;
+    if (personaTemperature === undefined) {
+      if (creativity === 'precise') personaTemperature = 0.2;
+      else if (creativity === 'imaginative') personaTemperature = 1.0;
+      else personaTemperature = 0.7; // balanced default
+    }
+
     db.prepare(`
-      INSERT INTO personas (id, user_id, name, description, system_prompt, icon, category, creativity, depth, tone, is_default)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+      INSERT INTO personas (id, user_id, name, description, system_prompt, icon, category, creativity, depth, tone, temperature, is_default)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `).run(
       id,
       req.user.id,
@@ -79,9 +87,10 @@ router.post('/', (req, res) => {
       system_prompt,
       icon || 'User',
       category || 'general',
-      req.body.creativity || 'balanced',
-      req.body.depth || 'standard',
-      req.body.tone || 'professional'
+      creativity || 'balanced',
+      depth || 'standard',
+      tone || 'professional',
+      personaTemperature
     );
 
     const persona = db.prepare('SELECT * FROM personas WHERE id = ?').get(id);
@@ -96,7 +105,7 @@ router.post('/', (req, res) => {
 router.put('/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, system_prompt, icon, category, creativity, depth, tone } = req.body;
+    const { name, description, system_prompt, icon, category, creativity, depth, tone, temperature } = req.body;
 
     // Check if persona exists and belongs to user (not a default)
     const existing = db.prepare('SELECT * FROM personas WHERE id = ?').get(id);
@@ -144,6 +153,10 @@ router.put('/:id', (req, res) => {
     if (tone !== undefined) {
       updates.push('tone = ?');
       values.push(tone);
+    }
+    if (temperature !== undefined) {
+      updates.push('temperature = ?');
+      values.push(temperature);
     }
 
     if (updates.length === 0) {

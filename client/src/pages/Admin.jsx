@@ -604,9 +604,9 @@ function Admin() {
                 key={user.id}
                 className="p-5 bg-dark-800/50 border border-dark-700/50 rounded-xl hover:border-dark-600 transition-all duration-200"
               >
-                <div className="flex items-center justify-between gap-4">
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
                   {/* User Info */}
-                  <div className="flex-shrink-0 min-w-0">
+                  <div className="w-full lg:w-auto lg:flex-shrink-0 min-w-0">
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="font-semibold text-lg text-dark-100">{user.name}</h3>
                       {user.user_type === 'master' ? (
@@ -641,17 +641,19 @@ function Admin() {
                       )}
                     </div>
                     <p className="text-sm text-dark-400 mb-2">{user.email}</p>
-                    <div className="flex gap-4 text-xs text-dark-500">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-dark-500">
                       <span className="flex items-center gap-1">
                         {user.has_api_key ? (
                           <>
                             <CheckCircle className="w-3 h-3 text-green-400" />
-                            <span className="text-dark-300">Has API key</span>
+                            <span className="text-dark-300 hidden sm:inline">Has API key</span>
+                            <span className="text-dark-300 sm:hidden">API key</span>
                           </>
                         ) : (
                           <>
                             <XCircle className="w-3 h-3 text-dark-500" />
-                            <span>No API key</span>
+                            <span className="hidden sm:inline">No API key</span>
+                            <span className="sm:hidden">No key</span>
                           </>
                         )}
                       </span>
@@ -659,12 +661,14 @@ function Admin() {
                         {user.use_default_key ? (
                           <>
                             <CheckCircle className="w-3 h-3 text-accent" />
-                            <span className="text-dark-300">Can use default key</span>
+                            <span className="text-dark-300 hidden sm:inline">Can use default key</span>
+                            <span className="text-dark-300 sm:hidden">Default OK</span>
                           </>
                         ) : (
                           <>
                             <XCircle className="w-3 h-3 text-dark-500" />
-                            <span>Cannot use default key</span>
+                            <span className="hidden sm:inline">Cannot use default key</span>
+                            <span className="sm:hidden">No default</span>
                           </>
                         )}
                       </span>
@@ -672,7 +676,7 @@ function Admin() {
                   </div>
 
                   {/* Usage Stats - Lifetime totals with breakdown */}
-                  <div className="flex-1 flex flex-col gap-2">
+                  <div className="w-full lg:flex-1 flex flex-col gap-2">
                     {/* Lifetime Stats Row */}
                     <div className="grid grid-cols-2 gap-2">
                       <div className="flex items-center gap-2 px-3 py-2 bg-dark-700/50 rounded-xl border border-dark-600/50">
@@ -695,7 +699,7 @@ function Admin() {
                       </div>
                     </div>
                     {/* Breakdown Row - Default Key (accent) vs Personal Key (secondary) */}
-                    <div className="grid grid-cols-4 gap-1.5">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5">
                       <div className="flex items-center gap-1.5 px-2 py-1.5 bg-accent/10 rounded-lg border border-accent/20">
                         <div className="min-w-0">
                           <div className="text-[9px] text-dark-500 leading-tight">Default Tokens</div>
@@ -732,7 +736,7 @@ function Admin() {
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-2 flex-shrink-0">
+                  <div className="flex gap-2 lg:flex-shrink-0 w-full lg:w-auto justify-end lg:justify-start mt-2 lg:mt-0">
                     <button
                       onClick={() => handleResetUserStats(user.id, user.name)}
                       className="p-2 hover:bg-orange-500/10 rounded-lg transition-colors"

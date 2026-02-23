@@ -23,6 +23,28 @@
     --secondary: hsl(var(--secondary-h), var(--secondary-s), var(--secondary-l));
     --secondary-light: hsl(var(--secondary-h), var(--secondary-s), 70%);
     --secondary-dark: hsl(var(--secondary-h), var(--secondary-s), 50%);
+
+    /* Dynamic background colors that shift with accent hue */
+    /* Base: very dark with subtle accent tint */
+    --bg-dark-950: hsl(var(--accent-h), 6%, 4%);
+    --bg-dark-900: hsl(var(--accent-h), 8%, 8%);
+    --bg-dark-850: hsl(var(--accent-h), 7%, 10%);
+    --bg-dark-800: hsl(var(--accent-h), 9%, 14%);
+    --bg-dark-700: hsl(var(--accent-h), 10%, 24%);
+    --bg-dark-600: hsl(var(--accent-h), 8%, 32%);
+    --bg-dark-500: hsl(var(--accent-h), 6%, 45%);
+    --bg-dark-400: hsl(var(--accent-h), 5%, 64%);
+    --bg-dark-300: hsl(var(--accent-h), 8%, 82%);
+    --bg-dark-200: hsl(var(--accent-h), 10%, 89%);
+    --bg-dark-100: hsl(var(--accent-h), 10%, 96%);
+    --bg-dark-50: hsl(var(--accent-h), 0%, 98%);
+    
+    /* Semi-transparent border colors */
+    --border-dark-700-40: hsla(var(--accent-h), 10%, 24%, 0.4);
+    --border-dark-700-30: hsla(var(--accent-h), 10%, 24%, 0.3);
+    --border-dark-700-50: hsla(var(--accent-h), 10%, 24%, 0.5);
+    --border-dark-600-40: hsla(var(--accent-h), 8%, 32%, 0.4);
+    --border-dark-600-60: hsla(var(--accent-h), 8%, 32%, 0.6);
   }
 
   /* Preset themes - accent with analogous/harmonious secondary colors */
@@ -34,6 +56,25 @@
     --secondary-h: 25;
     --secondary-s: 95%;
     --secondary-l: 55%;
+    /* Warm charcoal backgrounds with amber undertone */
+    --bg-dark-950: hsl(30, 8%, 4%);
+    --bg-dark-900: hsl(28, 10%, 7%);
+    --bg-dark-850: hsl(30, 9%, 9%);
+    --bg-dark-800: hsl(25, 11%, 13%);
+    --bg-dark-700: hsl(25, 12%, 23%);
+    --bg-dark-600: hsl(25, 10%, 31%);
+    --bg-dark-500: hsl(25, 8%, 44%);
+    --bg-dark-400: hsl(25, 7%, 63%);
+    --bg-dark-300: hsl(30, 10%, 81%);
+    --bg-dark-200: hsl(30, 11%, 88%);
+    --bg-dark-100: hsl(30, 11%, 96%);
+    --bg-dark-50: hsl(30, 0%, 98%);
+    /* Semi-transparent borders */
+    --border-dark-700-40: hsla(25, 12%, 23%, 0.4);
+    --border-dark-700-30: hsla(25, 12%, 23%, 0.3);
+    --border-dark-700-50: hsla(25, 12%, 23%, 0.5);
+    --border-dark-600-40: hsla(25, 10%, 31%, 0.4);
+    --border-dark-600-60: hsla(25, 10%, 31%, 0.6);
   }
 
   [data-accent="blue"] {
@@ -44,6 +85,25 @@
     --secondary-h: 230;
     --secondary-s: 70%;
     --secondary-l: 55%;
+    /* Cool charcoal backgrounds with blue undertone */
+    --bg-dark-950: hsl(220, 12%, 4%);
+    --bg-dark-900: hsl(218, 14%, 7%);
+    --bg-dark-850: hsl(220, 13%, 9%);
+    --bg-dark-800: hsl(215, 15%, 13%);
+    --bg-dark-700: hsl(215, 16%, 23%);
+    --bg-dark-600: hsl(215, 14%, 31%);
+    --bg-dark-500: hsl(215, 12%, 44%);
+    --bg-dark-400: hsl(215, 11%, 63%);
+    --bg-dark-300: hsl(220, 14%, 81%);
+    --bg-dark-200: hsl(220, 15%, 88%);
+    --bg-dark-100: hsl(220, 15%, 96%);
+    --bg-dark-50: hsl(220, 0%, 98%);
+    /* Semi-transparent borders */
+    --border-dark-700-40: hsla(215, 16%, 23%, 0.4);
+    --border-dark-700-30: hsla(215, 16%, 23%, 0.3);
+    --border-dark-700-50: hsla(215, 16%, 23%, 0.5);
+    --border-dark-600-40: hsla(215, 14%, 31%, 0.4);
+    --border-dark-600-60: hsla(215, 14%, 31%, 0.6);
   }
 
   [data-accent="green"] {
@@ -54,6 +114,25 @@
     --secondary-h: 160;
     --secondary-s: 70%;
     --secondary-l: 45%;
+    /* Natural charcoal backgrounds with green undertone */
+    --bg-dark-950: hsl(145, 10%, 4%);
+    --bg-dark-900: hsl(143, 12%, 7%);
+    --bg-dark-850: hsl(145, 11%, 9%);
+    --bg-dark-800: hsl(140, 13%, 13%);
+    --bg-dark-700: hsl(140, 14%, 23%);
+    --bg-dark-600: hsl(140, 12%, 31%);
+    --bg-dark-500: hsl(140, 10%, 44%);
+    --bg-dark-400: hsl(140, 9%, 63%);
+    --bg-dark-300: hsl(145, 12%, 81%);
+    --bg-dark-200: hsl(145, 13%, 88%);
+    --bg-dark-100: hsl(145, 13%, 96%);
+    --bg-dark-50: hsl(145, 0%, 98%);
+    /* Semi-transparent borders */
+    --border-dark-700-40: hsla(140, 14%, 23%, 0.4);
+    --border-dark-700-30: hsla(140, 14%, 23%, 0.3);
+    --border-dark-700-50: hsla(140, 14%, 23%, 0.5);
+    --border-dark-600-40: hsla(140, 12%, 31%, 0.4);
+    --border-dark-600-60: hsla(140, 12%, 31%, 0.6);
   }
 
   [data-accent="purple"] {
@@ -64,6 +143,25 @@
     --secondary-h: 280;
     --secondary-s: 70%;
     --secondary-l: 60%;
+    /* Mystic charcoal backgrounds with purple undertone */
+    --bg-dark-950: hsl(265, 12%, 4%);
+    --bg-dark-900: hsl(263, 14%, 7%);
+    --bg-dark-850: hsl(265, 13%, 9%);
+    --bg-dark-800: hsl(260, 15%, 13%);
+    --bg-dark-700: hsl(260, 16%, 23%);
+    --bg-dark-600: hsl(260, 14%, 31%);
+    --bg-dark-500: hsl(260, 12%, 44%);
+    --bg-dark-400: hsl(260, 11%, 63%);
+    --bg-dark-300: hsl(265, 14%, 81%);
+    --bg-dark-200: hsl(265, 15%, 88%);
+    --bg-dark-100: hsl(265, 15%, 96%);
+    --bg-dark-50: hsl(265, 0%, 98%);
+    /* Semi-transparent borders */
+    --border-dark-700-40: hsla(260, 16%, 23%, 0.4);
+    --border-dark-700-30: hsla(260, 16%, 23%, 0.3);
+    --border-dark-700-50: hsla(260, 16%, 23%, 0.5);
+    --border-dark-600-40: hsla(260, 14%, 31%, 0.4);
+    --border-dark-600-60: hsla(260, 14%, 31%, 0.6);
   }
 
   [data-accent="rose"] {
@@ -74,6 +172,25 @@
     --secondary-h: 10;
     --secondary-s: 80%;
     --secondary-l: 60%;
+    /* Warm charcoal backgrounds with rose undertone */
+    --bg-dark-950: hsl(355, 10%, 4%);
+    --bg-dark-900: hsl(353, 12%, 7%);
+    --bg-dark-850: hsl(355, 11%, 9%);
+    --bg-dark-800: hsl(350, 13%, 13%);
+    --bg-dark-700: hsl(350, 14%, 23%);
+    --bg-dark-600: hsl(350, 12%, 31%);
+    --bg-dark-500: hsl(350, 10%, 44%);
+    --bg-dark-400: hsl(350, 9%, 63%);
+    --bg-dark-300: hsl(355, 12%, 81%);
+    --bg-dark-200: hsl(355, 13%, 88%);
+    --bg-dark-100: hsl(355, 13%, 96%);
+    --bg-dark-50: hsl(355, 0%, 98%);
+    /* Semi-transparent borders */
+    --border-dark-700-40: hsla(350, 14%, 23%, 0.4);
+    --border-dark-700-30: hsla(350, 14%, 23%, 0.3);
+    --border-dark-700-50: hsla(350, 14%, 23%, 0.5);
+    --border-dark-600-40: hsla(350, 12%, 31%, 0.4);
+    --border-dark-600-60: hsla(350, 12%, 31%, 0.6);
   }
 
   [data-accent="cyan"] {
@@ -84,6 +201,25 @@
     --secondary-h: 175;
     --secondary-s: 80%;
     --secondary-l: 45%;
+    /* Cool charcoal backgrounds with cyan undertone */
+    --bg-dark-950: hsl(185, 12%, 4%);
+    --bg-dark-900: hsl(183, 14%, 7%);
+    --bg-dark-850: hsl(185, 13%, 9%);
+    --bg-dark-800: hsl(180, 15%, 13%);
+    --bg-dark-700: hsl(180, 16%, 23%);
+    --bg-dark-600: hsl(180, 14%, 31%);
+    --bg-dark-500: hsl(180, 12%, 44%);
+    --bg-dark-400: hsl(180, 11%, 63%);
+    --bg-dark-300: hsl(185, 14%, 81%);
+    --bg-dark-200: hsl(185, 15%, 88%);
+    --bg-dark-100: hsl(185, 15%, 96%);
+    --bg-dark-50: hsl(185, 0%, 98%);
+    /* Semi-transparent borders */
+    --border-dark-700-40: hsla(180, 16%, 23%, 0.4);
+    --border-dark-700-30: hsla(180, 16%, 23%, 0.3);
+    --border-dark-700-50: hsla(180, 16%, 23%, 0.5);
+    --border-dark-600-40: hsla(180, 14%, 31%, 0.4);
+    --border-dark-600-60: hsla(180, 14%, 31%, 0.6);
   }
 
   * {
@@ -111,12 +247,13 @@
   }
 
   .scrollbar-thumb-dark-600::-webkit-scrollbar-thumb {
-    @apply bg-dark-600/50 rounded-full;
+    background-color: rgba(79, 84, 107, 0.5);
+    border-radius: 9999px;
     transition: background-color 0.2s;
   }
 
   .scrollbar-thumb-dark-600::-webkit-scrollbar-thumb:hover {
-    @apply bg-dark-500/70;
+    background-color: rgba(103, 108, 131, 0.7);
   }
 
   .scrollbar-track-transparent::-webkit-scrollbar-track {
@@ -130,23 +267,25 @@
       radial-gradient(ellipse 50% 35% at 10% 20%, hsl(var(--accent-h), var(--accent-s), var(--accent-l), 0.04) 0%, transparent 50%),
       /* Smaller accent glow bottom-right */
       radial-gradient(ellipse 35% 25% at 90% 80%, hsl(var(--accent-h), var(--accent-s), calc(var(--accent-l) + 10%), 0.03) 0%, transparent 50%),
-      /* Base gradient */
-      linear-gradient(180deg, #171412 0%, #0c0a09 100%);
+      /* Base gradient using dynamic background colors */
+      linear-gradient(180deg, var(--bg-dark-900) 0%, var(--bg-dark-950) 100%);
     background-attachment: fixed;
   }
 
   /* Refined glass effects */
   .glass {
-    @apply bg-dark-800/70 border border-dark-700/40;
+    background-color: rgba(43, 47, 64, 0.7);
+    border: 1px solid rgba(61, 66, 89, 0.4);
   }
 
   .glass-light {
-    @apply bg-dark-800/30 border border-dark-700/30;
+    background-color: rgba(43, 47, 64, 0.3);
+    border: 1px solid rgba(61, 66, 89, 0.3);
   }
 
   .glass-card {
-    background: rgba(41, 37, 36, 0.5);
-    border: 1px solid rgba(68, 64, 60, 0.3);
+    background: var(--bg-dark-800);
+    border: 1px solid var(--border-dark-700-30);
     box-shadow:
       0 1px 2px rgba(0, 0, 0, 0.1),
       0 4px 16px rgba(0, 0, 0, 0.08);
@@ -157,7 +296,7 @@
   }
 
   .glass-card-hover:hover {
-    border-color: rgba(68, 64, 60, 0.5);
+    border-color: var(--border-dark-700-50);
     box-shadow:
       0 2px 4px rgba(0, 0, 0, 0.1),
       0 8px 24px rgba(0, 0, 0, 0.12);
@@ -165,9 +304,9 @@
 
   .glass-sidebar {
     background: linear-gradient(180deg,
-        rgba(28, 25, 23, 0.97) 0%,
-        rgba(28, 25, 23, 0.99) 100%);
-    border-right: 1px solid rgba(68, 64, 60, 0.4);
+        var(--bg-dark-850) 0%,
+        var(--bg-dark-950) 100%);
+    border-right: 1px solid var(--border-dark-700-40);
     box-shadow:
       inset -1px 0 0 rgba(255, 255, 255, 0.02),
       4px 0 24px rgba(0, 0, 0, 0.25);
@@ -175,40 +314,51 @@
 
   /* Glass with blur - only for modals and dropdowns */
   .glass-modal {
-    background: rgba(23, 20, 18, 0.95);
+    background: var(--bg-dark-900);
     backdrop-filter: blur(24px);
     -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(68, 64, 60, 0.4);
+    border: 1px solid var(--border-dark-700-40);
     box-shadow:
       0 25px 50px rgba(0, 0, 0, 0.4),
       inset 0 1px 0 rgba(255, 255, 255, 0.03);
   }
 
   .glass-dropdown {
-    background: rgba(23, 20, 18, 0.95);
+    background: var(--bg-dark-900);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(68, 64, 60, 0.4);
+    border: 1px solid var(--border-dark-700-40);
     box-shadow:
       0 10px 40px rgba(0, 0, 0, 0.3),
       inset 0 1px 0 rgba(255, 255, 255, 0.03);
   }
 
   .glass-input {
-    @apply bg-dark-800/50 border border-dark-700/40 transition-all duration-200;
+    background-color: rgba(43, 47, 64, 0.5);
+    border: 1px solid rgba(61, 66, 89, 0.4);
+    transition: all 0.2s;
   }
 
   .glass-input:focus {
-    @apply border-primary-500/40;
-    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.08);
+    border-color: rgba(139, 92, 246, 0.4);
+    box-shadow: 0 0 0 3px hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.08);
   }
 
   .glass-input:hover:not(:focus) {
-    @apply border-dark-600/60;
+    border-color: rgba(79, 84, 107, 0.6);
   }
 
   .glass-button {
-    @apply bg-dark-700/40 border border-dark-700/40 hover:bg-dark-600/40 hover:border-dark-600/50 active:scale-[0.98] transition-all duration-200;
+    background-color: rgba(54, 58, 79, 0.4);
+    border: 1px solid rgba(61, 66, 89, 0.4);
+    transition: all 0.2s;
+  }
+  .glass-button:hover {
+    background-color: rgba(67, 71, 94, 0.4);
+    border-color: rgba(79, 84, 107, 0.5);
+  }
+  .glass-button:active {
+    transform: scale(0.98);
   }
 
   /* Primary button - outline that fills on hover */
@@ -290,11 +440,11 @@
   }
 
   .bg-accent\/10 {
-    @apply bg-primary-500/10;
+    background-color: rgba(139, 92, 246, 0.1);
   }
 
   .bg-accent\/20 {
-    @apply bg-primary-500/20;
+    background-color: rgba(139, 92, 246, 0.2);
   }
 
   .border-accent {
@@ -302,19 +452,19 @@
   }
 
   .border-accent\/20 {
-    @apply border-primary-500/20;
+    border-color: rgba(139, 92, 246, 0.2);
   }
 
   .border-accent\/50 {
-    @apply border-primary-500/50;
+    border-color: rgba(139, 92, 246, 0.5);
   }
 
   .border-accent\/60 {
-    @apply border-primary-500/60;
+    border-color: rgba(139, 92, 246, 0.6);
   }
 
   .ring-accent\/50 {
-    @apply ring-primary-500/50;
+    --tw-ring-color: rgba(139, 92, 246, 0.5);
   }
 
   .hover\:text-accent:hover {
@@ -326,15 +476,15 @@
   }
 
   .hover\:bg-accent\/10:hover {
-    @apply bg-primary-500/10;
+    background-color: rgba(139, 92, 246, 0.1);
   }
 
   .hover\:bg-accent\/20:hover {
-    @apply bg-primary-500/20;
+    background-color: rgba(139, 92, 246, 0.2);
   }
 
   .focus\:border-accent\/50:focus {
-    @apply border-primary-500/50;
+    border-color: rgba(139, 92, 246, 0.5);
   }
 
   .fill-accent {
@@ -355,11 +505,11 @@
   }
 
   .bg-secondary-10 {
-    @apply bg-accent-500/10;
+    background-color: rgba(139, 92, 246, 0.1);
   }
 
   .bg-secondary-20 {
-    @apply bg-accent-500/20;
+    background-color: rgba(139, 92, 246, 0.2);
   }
 
   .border-secondary {
@@ -367,15 +517,15 @@
   }
 
   .border-secondary-20 {
-    @apply border-accent-500/20;
+    border-color: rgba(139, 92, 246, 0.2);
   }
 
   .border-secondary-50 {
-    @apply border-accent-500/50;
+    border-color: rgba(139, 92, 246, 0.5);
   }
 
   .hover\:bg-secondary-10:hover {
-    @apply bg-accent-500/10;
+    background-color: rgba(139, 92, 246, 0.1);
   }
 
   .hover\:text-secondary:hover {
@@ -478,12 +628,16 @@
 }
 
 .markdown-content pre {
-  @apply rounded-lg p-4 overflow-x-auto my-4 bg-dark-900/80 border border-dark-700/30;
+  @apply rounded-lg p-4 overflow-x-auto my-4;
+  background-color: rgba(30, 30, 46, 0.8);
+  border: 1px solid rgba(61, 66, 89, 0.3);
 }
 
 .markdown-content code {
-  @apply bg-dark-800/60 text-primary-400/90 px-1.5 py-0.5 rounded text-[13px] font-mono;
-  border: 1px solid rgba(68, 64, 60, 0.3);
+  @apply px-1.5 py-0.5 rounded text-[13px] font-mono;
+  background-color: rgba(43, 47, 64, 0.6);
+  color: rgba(167, 139, 250, 0.9);
+  border: 1px solid var(--border-dark-700-30);
 }
 
 .markdown-content pre code {
@@ -528,7 +682,13 @@
 }
 
 .markdown-content a {
-  @apply text-primary-400/80 hover:text-primary-400 underline decoration-primary-500/20 hover:decoration-primary-400/40 underline-offset-2 transition-colors;
+  @apply hover:text-primary-400 underline underline-offset-2 transition-colors;
+  color: rgba(167, 139, 250, 0.8);
+  text-decoration-color: rgba(139, 92, 246, 0.2);
+}
+
+.markdown-content a:hover {
+  text-decoration-color: rgba(167, 139, 250, 0.4);
 }
 
 .markdown-content blockquote {
@@ -542,18 +702,20 @@
 
 .markdown-content th,
 .markdown-content td {
-  @apply border border-dark-700/40 px-3 py-2 text-sm;
+  @apply px-3 py-2 text-sm;
+  border: 1px solid rgba(61, 66, 89, 0.4);
   word-wrap: break-word;
   overflow-wrap: break-word;
   max-width: 300px;
 }
 
 .markdown-content th {
-  @apply bg-dark-800/40 font-medium text-dark-100 text-left;
+  @apply font-medium text-dark-100 text-left;
+  background-color: rgba(43, 47, 64, 0.4);
 }
 
 .markdown-content tr:hover td {
-  @apply bg-dark-800/20;
+  background-color: rgba(43, 47, 64, 0.2);
 }
 
 /* Wrap markdown content to handle overflow */
@@ -563,7 +725,8 @@
 }
 
 .markdown-content hr {
-  @apply my-6 border-dark-700/40;
+  @apply my-6;
+  border-color: rgba(61, 66, 89, 0.4);
 }
 
 .markdown-content img {
@@ -609,17 +772,21 @@ input[type="checkbox"]:checked {
 }
 
 input[type="checkbox"]:focus {
-  @apply ring-1 ring-primary-500/20 outline-none;
+  @apply ring-1 outline-none;
+  --tw-ring-color: rgba(139, 92, 246, 0.2);
 }
 
 /* Selection styling */
 ::selection {
-  @apply bg-primary-500/20 text-white;
+  background-color: rgba(139, 92, 246, 0.2);
+  color: white;
 }
 
 /* Focus visible styling */
 :focus-visible {
-  @apply outline-none ring-1 ring-primary-500/40 ring-offset-2 ring-offset-dark-900;
+  @apply outline-none ring-1 ring-offset-2;
+  --tw-ring-color: rgba(139, 92, 246, 0.4);
+  --tw-ring-offset-color: #1e1e2e;
 }
 
 /* Button press effect */
@@ -637,7 +804,9 @@ input[type="checkbox"]:focus {
 }
 
 .tooltip::after {
-  @apply absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white rounded opacity-0 pointer-events-none transition-opacity duration-200 whitespace-nowrap bg-dark-800 border border-dark-700/50;
+  @apply absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white rounded opacity-0 pointer-events-none transition-opacity duration-200 whitespace-nowrap;
+  background-color: rgba(43, 47, 64, 1);
+  border: 1px solid rgba(61, 66, 89, 0.5);
   content: attr(data-tooltip);
 }
 
@@ -651,7 +820,9 @@ input[type="checkbox"]:focus {
 }
 
 .tooltip-right::after {
-  @apply absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 text-xs text-dark-100 rounded-lg opacity-0 pointer-events-none transition-all duration-200 whitespace-nowrap bg-dark-800 border border-dark-700/50 shadow-lg;
+  @apply absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1.5 text-xs text-dark-100 rounded-lg opacity-0 pointer-events-none transition-all duration-200 whitespace-nowrap shadow-lg;
+  background-color: rgba(43, 47, 64, 1);
+  border: 1px solid rgba(61, 66, 89, 0.5);
   content: attr(data-tooltip);
   z-index: 9999;
 }
@@ -682,7 +853,30 @@ input[type="checkbox"]:focus {
 
 /* Divider */
 .divider-gradient {
-  @apply h-px bg-dark-700/40;
+  @apply h-px;
+  background-color: rgba(61, 66, 89, 0.4);
+}
+
+@layer utilities {
+  .border-dark-700\/30 {
+    border-color: var(--border-dark-700-30);
+  }
+
+  .border-dark-700\/40 {
+    border-color: var(--border-dark-700-40);
+  }
+
+  .border-dark-700\/50 {
+    border-color: var(--border-dark-700-50);
+  }
+
+  .border-dark-600\/40 {
+    border-color: var(--border-dark-600-40);
+  }
+
+  .border-dark-600\/60 {
+    border-color: var(--border-dark-600-60);
+  }
 }
 
 /* Badge */
@@ -691,16 +885,24 @@ input[type="checkbox"]:focus {
 }
 
 .badge-primary {
-  @apply bg-primary-500/10 text-primary-400/80 border border-primary-500/15;
+  @apply border;
+  background-color: rgba(139, 92, 246, 0.1);
+  color: rgba(167, 139, 250, 0.8);
+  border-color: rgba(139, 92, 246, 0.15);
 }
 
 .badge-accent {
-  @apply bg-accent-500/20 text-accent-300 border border-accent-500/30;
+  @apply border;
+  background-color: rgba(139, 92, 246, 0.2);
+  color: rgba(167, 139, 250, 0.9);
+  border-color: rgba(139, 92, 246, 0.3);
 }
 
 /* Search highlight styles */
 .search-highlight mark {
-  @apply bg-primary-500/30 text-primary-200 rounded px-0.5;
+  @apply rounded px-0.5;
+  background-color: rgba(139, 92, 246, 0.3);
+  color: rgba(196, 181, 253, 1);
 }
 
 /* Message highlight animation for search navigation */
@@ -735,8 +937,8 @@ input[type="checkbox"]:focus {
 
 .tool-call-item {
   @apply rounded-lg overflow-hidden;
-  background: rgba(41, 37, 36, 0.4);
-  border: 1px solid rgba(68, 64, 60, 0.3);
+  background: var(--bg-dark-800);
+  border: 1px solid var(--border-dark-700-30);
 }
 
 .tool-call-header {
@@ -745,8 +947,8 @@ input[type="checkbox"]:focus {
 
 .tool-call-icon {
   @apply flex items-center justify-center w-6 h-6 rounded-md;
-  background: rgba(68, 64, 60, 0.4);
-  color: #a8a29e;
+  background: var(--border-dark-600-40);
+  color: var(--bg-dark-400);
 }
 
 .tool-call-icon-running {
@@ -836,7 +1038,7 @@ input[type="checkbox"]:focus {
 .step-line {
   @apply w-px flex-1;
   min-height: 8px;
-  background: rgba(68, 64, 60, 0.3);
+  background: var(--border-dark-700-30);
   margin: 2px 0;
 }
 
@@ -897,7 +1099,7 @@ input[type="checkbox"]:focus {
 /* Expanded body - subtle panel with accent border */
 .step-body {
   @apply mt-1 px-3 py-2 rounded-md text-sm;
-  background: rgba(28, 25, 23, 0.4);
+  background: var(--bg-dark-850);
   max-height: 200px;
   overflow-y: auto;
 }
@@ -949,9 +1151,9 @@ input[type="checkbox"]:focus {
 /* Workspace Sidebar - Mission Control Aesthetic */
 .workspace-sidebar {
   background: linear-gradient(180deg,
-      rgba(10, 10, 11, 0.98) 0%,
-      rgba(10, 10, 11, 0.99) 100%);
-  border-right: 1px solid rgba(42, 42, 46, 0.6);
+      var(--bg-dark-950) 0%,
+      var(--bg-dark-950) 100%);
+  border-right: 1px solid var(--border-dark-700-40);
 }
 
 .workspace-item-active {
@@ -1022,8 +1224,8 @@ input[type="checkbox"]:focus {
   @apply relative text-left overflow-hidden;
   width: 160px;
   height: 120px;
-  background: linear-gradient(135deg, rgba(28, 25, 23, 0.8) 0%, rgba(23, 20, 18, 0.9) 100%);
-  border: 1px solid rgba(68, 64, 60, 0.25);
+  background: linear-gradient(135deg, var(--bg-dark-850) 0%, var(--bg-dark-900) 100%);
+  border: 1px solid var(--border-dark-700-30);
   border-radius: 8px;
   opacity: 0;
   transform: translateY(16px);
@@ -1127,8 +1329,8 @@ input[type="checkbox"]:focus {
 
 .ws-card-icon {
   @apply relative flex items-center justify-center w-10 h-10 rounded-lg transition-all duration-300;
-  background: rgba(41, 37, 36, 0.6);
-  border: 1px solid rgba(68, 64, 60, 0.3);
+  background: var(--bg-dark-800);
+  border: 1px solid var(--border-dark-700-30);
   color: var(--ws-color-dim);
 }
 
@@ -1215,7 +1417,7 @@ input[type="checkbox"]:focus {
 
 /* Hover state */
 .ws-card:hover {
-  border-color: rgba(68, 64, 60, 0.5);
+  border-color: var(--border-dark-700-50);
   transform: translateY(-3px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
@@ -1395,11 +1597,11 @@ input[type="checkbox"]:focus {
   }
 
   .mobile-menu-button:hover {
-    background-color: rgba(68, 64, 60, 0.4);
+    background-color: var(--border-dark-600-40);
   }
 
   .mobile-menu-button:active {
-    background-color: rgba(68, 64, 60, 0.6);
+    background-color: var(--border-dark-600-60);
   }
 }
 

@@ -11,20 +11,20 @@ export default {
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
       colors: {
-        // Refined neutral charcoal with subtle warmth
+        // Dynamic dark palette that shifts with accent color
         dark: {
-          50: '#fafafa',
-          100: '#f5f5f4',
-          200: '#e7e5e4',
-          300: '#d6d3d1',
-          400: '#a8a29e',
-          500: '#78716c',
-          600: '#57534e',
-          700: '#44403c',
-          800: '#292524',
-          850: '#1c1917',
-          900: '#171412',
-          950: '#0c0a09',
+          50: 'var(--bg-dark-50)',
+          100: 'var(--bg-dark-100)',
+          200: 'var(--bg-dark-200)',
+          300: 'var(--bg-dark-300)',
+          400: 'var(--bg-dark-400)',
+          500: 'var(--bg-dark-500)',
+          600: 'var(--bg-dark-600)',
+          700: 'var(--bg-dark-700)',
+          800: 'var(--bg-dark-800)',
+          850: 'var(--bg-dark-850)',
+          900: 'var(--bg-dark-900)',
+          950: 'var(--bg-dark-950)',
         },
         // Dynamic primary color (mapped to --accent in CSS)
         primary: {
