@@ -349,6 +349,7 @@ function Chat() {
   // Per-chat abort controllers
   const abortControllersRef = useRef(new Map());
   const isCreatingChatRef = useRef(false);
+  const isSendingRef = useRef(false);
   const userHasScrolledUp = useRef(false);
   const statsPopupRef = useRef(null);
   const [expandedThinkingSections, setExpandedThinkingSections] = useState(
@@ -1379,7 +1380,10 @@ function Chat() {
 
   const sendMessage = async (e) => {
     e.preventDefault();
-    if (!inputMessage.trim() || !currentChat || streaming) return;
+    if (!inputMessage.trim() || !currentChat || streaming || isSendingRef.current) return;
+
+    // Mark as sending to prevent concurrent requests
+    isSendingRef.current = true;
 
     const userMessage = inputMessage.trim();
     const attachmentIds = pendingAttachments.map((a) => a.id);
@@ -1732,6 +1736,7 @@ function Chat() {
       }
     } finally {
       isCreatingChatRef.current = false;
+      isSendingRef.current = false;
       if (chatId) {
         abortControllersRef.current.delete(chatId);
       }
