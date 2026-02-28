@@ -2706,7 +2706,7 @@ function Chat() {
                                 You
                               </span>
                             </div>
-                            <div className="inline-block max-w-[85%] bg-dark-700/80 border border-dark-600 text-dark-100 rounded-2xl rounded-tr-sm px-4 py-3">
+                            <div className="inline-block max-w-[85%] bg-dark-700/80 text-dark-100 rounded-2xl rounded-tr-sm px-4 py-3">
                               {editingMessageId === message.id ? (
                                 <div className="space-y-2 text-left">
                                   <textarea
@@ -2714,7 +2714,7 @@ function Chat() {
                                     onChange={(e) =>
                                       setEditContent(e.target.value)
                                     }
-                                    className="w-full min-w-[300px] bg-dark-800/50 border border-dark-600 rounded-lg p-2 text-white resize-none focus:outline-none focus:border-primary-400"
+                                    className="w-full min-w-[300px] bg-dark-900 border border-dark-500 rounded-lg p-2 text-dark-100 resize-none focus:outline-none focus:border-primary-400 placeholder-dark-500"
                                     rows={3}
                                     autoFocus
                                   />
@@ -3078,7 +3078,7 @@ function Chat() {
 
                                 {/* Content bubble - only show if message has content */}
                                 {message.content?.trim() && (
-                                  <div className="inline-block max-w-[85%] bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg mb-2">
+                                  <div className="inline-block max-w-[85%] bg-gradient-to-br from-dark-800 to-dark-900 rounded-2xl rounded-tl-sm px-4 py-3 mb-2">
                                     {renderMessage(message.content)}
                                   </div>
                                 )}
@@ -3293,7 +3293,7 @@ function Chat() {
                             )}
                             {/* Content for this completed turn */}
                             {turn.message && (
-                              <div className="inline-block max-w-[85%] bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg mb-2">
+                              <div className="inline-block max-w-[85%] bg-gradient-to-br from-dark-800 to-dark-900 rounded-2xl rounded-tl-sm px-4 py-3 mb-2">
                                 {renderMessage(turn.message)}
                               </div>
                             )}
@@ -3361,7 +3361,7 @@ function Chat() {
                       )}
 
                       {streamingMessage && (
-                        <div className="inline-block max-w-[85%] bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg fade-in">
+                        <div className="inline-block max-w-[85%] bg-gradient-to-br from-dark-800 to-dark-900 rounded-2xl rounded-tl-sm px-4 py-3 fade-in">
                           {renderMessage(streamingMessage)}
                         </div>
                       )}
@@ -3371,7 +3371,7 @@ function Chat() {
                         !streamingReasoning &&
                         !(streamingSteps?.length > 0) &&
                         !(completedTurns?.length > 0) && (
-                          <div className="inline-block bg-gradient-to-br from-dark-800 to-dark-900 border border-dark-600/50 rounded-2xl rounded-tl-sm px-4 py-3 shadow-lg fade-in">
+                                                    <div className="inline-block bg-gradient-to-br from-dark-800 to-dark-900 rounded-2xl rounded-tl-sm px-4 py-3 fade-in">
                             <div className="flex gap-1">
                               <div
                                 className="w-1.5 h-1.5 bg-dark-600 rounded-full animate-bounce"
